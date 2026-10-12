@@ -3,7 +3,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Contrato da migration `20270101037800_falta_de_material_por_setor`.
+ * Contrato da definição VIVA de `list_order_sector_material_shortages`, hoje a
+ * migration `20270101038200_falta_por_setor_usa_cadastro` (substituiu a 037800).
+ *
+ * ⚠ Aponte sempre para a migration que define a função AGORA. Contrato que lê o
+ * arquivo superado passa verde enquanto a função viva perde uma guarda — é a
+ * armadilha registrada no CLAUDE.md (caso napaBaseWidthProfile).
  *
  * Pedido do dono (11/10/2026): a confirmação de apontamento só pergunta nos
  * setores que CONSOMEM o material em falta. O que este arquivo trava é o que
@@ -12,7 +17,7 @@ import { describe, expect, it } from 'vitest';
  * AGREGADO do empenho do PV, a comparação por `canonical_stage_name`, a guarda
  * de acesso e os REVOKE/GRANT.
  */
-const path = 'supabase/migrations/20270101037800_falta_de_material_por_setor.sql';
+const path = 'supabase/migrations/20270101038200_falta_por_setor_usa_cadastro.sql';
 const sql = readFileSync(join(process.cwd(), path), 'utf8');
 
 function fnBody(name: string): string {
@@ -160,7 +165,9 @@ describe('falta de material por setor — resolução do setor', () => {
     // e calaria o fail-safe.
     expect(body).toMatch(/LEFT JOIN component_sector_map m ON m\.component = lc\.component/);
     expect(body).toMatch(/CASE WHEN m\.sector IS NULL THEN NULL/);
-    expect(body).toMatch(/CASE WHEN m\.sector IS NULL THEN 'desconhecido' ELSE 'componente' END/);
+    // o não-mapeado não entra em `resolved`; 'desconhecido' passou a ser a
+    // AUSÊNCIA de linha resolvida, não um rótulo escrito na camada do componente
+    expect(body).toMatch(/FROM label_sectors l WHERE l\.sector IS NOT NULL/);
     expect(body).toMatch(/ELSE 'desconhecido' END AS sector_source/);
   });
 
@@ -170,7 +177,9 @@ describe('falta de material por setor — resolução do setor', () => {
   });
 
   it('FAIL-SAFE: setor desconhecido (NULL) avisa em QUALQUER setor', () => {
-    expect(body).toMatch(/COALESCE\(bool_or\(ls\.sector IS NULL\), false\) AS has_unknown/);
+    expect(body).toMatch(
+      /NOT EXISTS \(SELECT 1 FROM resolved r WHERE r\.rid = b\.rid\) AS has_unknown/,
+    );
     expect(body).toMatch(/WHERE pr\.matched_want OR pr\.has_unknown/);
     expect(sql).toMatch(/FAIL-SAFE/);
   });
@@ -213,8 +222,68 @@ describe('falta de material por setor — rótulo AGREGADO do empenho do PV', ()
   it('uma linha vale para TODOS os setores do conjunto (não só o primeiro)', () => {
     // bool_or sobre os setores da reserva: casar em qualquer um mantém a linha.
     expect(body).toMatch(
-      /COALESCE\(bool_or\(ls\.sector = \(SELECT s\.want FROM stage s\)\), false\) AS matched_want/,
+      /WHERE r\.rid = b\.rid AND r\.sector = \(SELECT s\.want FROM stage s\)\s*\n\s*\) AS matched_want/,
     );
-    expect(body).toMatch(/GROUP BY ls\.rid/);
+  });
+});
+
+describe('falta de material por setor — cascata de CADASTRO (038200)', () => {
+  it('lê sheet_materials.sector, NUNCA sheet_materials.consumption_sector', () => {
+    // Medido em 12/10/2026: `sector` 79/79 preenchida e já na gramática de etapa;
+    // `consumption_sector` 0/79. Trocar "pra alinhar com o motor de ficha"
+    // devolveria tudo a 'desconhecido' e o aviso voltaria a tocar em todo setor.
+    expect(body).toMatch(/JOIN public\.sheet_materials sm ON sm\.product_id = b\.product_id/);
+    expect(body).toMatch(/NULLIF\(pg_catalog\.btrim\(sm\.sector\), ''\) IS NOT NULL/);
+    expect(body).not.toMatch(/sm\.consumption_sector/);
+    expect(sql).toMatch(/consumption_sector.*0 de 79|0 de 79.*consumption_sector/s);
+  });
+
+  it('bom_part_sector_map é a 3ª camada, só quando a linha de BOM não resolveu', () => {
+    expect(body).toMatch(/JOIN public\.bom_part_sector_map m ON m\.group_id = p\.group_id/);
+    expect(body).toMatch(
+      /AND NOT EXISTS \(\s*\n?\s*SELECT 1 FROM cadastro_bom_line c WHERE c\.rid = b\.rid\s*\n?\s*\)/,
+    );
+  });
+
+  it('o mapa por componente só vale onde NENHUM cadastro resolveu', () => {
+    // Senão o rótulo (grosseiro, agregado) competiria com o cadastro e poderia
+    // ganhar — foi o que o dado desmentiu: as colas são cadastradas em Colagem.
+    const guard = /AND NOT EXISTS \(SELECT 1 FROM cadastro_resolved cr WHERE cr\.rid = b\.rid\)/g;
+    expect(body.match(guard)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(body).toMatch(/cadastro_resolved AS \(/);
+  });
+
+  it('precedência: explícito > cadastro > componente > desconhecido', () => {
+    expect(body).toMatch(
+      /WHEN pr\.has_explicit THEN 'explicito'\s*\n\s*WHEN pr\.has_cadastro THEN 'cadastro'\s*\n\s*WHEN pr\.matched_want THEN 'componente'\s*\n\s*ELSE 'desconhecido'/,
+    );
+    expect(body).toMatch(
+      /WHEN bool_or\(k\.sector_source = 'explicito'\)\s+THEN 'explicito'\s*\n\s*WHEN bool_or\(k\.sector_source = 'cadastro'\)\s+THEN 'cadastro'/,
+    );
+  });
+
+  it('o cadastro passa por canonical_stage_name, igual ao resto do sistema', () => {
+    expect(body).toMatch(/public\.canonical_stage_name\(NULLIF\(pg_catalog\.btrim\(sm\.sector\), ''\)\)/);
+    expect(body).toMatch(/public\.canonical_stage_name\(NULLIF\(pg_catalog\.btrim\(m\.sector\), ''\)\)/);
+  });
+
+  it("'Item padrão (solado)' NÃO entra no mapa como Solagem", () => {
+    // O rótulo nomeia o solado, mas o CADASTRO das mesmas colas diz Colagem.
+    // Mapear por rótulo contrariaria o cadastro — foi o dado que desmentiu a
+    // suposição. Este rótulo e 'Componente Direto' ficam fora do mapa.
+    const map = body.slice(
+      body.indexOf('component_sector_map (component, sector) AS ('),
+      body.indexOf('demand AS ('),
+    );
+    expect(map).not.toMatch(/item padr[ãa]o/i);
+    expect(map).not.toMatch(/componente direto/i);
+  });
+
+  it('as 2 pendências de cadastro ficam escritas, não resolvidas por chute', () => {
+    expect(sql).toMatch(/HOTMELT/);
+    expect(sql).toMatch(/Fivela 12mm/);
+    expect(sql).toMatch(/COMPONENTES DIVERSOS/);
+    // e a armadilha da grafia morta 'Costura' → 'Acabamento Palmilha'
+    expect(sql).toMatch(/'Costura' é grafia MORTA|grafia MORTA/);
   });
 });

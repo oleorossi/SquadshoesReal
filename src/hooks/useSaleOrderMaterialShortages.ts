@@ -31,11 +31,17 @@ export interface MaterialShortageLine {
  * (`list_order_sector_material_shortages`).
  *
  * `consumption_sector = null` + `sector_source = 'desconhecido'` é o FAIL-SAFE
- * do servidor: componente sem roteamento conhecido avisa em todo setor.
+ * do servidor: material sem roteamento conhecido avisa em todo setor.
+ *
+ * `sector_source` diz DE ONDE veio o setor, em ordem de precedência:
+ * `explicito` (gravado na reserva) > `cadastro` (`sheet_materials.sector`, depois
+ * `bom_part_sector_map` pelo grupo) > `componente` (mapa canônico por rótulo) >
+ * `desconhecido` (nada resolveu → fail-safe). É só rastreabilidade: a tela não
+ * ramifica por este valor, e um valor novo do servidor não pode quebrá-la.
  */
 export interface SectorMaterialShortageLine extends MaterialShortageLine {
   consumption_sector: string | null;
-  sector_source: 'explicito' | 'componente' | 'desconhecido' | string;
+  sector_source: 'explicito' | 'cadastro' | 'componente' | 'desconhecido' | string;
 }
 
 export interface SaleOrderMaterialShortageInfo {
