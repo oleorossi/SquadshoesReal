@@ -152,3 +152,103 @@ export function atelierSheetSupport(
     ? { ok: true, reason: null }
     : { ok: false, reason: 'A ficha não tem material de cabedal.' };
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Apresentação da fila e do relatório (dono, 12/10/2026)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Forma mínima de um lote para agrupar/ordenar. Estrutural de propósito: o tipo
+ * cheio (`AtelierLotRow`) mora no hook, e importá-lo aqui faria ciclo — o hook
+ * já importa desta lib.
+ */
+export interface AtelierLotForGrouping {
+  reference_id: string;
+  reference_code: string | null;
+  reference_name: string | null;
+  color: string | null;
+  pairs: number;
+  min_delivery_deadline: string | null;
+}
+
+export interface AtelierReferenceGroup<T> {
+  key: string;
+  label: string;
+  pairs: number;
+  /** Prazo de entrega mais próximo entre os lotes do grupo; null = sem prazo. */
+  earliestDeadline: string | null;
+  lots: T[];
+}
+
+/** Prazo mais próximo primeiro, SEM prazo por último. */
+function deadlineAsc(a: string | null | undefined, b: string | null | undefined): number {
+  const da = a || '';
+  const db = b || '';
+  if (!da && !db) return 0;
+  if (!da) return 1;
+  if (!db) return -1;
+  return da.localeCompare(db);
+}
+
+/**
+ * Lotes agrupados por REFERÊNCIA, cada grupo posicionado pelo prazo de entrega
+ * mais próximo que ele carrega, e os lotes de dentro também por prazo (depois
+ * por cor).
+ *
+ * ⚠ Não é `Pedido → Referência` como nos relatórios de corte, e não pode ser: o
+ * lote é `referência × cor` e atravessa VÁRIOS PVs — é o ponto do Ateliê, juntar
+ * o corte de pedidos diferentes numa faca só, e `atelier_confirm_lot_cut` opera
+ * por lote. Aninhar o lote sob um único pedido quebraria o batch.
+ */
+export function groupAtelierLotsByReference<T extends AtelierLotForGrouping>(
+  lots: readonly T[],
+): AtelierReferenceGroup<T>[] {
+  const byRef = new Map<string, AtelierReferenceGroup<T>>();
+
+  for (const lot of lots) {
+    const label = lot.reference_code ?? lot.reference_name ?? 'Sem referência';
+    const key = lot.reference_id || label.toUpperCase();
+    let group = byRef.get(key);
+    if (!group) {
+      group = { key, label, pairs: 0, earliestDeadline: null, lots: [] };
+      byRef.set(key, group);
+    }
+    group.lots.push(lot);
+    const pairs = Number(lot.pairs);
+    if (Number.isFinite(pairs) && pairs > 0) group.pairs += pairs;
+    if (deadlineAsc(lot.min_delivery_deadline, group.earliestDeadline) < 0) {
+      group.earliestDeadline = lot.min_delivery_deadline;
+    }
+  }
+
+  for (const group of byRef.values()) {
+    group.lots.sort(
+      (a, b) =>
+        deadlineAsc(a.min_delivery_deadline, b.min_delivery_deadline)
+        || (a.color ?? '').localeCompare(b.color ?? '', 'pt-BR'),
+    );
+  }
+
+  return [...byRef.values()].sort(
+    (a, b) =>
+      deadlineAsc(a.earliestDeadline, b.earliestDeadline)
+      || a.label.localeCompare(b.label, 'pt-BR', { numeric: true, sensitivity: 'base' }),
+  );
+}
+
+/**
+ * Linhas do relatório: uma por (PEDIDO × LOTE).
+ *
+ * ⚠ Os pares são os DO PEDIDO (`order.pairs`), nunca `lot.pairs`. O lote junta
+ * vários PVs, então usar o total do lote em cada linha somaria os pedidos dos
+ * outros — é o erro que a migration `20270101039000` existe pra permitir evitar,
+ * expondo pares por pedido dentro do lote.
+ */
+export function atelierReportRows<
+  L extends { orders: readonly { sale_order_id: string; pairs: number }[] },
+>(lots: readonly L[]): { lot: L; order: L['orders'][number] }[] {
+  // `L['orders'][number]` em vez de um 2º parâmetro genérico: com dois, o TS
+  // infere o tipo do PEDIDO pela restrição e não pelo tipo real, e o chamador
+  // perde `order_number` / `client_name` / `delivery_deadline`.
+  return lots.flatMap((lot) => (lot.orders ?? []).map((order) => ({ lot, order })));
+}
