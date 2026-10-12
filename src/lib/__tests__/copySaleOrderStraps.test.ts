@@ -4,9 +4,11 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
 import {
   copyStrapLinesForNewOrder,
+  groupItemStrapColorGaps,
   itemStrapChoiceKey,
   itemStrapColorChoices,
   type CopyStrapLineLike,
+  type ItemStrapColorGap,
 } from '@/lib/copySaleOrderStraps';
 
 const LINE_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -315,5 +317,70 @@ describe('itemStrapColorChoices — a escolha não vaza entre itens', () => {
   it('ignora escolha vazia (seletor ainda não respondido)', () => {
     expect([...itemStrapColorChoices({ [itemStrapChoiceKey(ITEM_OFF_WHITE, LINE)]: '' }, ITEM_OFF_WHITE)])
       .toEqual([]);
+  });
+});
+
+/**
+ * Agrupamento para a tela de escolha (12/10/2026 — pedido do dono: "eu irei
+ * selecionar todos os itens que irão com [um] tipo de tira e as que irão com
+ * outra"). O agrupamento é pelo ESCOPO (medida + grupo acabado) porque é ali
+ * que as cores ofertáveis são as mesmas — é o que permite aplicar em lote.
+ */
+describe('groupItemStrapColorGaps', () => {
+  const LINE_1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const LINE_2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const OUTRA_MEDIDA = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const opt = [{ id: COLOR_ROSADO, name: 'ROSADO COM FUNDO ROSADO' }];
+
+  const gap = (
+    itemLabel: string,
+    lineId: string,
+    measureId = MEASURE,
+    strapLabel = 'TIRA 1',
+  ): ItemStrapColorGap => ({
+    key: itemStrapChoiceKey(itemLabel, lineId),
+    itemLabel,
+    gap: {
+      lineId,
+      strapLabel,
+      groupName: measureId === MEASURE ? 'TIRA STRASS 6MM' : 'TIRA STRASS 15MM',
+      currentColorName: 'OFF WHITE',
+      measureId,
+      identityGroupId: GROUP_STRASS,
+      options: opt,
+    },
+  });
+
+  it('junta no mesmo grupo itens diferentes do mesmo escopo', () => {
+    const groups = groupItemStrapColorGaps([
+      gap('NL02 / OFF WHITE', LINE_1),
+      gap('NL03 / OFF WHITE', LINE_2),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].entries.map((e) => e.itemLabel))
+      .toEqual(['NL02 / OFF WHITE', 'NL03 / OFF WHITE']);
+    expect(groups[0].options).toEqual(opt);
+  });
+
+  it('separa escopos diferentes — são tiras distintas, com catálogos distintos', () => {
+    const groups = groupItemStrapColorGaps([
+      gap('NL02 / OFF WHITE', LINE_1),
+      gap('NL04 / OFF WHITE', LINE_2, OUTRA_MEDIDA),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.groupName)).toEqual(['TIRA STRASS 6MM', 'TIRA STRASS 15MM']);
+  });
+
+  it('preserva a ordem de entrada — a tela não embaralha entre aberturas', () => {
+    const groups = groupItemStrapColorGaps([
+      gap('NL04 / OFF WHITE', LINE_2, OUTRA_MEDIDA),
+      gap('NL02 / OFF WHITE', LINE_1),
+    ]);
+    expect(groups.map((g) => g.groupName)).toEqual(['TIRA STRASS 15MM', 'TIRA STRASS 6MM']);
+  });
+
+  it('lista vazia não inventa grupo', () => {
+    expect(groupItemStrapColorGaps([])).toEqual([]);
+    expect(groupItemStrapColorGaps(null)).toEqual([]);
   });
 });

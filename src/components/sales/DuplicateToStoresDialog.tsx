@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PaintSelectList } from '@/components/sales/PaintSelectList';
+import BuyReadyStrapColorPicker from '@/components/sales/BuyReadyStrapColorPicker';
 import type { Client, EconomicGroup } from '@/hooks/useClients';
 import {
   type PackagingMode,
@@ -701,53 +702,11 @@ export default function DuplicateToStoresDialog({
             </p>
 
             {buyReadyGaps.length > 0 && (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-3">
-                <div className="flex gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" weight="fill" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-amber-600">
-                      Tira comprada pronta sem cadastro na cor do pedido
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      O pedido de origem gravou uma cor que não existe como tira pronta no
-                      estoque, e por isso nenhuma loja seria salva. Escolha a cor de cada
-                      tira — vale para todas as lojas e não altera o pedido de origem.
-                    </p>
-                  </div>
-                </div>
-                {buyReadyGaps.map(({ key, itemLabel, gap }) => (
-                  <div key={key} className="flex flex-wrap items-center gap-2 pl-6">
-                    <span className="text-xs font-semibold text-foreground">{itemLabel}</span>
-                    <span className="text-xs font-mono uppercase text-muted-foreground">
-                      {gap.strapLabel} · {gap.groupName}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      origem: <span className="line-through">{gap.currentColorName}</span>
-                    </span>
-                    {gap.options.length === 0 ? (
-                      <span className="text-xs text-amber-600">
-                        nenhuma cor cadastrada — resolva no Hub de Tiras
-                      </span>
-                    ) : (
-                      <Select
-                        value={buyReadyChoices[key] || ''}
-                        onValueChange={(value) => setBuyReadyChoices(
-                          (prev) => ({ ...prev, [key]: value }),
-                        )}
-                      >
-                        <SelectTrigger className="h-8 w-[260px]">
-                          <SelectValue placeholder="Escolha a cor desta tira" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {gap.options.map((option) => (
-                            <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <BuyReadyStrapColorPicker
+                gaps={buyReadyGaps}
+                choices={buyReadyChoices}
+                onChange={setBuyReadyChoices}
+              />
             )}
 
             <div className="flex justify-end gap-3 pt-1">

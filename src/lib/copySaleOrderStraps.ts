@@ -106,6 +106,44 @@ export function itemStrapColorChoices(
   return own;
 }
 
+/**
+ * Lacunas agrupadas pelo ESCOPO da tira (medida + grupo acabado) — dentro de um
+ * escopo as cores ofertáveis são as mesmas, que é o que torna possível marcar
+ * vários itens e aplicar a mesma tira de uma vez. Pedido do dono (12/10/2026):
+ * *"eu irei selecionar todos os itens que irão com [um] tipo de tira e as que
+ * irão com outra"*. A ordem segue a de entrada, para a tela não embaralhar
+ * entre duas aberturas.
+ */
+export interface ItemStrapColorGapGroup {
+  scopeKey: string;
+  groupName: string;
+  strapLabel: string;
+  options: readonly BuyReadyColorOption[];
+  entries: ItemStrapColorGap[];
+}
+
+export function groupItemStrapColorGaps(
+  gaps: readonly ItemStrapColorGap[] | null | undefined,
+): ItemStrapColorGapGroup[] {
+  const byScope = new Map<string, ItemStrapColorGapGroup>();
+  for (const entry of gaps || []) {
+    const scopeKey = buyReadyScopeKey(entry.gap.measureId, entry.gap.identityGroupId);
+    const existing = byScope.get(scopeKey);
+    if (existing) {
+      existing.entries.push(entry);
+      continue;
+    }
+    byScope.set(scopeKey, {
+      scopeKey,
+      groupName: entry.gap.groupName,
+      strapLabel: entry.gap.strapLabel,
+      options: entry.gap.options,
+      entries: [entry],
+    });
+  }
+  return [...byScope.values()];
+}
+
 /** Escopo de uma tira comprada pronta: medida + grupo acabado. */
 export function buyReadyScopeKey(measureId: unknown, identityGroupId: unknown): string {
   return [measureId, identityGroupId]
