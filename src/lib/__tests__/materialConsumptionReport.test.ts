@@ -978,6 +978,17 @@ describe('PV-00195 · bloco Tiras do §02 = total por tipo × cor', () => {
     expect(total[4]).toBeGreaterThanOrEqual(14);
   });
 
+  it('tipo de tira sai em caixa alta, qualquer que seja o nome do SKU', () => {
+    const html = buildMaterialConsumptionReportHtml({
+      title: 'Consumo de Materiais — PV-00195',
+      rows: PV00195_ROWS,
+      artisanalStrapRows: PV00195_STRAP_CUT_ROWS,
+    });
+    // Prestador chega "TIRA OVERLOCK 5 mm · GLOW METALIC" e strass
+    // "Tira Strass 6mm": sem isto a mesma tabela tem duas convenções.
+    expect(html).toContain('.straps-table td:first-child strong { text-transform:uppercase; }');
+  });
+
   it('o cabeçalho do bloco não fica órfão no pé da folha', () => {
     const html = buildMaterialConsumptionReportHtml({
       title: 'Consumo de Materiais — PV-00195',
