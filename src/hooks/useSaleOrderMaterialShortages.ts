@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { canonicalStageName } from '@/lib/production/stageFlow';
 
 /**
  * Falta de material por PV — RPC `list_sale_order_material_shortages(uuid[])`
@@ -23,6 +24,18 @@ export interface MaterialShortageLine {
   quantity_short: number;
   /** Solado: falta por numeração/balde, ex. {"35":6,"33/34":4}. */
   shortage_grade: Record<string, number> | null;
+}
+
+/**
+ * Mesma linha de falta, já filtrada pelo SETOR que consome o material
+ * (`list_order_sector_material_shortages`).
+ *
+ * `consumption_sector = null` + `sector_source = 'desconhecido'` é o FAIL-SAFE
+ * do servidor: componente sem roteamento conhecido avisa em todo setor.
+ */
+export interface SectorMaterialShortageLine extends MaterialShortageLine {
+  consumption_sector: string | null;
+  sector_source: 'explicito' | 'componente' | 'desconhecido' | string;
 }
 
 export interface SaleOrderMaterialShortageInfo {
@@ -200,6 +213,38 @@ const POINTING_WARNING_MAX_LINES = 6;
  *
  * ⚠ São avisos do CLIENTE: os `code` começam com `pv_material_falta` e NUNCA
  * vão em `confirmedWarnings` da RPC de apontamento (o servidor tem os seus).
+ *
+ * Esta é a formatação ÚNICA: serve tanto à lista por PV
+ * (`buildShortagePointingWarnings`) quanto à lista já filtrada por setor
+ * (`useOrderSectorMaterialShortage`).
+ */
+export function buildShortageWarningsFromLines(
+  lines: MaterialShortageLine[] | null | undefined,
+): { code: string; message: string }[] {
+  const list = lines ?? [];
+  if (list.length === 0) return [];
+  const shown = list.slice(0, POINTING_WARNING_MAX_LINES).map((line, i) => {
+    const grade = formatShortageGrade(line.shortage_grade);
+    return {
+      code: `pv_material_falta_${i}`,
+      message: `Falta ${formatShortageQuantity(line.quantity_short, line.unit)} de ${shortageMaterialLabel(line)}`
+        + `${grade ? ` (nº ${grade})` : ''} — o setor vai iniciar com material parcial.`,
+    };
+  });
+  const rest = list.length - shown.length;
+  if (rest > 0) {
+    shown.push({
+      code: 'pv_material_falta_mais',
+      message: `E mais ${rest} ${rest === 1 ? 'material' : 'materiais'} em falta neste PV.`,
+    });
+  }
+  return shown;
+}
+
+/**
+ * Avisos de falta do PV INTEIRO (todo setor pergunta). Mantido com a assinatura
+ * e o comportamento originais para quem ainda olha o PV; o Kanban usa a versão
+ * por setor. Delega a formatação a `buildShortageWarningsFromLines`.
  */
 export function buildShortagePointingWarnings(
   info: SaleOrderMaterialShortageInfo | null | undefined,
@@ -212,20 +257,103 @@ export function buildShortagePointingWarnings(
       message: `${info.shortLines} ${info.shortLines === 1 ? 'material está' : 'materiais estão'} em falta neste PV — o setor vai iniciar com material parcial.`,
     }];
   }
-  const shown = lines.slice(0, POINTING_WARNING_MAX_LINES).map((line, i) => {
-    const grade = formatShortageGrade(line.shortage_grade);
-    return {
-      code: `pv_material_falta_${i}`,
-      message: `Falta ${formatShortageQuantity(line.quantity_short, line.unit)} de ${shortageMaterialLabel(line)}`
-        + `${grade ? ` (nº ${grade})` : ''} — o setor vai iniciar com material parcial.`,
-    };
+  return buildShortageWarningsFromLines(lines);
+}
+
+export const orderSectorMaterialShortagesRoot = ['order-sector-material-shortages'] as const;
+
+function parseSectorShortages(raw: unknown): SectorMaterialShortageLine[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+    .map(s => ({
+      product_id: (s.product_id as string) ?? null,
+      product_name: String(s.product_name ?? 'Material'),
+      color: (s.color as string) ?? null,
+      unit: (s.unit as string) ?? null,
+      quantity_short: toNumber(s.quantity_short),
+      shortage_grade: parseGrade(s.shortage_grade),
+      consumption_sector: (s.consumption_sector as string) ?? null,
+      sector_source: String(s.sector_source ?? 'desconhecido'),
+    }))
+    .filter(s => s.quantity_short > 0 || !!s.shortage_grade);
+}
+
+const EMPTY_SECTOR_LINES: SectorMaterialShortageLine[] = [];
+
+export interface OrderSectorMaterialShortage {
+  /** Linhas em falta que ESTE setor consome (+ as de setor indeterminado). */
+  lines: SectorMaterialShortageLine[];
+  /**
+   * A RPC não respondeu por FALHA (função ainda não aplicada, permissão, rede)
+   * — diferente de "nenhuma falta neste setor". Quem chama tem que cair no
+   * aviso por PV; `[]` aqui significaria "pode apontar" em TODO setor.
+   */
+  unavailable: boolean;
+  isLoading: boolean;
+}
+
+/**
+ * Falta de material da OP **que o setor apontado consome** — RPC
+ * `list_order_sector_material_shortages(uuid, text)` (mig `20270101037800`).
+ *
+ * Pedido do dono (11/10/2026): "nos setores que não utilizam o material deve
+ * passar sem perguntar". O selo do card segue sendo do PV; só a CONFIRMAÇÃO do
+ * apontamento passa a ser por setor.
+ *
+ * O servidor devolve também as linhas de setor INDETERMINADO (fail-safe) — quem
+ * decide o que esconder é a RPC, não esta camada: aqui não se filtra nada.
+ *
+ * ⚠ Falha NÃO é "sem falta". Degrada em silêncio no sentido de não toastar e
+ * não travar (`retry:false` + `meta.silentError`), mas devolve
+ * `unavailable: true` em vez de lista vazia: o deploy da Vercel é automático no
+ * push e as migrations desta base são aplicadas À MÃO, então existe uma janela
+ * real em que a função não existe no banco. Nessa janela um `[]` faria o Kanban
+ * INTEIRO parar de perguntar sobre falta de material, em todo setor e em toda
+ * OP, sem nada na tela dizendo isso. Com `unavailable` os diálogos voltam ao
+ * aviso por PV (`buildShortagePointingWarnings`) — pergunta demais, que é o
+ * comportamento de antes, e não pergunta de menos.
+ *
+ * ⚠ `staleTime`/`gcTime` = 0 DE PROPÓSITO: esta query porteia uma escrita
+ * permanente no ledger (a nota "ciente da falta" do apontamento). Servir uma
+ * resposta velha faria o operador confirmar falta de material que o almoxarifado
+ * já quitou — com o selo do card, na mesma tela, dizendo "Material completo".
+ * Cada abertura de diálogo revalida; carregando = sem aviso (ver os diálogos).
+ */
+export function useOrderSectorMaterialShortage(
+  orderId: string | null | undefined,
+  stageName: string | null | undefined,
+  enabled: boolean = true,
+): OrderSectorMaterialShortage {
+  // A key normaliza o setor pela MESMA tabela de aliases do resto da produção
+  // ('Corte Fibra' ⇄ 'Palmilha · Fibra'): sem isso duas grafias do mesmo setor
+  // viram duas entradas de cache com a mesma resposta.
+  const stageKey = canonicalStageName(stageName || '');
+  const shouldFetch = !!enabled && !!orderId && !!stageKey;
+
+  const query = useQuery({
+    queryKey: [...orderSectorMaterialShortagesRoot, orderId ?? '', stageKey],
+    enabled: shouldFetch,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    // Sem isto o `QueryCache.onError` global (App.tsx) tostaria a falha.
+    meta: { silentError: true },
+    queryFn: async (): Promise<SectorMaterialShortageLine[]> => {
+      const { data, error } = await supabase.rpc(
+        'list_order_sector_material_shortages' as never,
+        { p_order_id: orderId, p_stage_name: stageName } as never,
+      );
+      // `throw` → `isError` → `unavailable` → o chamador usa o aviso por PV.
+      if (error) throw error;
+      return parseSectorShortages(data);
+    },
   });
-  const rest = lines.length - shown.length;
-  if (rest > 0) {
-    shown.push({
-      code: 'pv_material_falta_mais',
-      message: `E mais ${rest} ${rest === 1 ? 'material' : 'materiais'} em falta neste PV.`,
-    });
-  }
-  return shown;
+
+  return {
+    lines: query.data ?? EMPTY_SECTOR_LINES,
+    unavailable: query.isError,
+    isLoading: query.isLoading,
+  };
 }

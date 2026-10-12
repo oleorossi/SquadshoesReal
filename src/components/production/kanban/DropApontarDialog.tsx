@@ -13,6 +13,8 @@ import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import {
   buildShortagePointingWarnings,
+  buildShortageWarningsFromLines,
+  useOrderSectorMaterialShortage,
   type SaleOrderMaterialShortageInfo,
 } from '@/hooks/useSaleOrderMaterialShortages';
 import { toast } from 'sonner';
@@ -55,8 +57,9 @@ export function DropApontarDialog({
   /** Admin no Modo Gestão: irmão paralelo aberto vira pulo confirmável. */
   allowParallelSkip?: boolean;
   /**
-   * Falta de material do PV desta OP. Com falta, apontar pede um OK antes
-   * (aviso do CLIENTE — não entra nos `confirmedWarnings` do servidor).
+   * Falta de material do PV desta OP — FALLBACK de quando a RPC por setor não
+   * responde (ver `shortageWarnings`). Aviso do CLIENTE: não entra nos
+   * `confirmedWarnings` do servidor.
    */
   materialShortage?: SaleOrderMaterialShortageInfo;
 }) {
@@ -81,11 +84,38 @@ export function DropApontarDialog({
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
   // Aceite explícito do pulo de setor (decisão do dono 06/08/2026).
   const [skipOk, setSkipOk] = useState(false);
-  // Falta de material do PV: pergunta UMA vez por apontamento, ANTES dos
-  // avisos do servidor (que seguem pelo `pendingWarnings`, sem mudança).
+  // Falta de material: pergunta UMA vez por apontamento, ANTES dos avisos do
+  // servidor (que seguem pelo `pendingWarnings`, sem mudança).
+  //
+  // ⚠ O setor da pergunta é o que vai ser APONTADO — `plan.pointedStage`, que
+  // no avanço é a COLUNA ONDE O CARD ESTÁ (`pointingPlan.ts:190`:
+  // `card.columnStage`), não o destino do arrasto: arrastar de Corte Cabedal
+  // para Costura lança o produzido NO Corte Cabedal, e é ele quem consumiu o
+  // material. Não troque por `effTarget` "pra pegar o destino" — isso perguntaria
+  // pelo material de um setor que ainda não começou e calaria o do que começou.
+  // A RPC devolve só o que ESTE setor consome (+ as linhas de setor
+  // indeterminado), então apontar Acabamento ou Expedição deixa de perguntar por
+  // napa (pedido do dono, 11/10/2026). Estorno não consome material → nem busca.
+  const { lines: sectorShortageLines, unavailable: sectorShortageUnavailable } =
+    useOrderSectorMaterialShortage(
+      q.order_id,
+      pointedStage?.stage_name ?? effTarget,
+      !readOnly && !isBackward,
+    );
+  // ⚠ Carregando = SEM aviso (lista vazia): isto é aviso, não bloqueio, e o
+  // operador não espera roundtrip pra apontar. Na prática o diálogo abre bem
+  // antes do clique em "Apontar", então a resposta quase sempre já chegou.
+  //
+  // ⚠ FALHA é diferente de carregando: se a RPC por setor não existe no banco
+  // (deploy do front na frente da migration, que aqui é aplicada à mão) ou dá
+  // erro, volta-se ao aviso por PV — pergunta em todo setor, como antes. Sem
+  // isso o Kanban inteiro pararia de perguntar sobre falta de material, sem
+  // nada na tela dizendo isso.
   const shortageWarnings = useMemo(
-    () => buildShortagePointingWarnings(materialShortage),
-    [materialShortage],
+    () => (sectorShortageUnavailable
+      ? buildShortagePointingWarnings(materialShortage)
+      : buildShortageWarningsFromLines(sectorShortageLines)),
+    [sectorShortageUnavailable, materialShortage, sectorShortageLines],
   );
   const [shortagePromptOpen, setShortagePromptOpen] = useState(false);
   const [shortageAck, setShortageAck] = useState(false);
@@ -120,6 +150,9 @@ export function DropApontarDialog({
     // o destino tem que exigir novo aceite, senão confirmar o pulo de 1 setor
     // autoriza silenciosamente o de 5.
     setSkipOk(false);
+    // Trocar o destino troca o SETOR da pergunta de material: o OK dado para o
+    // setor anterior não vale para o novo.
+    setShortageAck(false);
   };
 
   if (!pointedStage) {
@@ -511,7 +544,11 @@ export function DropApontarDialog({
         <ConfirmPointingWarnings
           open={shortagePromptOpen}
           warnings={shortageWarnings}
-          contextLabel={`${pointedStage.stage_name} — ${q.order_number}, +${qty} pares · ${q.sale_order_number || 'PV'} com falta de material`}
+          contextLabel={`${pointedStage.stage_name} — ${q.order_number}, +${qty} pares · ${
+            sectorShortageUnavailable
+              ? `${q.sale_order_number || 'PV'} com falta de material`
+              : 'material em falta para este setor'
+          }`}
           onConfirm={() => {
             setShortagePromptOpen(false);
             setShortageAck(true);

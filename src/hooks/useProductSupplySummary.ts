@@ -2,7 +2,10 @@ import { useMemo } from 'react';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { GROUP_STOCK_TRACKING_KEY } from '@/hooks/useGroupStockTracking';
-import { saleOrderMaterialShortagesRoot } from '@/hooks/useSaleOrderMaterialShortages';
+import {
+  orderSectorMaterialShortagesRoot,
+  saleOrderMaterialShortagesRoot,
+} from '@/hooks/useSaleOrderMaterialShortages';
 
 /**
  * Falta de PV e compra em aberto por produto — `product_supply_summary`
@@ -41,14 +44,21 @@ export const PRODUCT_SUPPLY_SUMMARY_KEY = 'product-supply-summary';
 /**
  * Invalida tudo que deriva da falta de PV / compra em aberto: o resumo por
  * produto (Falta / Em compra / Projetado), o selo de material dos PVs (lista de
- * vendas e Kanban) e o rastreio de entradas do grupo. Chamar junto com o
- * invalidate de `['products']` em todo fluxo que dá entrada, ajusta saldo ou
- * edita rateio — senão o físico atualiza na hora e a falta fica velha, e o
- * Projetado desconta duas vezes o que a entrada acabou de quitar.
+ * vendas e Kanban), a falta por SETOR da confirmação de apontamento e o
+ * rastreio de entradas do grupo. Chamar junto com o invalidate de `['products']`
+ * em todo fluxo que dá entrada, ajusta saldo ou edita rateio — senão o físico
+ * atualiza na hora e a falta fica velha, e o Projetado desconta duas vezes o
+ * que a entrada acabou de quitar.
+ *
+ * ⚠ A falta por setor entra aqui porque ela porteia uma ESCRITA no ledger (a
+ * nota "ciente da falta" do apontamento): sem este invalidate o selo do card
+ * virava "Material completo" e o diálogo da mesma tela seguia perguntando pela
+ * napa que o almoxarifado acabou de dar entrada.
  */
 export function invalidateProductSupply(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: [PRODUCT_SUPPLY_SUMMARY_KEY] });
   qc.invalidateQueries({ queryKey: [...saleOrderMaterialShortagesRoot] });
+  qc.invalidateQueries({ queryKey: [...orderSectorMaterialShortagesRoot] });
   qc.invalidateQueries({ queryKey: [GROUP_STOCK_TRACKING_KEY] });
 }
 

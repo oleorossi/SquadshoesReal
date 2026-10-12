@@ -14,6 +14,8 @@ import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import {
   buildShortagePointingWarnings,
+  buildShortageWarningsFromLines,
+  useOrderSectorMaterialShortage,
   type SaleOrderMaterialShortageInfo,
 } from '@/hooks/useSaleOrderMaterialShortages';
 import { toast } from 'sonner';
@@ -54,7 +56,10 @@ export function BulkMoveDialog({
   onClose: () => void;
   /** Admin no Modo Gestão: pulo (irmão paralelo incluso) entra no lote. */
   allowParallelSkip?: boolean;
-  /** Falta de material por PV — com falta, cada OP do lote pede um OK antes. */
+  /**
+   * Falta de material por PV — FALLBACK de quando a RPC por setor não responde
+   * (ver `currentShortageWarnings`): aí cada OP do lote volta a pedir um OK.
+   */
   shortageBySaleOrder?: ReadonlyMap<string, SaleOrderMaterialShortageInfo>;
 }) {
   const { data: profile } = useCurrentProfile();
@@ -98,11 +103,33 @@ export function BulkMoveDialog({
   const [skipOk, setSkipOk] = useState(false);
   const finished = started && idx >= steps.length;
   const current = started && !finished ? steps[idx] : null;
-  /** Falta de material do PV da OP atual. O OK vale só para ESTA OP do lote. */
+  /**
+   * Falta de material do passo CORRENTE, já filtrada pelo setor que ele vai
+   * apontar — `plan.pointedStage`, que no avanço é a COLUNA DE ORIGEM do card
+   * (`pointingPlan.ts:190`), não o destino do lote: o lançamento é do setor que
+   * terminou, e é ele quem consumiu o material. Setor que não usa o material em
+   * falta passa sem perguntar (dono, 11/10/2026).
+   *
+   * ⚠ A key da query inclui OP + setor, e o hook NÃO carrega `placeholderData`:
+   * ao avançar de passo a lista volta a vazia até a resposta do novo passo
+   * chegar — nunca herda a falta da OP anterior. Carregando = sem aviso (é
+   * aviso, não bloqueio). O OK vale só para ESTA OP do lote.
+   *
+   * ⚠ FALHA é diferente de carregando: RPC ausente no banco (migration aplicada
+   * à mão) ou com erro cai no aviso por PV, que pergunta em todo setor como
+   * antes — nunca em silêncio.
+   */
+  const { lines: currentShortageLines, unavailable: currentShortageUnavailable } =
+    useOrderSectorMaterialShortage(
+      current?.card.q.order_id,
+      current?.plan.pointedStage?.stage_name ?? target,
+      !!current && !current.plan.isBackward,
+    );
   const currentShortageWarnings = useMemo(() => {
+    if (!currentShortageUnavailable) return buildShortageWarningsFromLines(currentShortageLines);
     const soId = current?.card.q.sale_order_id;
     return soId ? buildShortagePointingWarnings(shortageBySaleOrder?.get(soId)) : [];
-  }, [current, shortageBySaleOrder]);
+  }, [currentShortageUnavailable, currentShortageLines, current, shortageBySaleOrder]);
   const [shortagePromptOpen, setShortagePromptOpen] = useState(false);
   const [shortageAck, setShortageAck] = useState(false);
 
@@ -488,7 +515,11 @@ export function BulkMoveDialog({
         open={shortagePromptOpen && currentShortageWarnings.length > 0}
         warnings={currentShortageWarnings}
         contextLabel={current
-          ? `${current.card.q.order_number} → ${target}, +${qty} pares · ${current.card.q.sale_order_number || 'PV'} com falta de material`
+          ? `${current.card.q.order_number} → ${target}, +${qty} pares · ${
+            currentShortageUnavailable
+              ? `${current.card.q.sale_order_number || 'PV'} com falta de material`
+              : 'material em falta para este setor'
+          }`
           : ''}
         onConfirm={() => {
           setShortagePromptOpen(false);

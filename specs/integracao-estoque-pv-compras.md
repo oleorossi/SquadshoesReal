@@ -16,9 +16,29 @@
 >   (`InboundAllocationDialog`, aberto por `openInboundAllocationReview` em todo
 >   fluxo de entrada), aba Rastreio (`GroupStockTrackingPanel`), selo de material
 >   no PV/Kanban e confirmação ao apontar (`useSaleOrderMaterialShortages`).
+> - **Etapa 3b** (confirmação por SETOR, dono 11/10/2026 — "nos setores que não
+>   utilizam o material deve passar sem perguntar"): a confirmação do Kanban passou
+>   a vir de `list_order_sector_material_shortages(uuid, text)`
+>   (`20270101037800_falta_de_material_por_setor.sql`), que filtra a falta pelo setor
+>   que vai ser APONTADO — mais as linhas de setor indeterminado (fail-safe).
+>   O selo do card e da lista de PVs continua por PV. Contrato
+>   `faltaMaterialPorSetorApontamento.contract.test.ts` +
+>   `orderSectorMaterialShortage.test.tsx`.
+>   - ⚠ **Ordem de deploy:** a RPC nova falhando (ela é aplicada à mão, o front vai
+>     automático no push) devolve `unavailable`, e os dois diálogos voltam ao aviso
+>     por PV. Nunca devolver `[]` em erro: o Kanban inteiro pararia de perguntar,
+>     em todo setor e em toda OP, sem nada na tela dizendo isso.
+>   - ⚠ O empenho do PV grava `component = min(component)` por (PV, produto)
+>     (`commit_sale_order_material_demand`), então para `pv_commitment`/`atelier_prep`
+>     o setor sai do CONJUNTO de componentes de `sale_order_material_demand_lines`,
+>     não do rótulo. Com o rótulo único, a napa que é forro de cabedal E forração de
+>     palmilha avisaria só no Corte Cabedal.
+>   - ⚠ **Pendência do dono:** onde o forro de CABEDAL é cortado. O fallback legado
+>     (`resolve_consumption_sector`) diz Corte Cabedal; `corteLookahead.ts` e
+>     `buyList.ts` dizem Corte Forração. Enquanto não houver decisão, 'forração'
+>     avisa nos DOIS setores.
 > - **Em aberto:** a confirmação de falta só existe no Kanban (Drop/BulkMove) —
->   o `SectorStageDialog` das telas de setor ainda aponta sem perguntar; e ela
->   pergunta em qualquer setor, não só nos que consomem o material em falta.
+>   o `SectorStageDialog` das telas de setor ainda aponta sem perguntar.
 >
 > **Relação com specs anteriores** — esta spec **amplia** e, nos pontos listados em
 > [Conflitos com specs anteriores](#conflitos-com-specs-anteriores), **substitui**:
