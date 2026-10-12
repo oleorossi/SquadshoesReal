@@ -91,6 +91,7 @@ import SaleOrderStrapColorCreateDialog, {
 import {
   resolveStrapMaterialBaseGroupId,
   strapChoosesReferenceNapa,
+  strapInheritsReferenceNapa,
   strapMaterialMode,
 } from '@/lib/strapMaterialPolicy';
 import { useReferenceStrapNapas } from '@/hooks/useReferenceStrapNapas';
@@ -383,8 +384,33 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     () => referenceStrapDefinitions.some((line) => strapChoosesReferenceNapa(line)),
     [referenceStrapDefinitions],
   );
-  const referenceNapasQuery = useReferenceStrapNapas(item.reference_id, referenceHasNapaChoice);
+  // ⚠ A consulta é habilitada para TODA linha que HERDA a napa da referência,
+  // não só para a que a ESCOLHE. A linha `follow_main` herda sem escolher, e
+  // antes ficava sem fonte própria: a napa dela só chegava pelo preview em lote
+  // (`useStrapStockLines`). Quando o lote não trazia a linha — item recém-criado,
+  // cujo `strap_colors` ainda está vazio e por isso fica de fora do RPC — a tela
+  // concluía "a ficha não identifica o material-base" sobre uma ficha em que o
+  // servidor resolve a napa sem hesitar. Esta é a segunda fonte, autoritativa e
+  // independente do lote (`list_reference_strap_napas`).
+  const referenceInheritsNapa = useMemo(
+    () => referenceStrapDefinitions.some((line) => strapInheritsReferenceNapa(line)),
+    [referenceStrapDefinitions],
+  );
+  const referenceNapasQuery = useReferenceStrapNapas(item.reference_id, referenceInheritsNapa);
   const referenceNapas = referenceNapasQuery.data || EMPTY_REFERENCE_NAPAS;
+  /** A consulta respondeu (ou nem precisava rodar). Enquanto false, a napa da
+   *  linha que herda a referência é DESCONHECIDA — nunca lacuna de cadastro. */
+  const referenceNapasSettled = !referenceInheritsNapa || referenceNapasQuery.isSuccess;
+  /**
+   * Napa fixada na ficha pelo CTA "Corrigir no estoque". É o ÚLTIMO recurso da
+   * cascata, exatamente como no servidor (`resolve_strap_base_group_id`, mig
+   * `20270101018100`, onde `s.strap_base_group_id` vem depois do cabedal e do
+   * grupo textual do forro) — as duas fontes acima já embutem a cascata inteira;
+   * esta só vale quando nenhuma das duas respondeu.
+   */
+  const sheetStrapBaseGroupId = isUuid((selectedRef as any)?.strap_base_group_id)
+    ? String((selectedRef as any).strap_base_group_id)
+    : null;
   const itemDefaultNapa = itemDefaultNapaId(referenceNapas, item.material_variant_id);
   const orderedReferenceNapas = useMemo(
     () => orderNapasForItem(referenceNapas, itemDefaultNapa),
@@ -705,18 +731,26 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // item não participa da resolução. Palmilha NÃO entra no gate bloqueante: a
   // cor dela pode vir de mapeamento (technical_sheet_palmilha_colors), que este
   // form não carrega — checar a cor do item direto geraria bloqueio falso.
-  const coverColorIssues = useMemo<{ name: string; groupId: string }[]>(() => {
+  const coverColorIssues = useMemo<{ name: string; groupId: string; component: string }[]>(() => {
     const color = (item.color || '').trim().toLowerCase();
     if (!color) return [];
     const sel = item.material_variant_id
       ? activeMaterialVariants.find(v => v.id === item.material_variant_id)
       : undefined;
-    type ColorTarget = { name?: string; groupId?: string };
+    // ⚠ O COMPONENTE faz parte do achado, não é enfeite. Esta lista junta
+    // Cabedal e Forração, e o seletor "Material" ao lado mostra SÓ o cabedal
+    // (`resolveSheetCommercialColorGroup` prioriza `upper_material`). Sem o
+    // rótulo, a tela dizia "MATERIAL: NAPA SOFT" e logo abaixo "sem estoque em
+    // NAPA SUDANI" — lido, com razão, como se o sistema tivesse trocado o
+    // material da ficha. Eram dois componentes diferentes o tempo todo
+    // (relato do dono, 12/10/2026, ficha SP301).
+    type ColorTarget = { name?: string; groupId?: string; component: string };
     // Espelha a precedência dos resolvers SQL: pin de produto legado > grupo do
     // slot > MATERIAL PRINCIPAL da variante (só nos slots que a ficha liberou) >
     // grupo da ficha. Sem o material principal aqui, variante criada só com ele
     // caía no grupo da FICHA e a tela avisava a cor errada.
     const resolveTarget = (
+      component: string,
       pinProductId: string | null | undefined,
       variantGroupId: string | null | undefined,
       drivenByMain: boolean,
@@ -725,31 +759,47 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       if (findActiveMaterialVariantProduct(allProducts, pinProductId)) {
         return null; // pin ativo: produto fixo, sem resolução por cor
       }
-      if (variantGroupId) return { groupId: variantGroupId };
-      if (drivenByMain && sel?.main_material_group_id) return { groupId: sel.main_material_group_id };
+      if (variantGroupId) return { groupId: variantGroupId, component };
+      if (drivenByMain && sel?.main_material_group_id) return { groupId: sel.main_material_group_id, component };
       const nm = (sheetName || '').trim();
-      return nm ? { name: nm } : null;
+      return nm ? { name: nm, component } : null;
     };
     const targets = [
-      resolveTarget(sel?.upper_material_product_id, sel?.upper_material_group_id,
+      resolveTarget('Cabedal', sel?.upper_material_product_id, sel?.upper_material_group_id,
         !!(sheetSpecs as any)?.variant_drives_upper, sheetSpecs?.upper_material),
-      resolveTarget(sel?.lining_material_product_id, sel?.lining_material_group_id,
+      resolveTarget('Forração', sel?.lining_material_product_id, sel?.lining_material_group_id,
         !!(sheetSpecs as any)?.variant_drives_lining, sheetSpecs?.lining_material),
     ].filter(Boolean) as ColorTarget[];
-    const out: { name: string; groupId: string }[] = [];
-    const seen = new Set<string>();
+    const out: { name: string; groupId: string; component: string }[] = [];
+    // Um grupo só entra uma vez — mas quando Cabedal e Forração compartilham o
+    // MESMO grupo o rótulo precisa citar os dois, senão a linha única sugeriria
+    // que só um componente está em falta.
+    const byGroup = new Map<string, { name: string; groupId: string; components: string[] }>();
     for (const t of targets) {
       const grp = t.groupId
         ? (productGroups as any[]).find((g: any) => g.id === t.groupId)
         : (productGroups as any[]).find((g: any) => (g.name || '').trim().toLowerCase() === String(t.name).toLowerCase());
-      if (!grp || seen.has(grp.id)) continue;
-      seen.add(grp.id);
+      if (!grp) continue;
+      const already = byGroup.get(grp.id);
+      if (already) {
+        if (!already.components.includes(t.component)) already.components.push(t.component);
+        continue;
+      }
       if (grp.is_color_agnostic) continue; // material base (EVA/cola): cor não se aplica
       const groupProds = (allProducts as any[]).filter((p: any) => p.group_id === grp.id && p.active !== false);
       const colorManaged = groupProds.some((p: any) => (p.color || '').trim() !== '');
       if (!colorManaged) continue; // grupo sem cores = genérico → débito ok
       const hasColor = groupProds.some((p: any) => (p.color || '').trim().toLowerCase() === color);
-      if (!hasColor) out.push({ name: grp.name || String(t.name || ''), groupId: grp.id });
+      if (!hasColor) {
+        byGroup.set(grp.id, {
+          name: grp.name || String(t.name || ''),
+          groupId: grp.id,
+          components: [t.component],
+        });
+      }
+    }
+    for (const entry of byGroup.values()) {
+      out.push({ name: entry.name, groupId: entry.groupId, component: entry.components.join(' e ') });
     }
     return out;
   }, [item.color, item.material_variant_id, activeMaterialVariants, sheetSpecs, productGroups, allProducts]);
@@ -874,7 +924,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     straps.forEach((strap) => {
       const lineId = technicalStrapLineId(strap);
       const resolvedLine = lineId ? strapLineByKey.get(lineId) : undefined;
-      const resolvedBaseGroupId = materialBaseForStrap(strap, resolvedLine?.baseGroupId);
+      const resolvedBaseGroupId = materialBaseForStrap(
+        strap,
+        resolvedLine?.baseGroupId ?? itemDefaultNapa ?? sheetStrapBaseGroupId,
+      );
       const identityBasis = strapIdentityBasis(strap);
       const usesReferenceBase = identityBasis === 'reference_base';
       const usesFinishedGroup = identityBasis === 'finished_product_group';
@@ -895,11 +948,23 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       if (!usesFinishedGroup && isUuid(resolvedBaseGroupId)) {
         resolvedBaseGroups.add(resolvedBaseGroupId);
       }
+      // A napa de uma linha que herda a referência vem de FORA da ficha: do
+      // preview em lote ou de `list_reference_strap_napas`. Enquanto nenhuma das
+      // duas respondeu, o estado é DESCONHECIDO — e "não perguntei ainda" nunca
+      // pode ser apresentado como "falta cadastro". Os outros dois ramos
+      // (`finished_product_group` e `select_on_order`) leem a própria ficha, e
+      // por isso a resposta deles já está em mãos.
+      const identityAnswerKnown = usesFinishedGroup
+        || strapMaterialMode(strap) === 'select_on_order'
+        || isUuid(strap.base_group_id)
+        || !!resolvedLine
+        || !!sheetStrapBaseGroupId
+        || referenceNapasSettled;
       // Enquanto o preview carrega, só a ausência já conhecida da medida abre
       // a pendência; isso evita piscar o CTA em fichas canônicas.
       if (canonicalIdsMissing
           || (!strapCatalogLoading && !measureResolved)
-          || (!strapLinesLoading && !identityGroupResolved)) issueCount += 1;
+          || (!strapLinesLoading && identityAnswerKnown && !identityGroupResolved)) issueCount += 1;
     });
     return {
       hasIssue: issueCount > 0,
@@ -916,6 +981,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     strapCatalogLoading,
     strapLineByKey,
     strapLinesLoading,
+    itemDefaultNapa,
+    referenceNapasSettled,
   ]);
 
   // Tira comprada pronta sem variante comercial ativa: o servidor recusa o
@@ -1193,7 +1260,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     || strapMaterialIssues.length > 0
     || selectedStrapColorIssues.length > 0;
   const colorIssueKey = hasColorIssue
-    ? `${item.color}|${coverColorIssues.map(i => i.name).join(',')}|${strapSnapshotMissing}|${strapCanonicalMainMissing}|${strapMaterialIssues.join(',')}|${selectedStrapColorIssues.map((issue) => `${issue.lineId}:${issue.label}`).join(',')}`
+    ? `${item.color}|${coverColorIssues.map(i => `${i.component}:${i.name}`).join(',')}|${strapSnapshotMissing}|${strapCanonicalMainMissing}|${strapMaterialIssues.join(',')}|${selectedStrapColorIssues.map((issue) => `${issue.lineId}:${issue.label}`).join(',')}`
     : '';
 
   // Reporta a pendência ao pai (chave estável evita churn) + limpa no unmount.
@@ -1202,7 +1269,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       ? {
         color: item.color || '',
         materials: [
-          ...coverColorIssues.map(i => i.name),
+          // Com o componente: o toast do submit é o MESMO texto, e sem ele o
+          // dono lia "NAPA SUDANI" achando que era o cabedal da ficha.
+          ...coverColorIssues.map(i => `${i.component} (${i.name})`),
           ...(strapSnapshotMissing ? ['ficha técnica sem linhas de tira'] : []),
           ...(strapCanonicalMainMissing ? ['identidade canônica da cor das tiras'] : []),
           ...strapMaterialIssues.map((label) => `material de ${label}`),
@@ -2570,7 +2639,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 : <CaretRight className="h-3 w-3 shrink-0" weight="bold" />}
               <Warning className="h-3.5 w-3.5 shrink-0" weight="fill" />
               <span className="min-w-0 flex-1 truncate font-medium">
-                Cor "{item.color}" sem estoque em {coverColorIssues.map(i => i.name).join(', ')}
+                {coverColorIssues.length === 1
+                  ? `Cor "${item.color}" não cadastrada em ${coverColorIssues[0].component} (${coverColorIssues[0].name})`
+                  : `Cor "${item.color}" não cadastrada em ${coverColorIssues.length} componentes`}
               </span>
               <Badge variant="outline" className="h-4 shrink-0 border-amber-500/40 bg-card px-1 text-[10px]">
                 bloqueia save
@@ -2578,6 +2649,17 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
             </button>
             {coverAlertOpen && (
               <div className="space-y-2 border-t border-amber-500/30 px-2 py-2">
+                {/* Uma linha POR COMPONENTE. A lista achatada de nomes de grupo
+                    não dizia de onde vinha cada material, e o leitor atribuía
+                    todos ao Cabedal, que é o único que o seletor acima mostra. */}
+                <ul className="space-y-0.5">
+                  {coverColorIssues.map(iss => (
+                    <li key={`line-${iss.groupId}`} className="flex gap-1.5">
+                      <span className="shrink-0 font-semibold">{iss.component}:</span>
+                      <span className="min-w-0 truncate">{iss.name}</span>
+                    </li>
+                  ))}
+                </ul>
                 <p>
                   Sem produto nessa cor o débito é <strong>pulado</strong> (vira ruptura) — e o pedido <strong>não salva</strong> até cadastrar.
                 </p>
@@ -2909,7 +2991,13 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const purchasedReady = isPurchasedReadyStrap(strap);
                   const usesFinishedGroup = strapIdentityBasis(strap) === 'finished_product_group';
                   const materialMode = strapMaterialMode(strap);
-                  const baseGroupId = materialBaseForStrap(strap, resolvedLine?.baseGroupId);
+                  // ⚠ Mesma cascata do agregado (`strapStructuralContext`): a napa
+                  // da linha que herda a referência vem do preview em lote OU da
+                  // lista de napas da referência. As duas fontes, nesta ordem.
+                  const baseGroupId = materialBaseForStrap(
+                    strap,
+                    resolvedLine?.baseGroupId ?? itemDefaultNapa ?? sheetStrapBaseGroupId,
+                  );
                   const materialOptions = productGroups.filter((group) =>
                     Array.isArray(strap.allowed_material_group_ids) && strap.allowed_material_group_ids.includes(group.id));
                   const materialName = strap.base_group_name
@@ -2947,6 +3035,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const identityGroupResolved = usesFinishedGroup
                     ? isUuid(strap.identity_group_id)
                     : isUuid(baseGroupId);
+                  // Espelha `identityAnswerKnown` do agregado — ver a nota lá.
+                  // Sem resposta de nenhuma das duas fontes, a tela se cala em
+                  // vez de acusar cadastro que o servidor resolve sem hesitar.
+                  const identityAnswerKnown = usesFinishedGroup
+                    || materialMode === 'select_on_order'
+                    || isUuid(strap.base_group_id)
+                    || !!resolvedLine
+                    || !!sheetStrapBaseGroupId
+                    || referenceNapasSettled;
                   const canonicalMeasure = isUuid(strap.measure_id)
                     ? strapCatalog?.measures.find((entry) => entry.id === strap.measure_id && entry.active !== false)
                     : null;
@@ -3210,7 +3307,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           A cor {referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.
                         </p>
                       )}
-                      {!strapLinesLoading && (!identityGroupResolved || !measureResolved) && (
+                      {!strapLinesLoading && ((identityAnswerKnown && !identityGroupResolved) || !measureResolved) && (
                         <p className="truncate text-[11px] leading-tight text-destructive" title={!measureResolved
                             ? 'A linha técnica não identifica uma família e medida canônicas coerentes por UUID.'
                             : usesFinishedGroup

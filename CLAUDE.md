@@ -639,6 +639,82 @@ acusa `undefined`) e o forro-cabedal fantasma reapareceu no Corte Forração. Gu
 estão no `.select()` (auto-derivado — não desatualiza). Isso vale pra QUALQUER coluna
 nova que o motor passe a ler, não só esta.
 
+### Aviso de cor do PV nomeia o COMPONENTE (CANÔNICO, 12/10/2026)
+
+> Relato do dono: *"na ficha técnica da referência, o material cadastrado é o NapaSoft.
+> Aí está aparecendo como Sudani"*. **Nada estava trocado.** NAPA SOFT era o CABEDAL e
+> NAPA SUDANI o `lining_material` da mesma ficha (SP301). Varrido: **0 fichas** com
+> divergência entre `upper_material` e o grupo de `upper_material_group_id`.
+
+O aviso vinha de `coverColorIssues` (`SaleOrderItemForm.tsx`), que juntava Cabedal e
+Forração numa **lista de nomes de grupo sem rótulo de componente** — colado ao seletor
+"Material", que mostra **só o cabedal** (`resolveSheetCommercialColorGroup` prioriza
+`upper_material`). Lado a lado, lia-se como troca de material. Agora cada achado carrega
+o componente e sai **uma linha por componente**; o grupo compartilhado pelos dois vira
+`"Cabedal e Forração"`. Segue **bloqueando** (decisão do dono) — o que faltava era dizer
+o quê.
+
+⚠ **Em 25 fichas o `lining_material` NÃO é forração de cabedal.** Quando
+`sole_drives_consumption` e o solado tem forro de palmilha mas **não** de cabedal, vale a
+supressão (`suppressCabedalForracao`, `orderConsumption.ts`) e aquele campo é o material
+do **forro da PALMILHA**. Medido em 12/10/2026: 25 fichas nesse estado e
+`technical_sheet_palmilha_colors` **vazia em todas** → o forro herda a cor do item, e cor
+sem SKU vira débito pulado. Alarme: `list_insole_lining_color_gaps()` (mig
+`20270101039500`) → `InsoleLiningColorGapsPanel` em `/system-diagnostics` → Consumo.
+**33 lacunas em 20 referências** na medição inicial.
+
+⚠ **Cabedal ≠ forração é LEGÍTIMO** (NAPA SOFT + MASSABOX / NAPA SOFT; NEW VELVET /
+NEW VELVET PRETO). Não alarme diferença de grupo — alarme **cor vendida sem SKU** no
+grupo que o débito vai procurar.
+
+### O rodapé do PV mente se não espelhar o handleSubmit (CANÔNICO, 12/10/2026)
+
+Eram **dois portões que não conversavam**: o rodapé (`SaleOrderFormPanel`) derivava
+`submitDisabled` de uma lista própria — cliente, item sem referência, factoring, cor
+faltando, preço zero — enquanto `handleSubmit` (`pages/SaleOrderForm`) barrava com
+`toast.error` por outros motivos que **nunca entravam naquela contagem**.
+
+O efeito, relatado pelo dono: *"o que fazer quando travar assim?"* — o rodapé dizia
+"1 erro(s) — Item 3: cor faltando", ele corrigia, o contador zerava, clicava em Criar
+Pedido e levava um toast sobre um material que jamais aparecera na lista. Sem saída
+visível.
+
+Fonte única em **`src/lib/saleOrderSubmitGuards.ts`** (`findTiraSemCor`,
+`colorIssueBlockerMessage`), consumida pelos DOIS lados. O rodapé passou a listar
+também: cor não cadastrada no material, tira sem cor canônica, mês e semana de
+faturamento.
+
+⚠ **Guard novo no `handleSubmit` entra TAMBÉM na lista do rodapé**, senão o descompasso
+volta — e ele não quebra teste nenhum, só reaparece como "travou e não diz por quê".
+⚠ Fixture de teste com `delivery_month`/`delivery_week` vazios descreve um PV que o app
+**não salva**; não "conserte" o rodapé para aceitá-lo.
+
+### Napa da tira que HERDA a referência (CANÔNICO, 12/10/2026)
+
+`list_reference_strap_napas` só era habilitado para quem **escolhe** a napa
+(`strapChoosesReferenceNapa`, que exige `color_mode = 'select_on_order'`). A linha
+`follow_main` **herda sem escolher** e ficava sem fonte própria: a napa dela só vinha do
+preview em lote, montado a partir de `item.strap_colors` — **vazio em item recém-criado**,
+que por isso fica de fora do RPC. Sem resposta, a tela afirmava *"A ficha não identifica
+o material-base desta posição"* numa ficha em que `resolve_strap_base_group_id` devolve
+NAPA SOFT sem hesitar.
+
+Agora: predicado `strapInheritsReferenceNapa` (superconjunto) habilita a consulta, e a
+cascata do cliente é **preview → napas da referência → `technical_sheets.strap_base_group_id`**,
+nessa ordem — a mesma precedência do servidor, onde `s.strap_base_group_id` é o último
+fallback (mig `20270101018100`).
+
+⚠ **"Não perguntei ainda" nunca pode virar "falta cadastro".** `!isLoading` não é
+resposta: o lote pode estar desabilitado ou em erro silencioso (`silentError: true`).
+Os avisos agora exigem `identityAnswerKnown` — e os ramos `finished_product_group` e
+`select_on_order` seguem respondendo da própria ficha, que já está em mãos.
+
+⚠ **`strap_base_group_id` PRECISA estar em `TECHNICAL_SHEET_EDITOR_COLUMNS`.** É onde o
+CTA "Corrigir no estoque" grava (`resolve_technical_strap_context_from_sale_order`), e
+sem a coluna na lista o editor do PV nunca a lia: "corrigir" não mudava nada na tela e o
+aviso voltava — o botão era um beco sem saída. O drawer também passou a invalidar
+`technicalSheetsKeys.all`, senão o cache continua sem a coluna recém-gravada.
+
 ### Finalizar a OP DEBITA — não cancela a reserva (CANÔNICO, 07/08/2026)
 
 > Decisão do dono. `hybrid_debit_stock_for_order` marca cabedal, forração, palmilha,

@@ -40,6 +40,25 @@ export function strapMaterialMode(line: StrapMaterialPolicyLike | null | undefin
 }
 
 /**
+ * Tira que HERDA a napa da referência — qualquer `reference_base` em
+ * `follow_reference`, independente do modo de cor. É o conjunto de linhas cuja
+ * napa o cliente não consegue deduzir da própria ficha: ela mora no servidor
+ * (`resolve_strap_base_group_id`), e o PV só a conhece perguntando.
+ *
+ * ⚠ Não confundir com `strapChoosesReferenceNapa`, que é o subconjunto que
+ * ESCOLHE a napa no pedido. A linha `follow_main` herda sem escolher — e era
+ * justamente ela que ficava sem fonte no cliente, porque a lista de napas da
+ * referência só era consultada para quem escolhe. Resultado: a tela afirmava
+ * "a ficha não identifica o material-base" numa ficha em que o servidor
+ * resolve a napa sem hesitar (SP301 → NAPA SOFT).
+ */
+export function strapInheritsReferenceNapa(line: StrapMaterialPolicyLike | null | undefined): boolean {
+  return !!line
+    && strapIdentityBasis(line) === 'reference_base'
+    && strapMaterialMode(line) === 'follow_reference';
+}
+
+/**
  * Tira multicolor que segue a referência: além da cor, o PV escolhe a NAPA,
  * entre as napas da própria referência (napa-base da ficha + napa de cada
  * variante ativa). Decisão do dono, grill de 11/10/2026 — automática, sem
@@ -47,10 +66,8 @@ export function strapMaterialMode(line: StrapMaterialPolicyLike | null | undefin
  * (mig `20270101035700`). "Material fixo" e lista própria continuam vencendo.
  */
 export function strapChoosesReferenceNapa(line: StrapMaterialPolicyLike | null | undefined): boolean {
-  return !!line
-    && strapIdentityBasis(line) === 'reference_base'
-    && line.color_mode === 'select_on_order'
-    && strapMaterialMode(line) === 'follow_reference';
+  return strapInheritsReferenceNapa(line)
+    && line!.color_mode === 'select_on_order';
 }
 
 /** Hidrata defaults sem apagar corrupção nem reinterpretar snapshot histórico. */

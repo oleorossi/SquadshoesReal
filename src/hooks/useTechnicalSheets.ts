@@ -470,6 +470,13 @@ export const TECHNICAL_SHEET_EDITOR_COLUMNS = [
   'retired_at',
   'has_straps',
   'strap_colors',
+  // ⚠ Load-bearing: é AQUI que o CTA "Corrigir no estoque" do PV grava a napa
+  // escolhida (`resolve_technical_strap_context_from_sale_order` →
+  // `UPDATE technical_sheets SET strap_base_group_id = …`). Sem a coluna nesta
+  // lista o editor do PV nunca a lia, então "corrigir" não mudava nada na tela
+  // e o aviso voltava — o botão era um beco sem saída. O servidor já a honra
+  // como último fallback de `resolve_strap_base_group_id` (mig 20270101018100).
+  'strap_base_group_id',
   'updated_at',
 ].join(', ');
 
