@@ -680,6 +680,81 @@ o furo, visíveis em `list_stock_debit_holes()`. Debitar 223 mil unidades retroa
 jogaria vários materiais a zero e desmentiria inventários já conferidos. Se um código
 novo "reconciliar" essas OPs em massa, está desfazendo a decisão.
 
+### Setor que consome o material em falta — CADASTRO, não rótulo (CANÔNICO, 12/10/2026)
+
+> Decisão do dono: *"nos setores que não utilizam o material deve passar sem
+> perguntar"*. A confirmação de apontamento do Kanban (`DropApontarDialog`,
+> `BulkMoveDialog`) só pergunta "vai iniciar com material parcial?" no setor que
+> CONSOME a linha em falta. Quem decide é `list_order_sector_material_shortages`
+> (mig `20270101038600`).
+
+**Precedência — a primeira camada que resolve vence:**
+
+| # | Fonte | `sector_source` |
+|---|---|---|
+| 1 | `material_reservations.metadata->>'consumption_sector'` | `explicito` |
+| 2 | `sheet_materials.sector` (linha de BOM do produto) | `cadastro` |
+| 2.5 | `material_consumption_sector_map.sector` (por SKU) | `cadastro` |
+| 3 | `bom_part_sector_map.sector` (pelo grupo) | `cadastro` |
+| 4 | mapa canônico por componente (rótulo) | `componente` |
+| — | nada resolveu → setor NULL | `desconhecido` = **avisa em TODO setor** |
+
+⚠ **São DUAS colunas em `sheet_materials` e elas são opostas.** Medido em
+12/10/2026: `consumption_sector` tem **0 de 79** linhas preenchidas (é a que
+`private.resolve_consumption_sector_context` lê, mig `20270101015500`) e `sector`
+tem **79 de 79**, já na gramática de etapa — Colagem (colas), Expedição (caixas),
+Costura (linha), Aviamento (tiras). A função usa `sector`. Trocar "pra alinhar com
+o motor de ficha" devolveria tudo a `desconhecido` e o aviso voltaria a tocar em
+todo setor.
+
+⚠ **Rótulo de componente NÃO é vocabulário canônico.** O gravado é rótulo de UI:
+`Item padrão (solado)` (as 3 colas) e `Componente Direto` (fivela) não descrevem
+setor nenhum. E `Item padrão (solado)` **não pode** virar Solagem — o cadastro das
+MESMAS colas diz **Colagem**. Por isso cadastro vem ANTES do rótulo, e esses dois
+rótulos ficam fora do mapa.
+
+⚠ **O FAIL-SAFE é deliberado**: o mapa por componente **não** tem o `ELSE 'Aviamento'`
+do fallback legado. Material sem dono conhecido avisa em todos os setores — errar
+avisando demais custa um clique, errar calando custa material que o chão de fábrica
+não tem. Os buracos aparecem em `list_material_sector_gaps()` →
+`MaterialSectorGapsPanel` em `/system-diagnostics` → Consumo.
+
+⚠ **`material_consumption_sector_map` (camada 2.5) é para SKU sem linha de BOM e sem
+grupo mapeado** — hoje só o `COLA ADESIVO HOTMELT`, que chega como item padrão do
+solado. **Não** troque por grupo + `bom_part_sector_map`: o PK daquela tabela é o
+**grupo**, então exigiria criar grupo e atribuí-lo ao SKU, e o gatilho
+`tg_group_sector_cascade` cascatearia `products.category`. E **não** crie linha em
+`sheet_materials` para isso: é o BOM, e o consumo do HOTMELT já vem do item padrão
+do solado — a linha nova somaria consumo em dobro.
+
+⚠ **Tabela nova nasce aberta neste projeto.** Medido: `CREATE TABLE` deixa
+`anon=arwdDxtm | authenticated=arwdDxtm` pelo DEFAULT PRIVILEGES, com RLS
+**desligada**. Então: `ENABLE ROW LEVEL SECURITY` **antes** dos grants, e
+`REVOKE ALL … FROM PUBLIC, anon, authenticated` — revogar só de `anon` deixa
+`authenticated` com ALL (TRUNCATE incluso, que RLS **não** filtra) e o `GRANT SELECT`
+seguinte é no-op que parece permissão apertada.
+
+⚠ **`'Costura'` é grafia MORTA** (split de `20261001120000`) e
+`canonical_stage_name('Costura')` = **`Acabamento Palmilha`**, não `Costura Cabedal`.
+O LINHANYL, cadastrado `Costura`, avisa na Acabamento Palmilha. Se a linha é cortada
+na Costura Cabedal, o conserto é no CADASTRO — canonicalizar diferente desta função
+divergiria do resto do sistema.
+
+⚠ **O setor da pergunta é o que vai ser APONTADO** — `plan.pointedStage`, que no
+avanço é a COLUNA ONDE O CARD ESTÁ (`pointingPlan.ts:190` = `card.columnStage`), não
+o destino do arrasto: arrastar de Corte Cabedal para Costura lança o produzido NO
+Corte Cabedal, e é ele quem consumiu o material.
+
+⚠ **`list_material_sector_gaps` ESPELHA as camadas** da função principal. Camada nova
+entra nas DUAS, senão o alarme mente. Travado por
+`src/__tests__/faltaMaterialPorSetorApontamento.contract.test.ts`, que aponta sempre
+para a migration que define a função AGORA — contrato lendo arquivo superado passa
+verde enquanto a função viva perde uma guarda.
+
+⚠ Isto é **apresentação/rastreabilidade** (decisão da `20270101015500`, que dropou o
+gatilho de débito por setor). Nada aqui dispara baixa de estoque; a função é leitura
+e decide **a quem perguntar**.
+
 ### Cobertura de spec do solado — existir ≠ cobrir a numeração (07/08/2026)
 
 `consumption_consistency_report()` tinha um ponto cego: `solado_dirige_consumo_sem_specs`

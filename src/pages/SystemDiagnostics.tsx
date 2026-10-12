@@ -17,6 +17,7 @@ import { manualVersionCheck } from '@/components/VersionChecker';
 import { CabedalParPeAuditPanel } from '@/components/technical-sheets/CabedalParPeAuditPanel';
 import OrphanDirectComponentsPanel from '@/components/technical-sheets/OrphanDirectComponentsPanel';
 import SoleSpecGapsPanel from '@/components/soles-hub/SoleSpecGapsPanel';
+import MaterialSectorGapsPanel from '@/components/inventory/MaterialSectorGapsPanel';
 import { useStockDebitHoles, summarizeStockDebitHoles, useReconcileStockDebitHole } from '@/hooks/useStockDebitHoles';
 
 type SchemaObject = {
@@ -925,6 +926,10 @@ export default function SystemDiagnostics() {
 
           {/* Spec do solado por NUMERAÇÃO — existência ≠ cobertura (PV-00151). */}
           <SoleSpecGapsPanel />
+
+          {/* Material em falta sem setor de consumo cadastrado: pelo fail-safe
+              ele pergunta em TODO setor no apontamento. Mig 20270101038600. */}
+          <MaterialSectorGapsPanel />
 
           {/* Componente direto cujo produto foi apagado: jsonb sem FK, então o
               vínculo morre calado e o material some do custo e da compra.
