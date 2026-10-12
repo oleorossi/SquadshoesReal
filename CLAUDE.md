@@ -441,9 +441,58 @@ normalizado, voltar ao `GREATEST` quebra a palmilha de novo e não conserta mais
 não divide por `dm2_per_unit`, e não está em `sheet_materials`); vira erro de 137× no
 dia em que alguém puser essa tira no BOM. Remoção é decisão de cadastro, não foi feita.
 </details>
-- **Item linear DIRETO sem ficha de componente** (tiras, elásticos): `quantity_per_unit`
-  já está na unidade nativa (metro/contagem) → **NÃO converter**.
+- **Item linear DIRETO** (tiras, elásticos): `quantity_per_unit` já está na unidade
+  nativa (metro/contagem) → **NÃO converter**.
+
+  ⚠ **O sinal NÃO é mais "sem ficha de componente"** (12/10/2026). O gatilho
+  `tg_require_width_for_area_material` obriga a cadastrar largura em todo grupo citado
+  como `upper_material`, então "sem ficha" deixou de existir como sinal. O sinal agora é
+  o **piso de largura de bobina**, `ROLL_WIDTH_FLOOR_MM = 400` (`materialConsumption.ts`
+  + `get_material_conversion_info`, mig `20270101037400`):
+  **≥ 400 mm** = largura do ROLO (napa/couro: 1000–1370 mm) → dm²/par, converte;
+  **< 400 mm** = largura da PRÓPRIA peça (elástico/tira: 5–25 mm) → já na unidade de
+  estoque, `dm2_per_unit = 1`.
+
+  **O bug:** ELÁSTICO ESPECIAL G (fita 25 mm, SKU próprio comprado a metro) tinha a
+  largura da fita lida como largura de bobina — 1,37 m/par virava **0,548 m/par** em
+  consumo, reserva, débito, custeio e compra. Decisão do dono: *"a largura da tira é de
+  25mm, e o material é vendido a metro"*, *"é um material já pronto, com SKU próprio.
+  Não é convertido através da napa"*.
+
+  ⚠ **É heurística de ordem de grandeza, por falta de alternativa.** Medido nos 10
+  grupos de cabedal: `products.unit`, `consumption_unit`, `calculation_method`, `sector`
+  e `is_artisanal_strap` são **idênticos** entre napa e elástico. Só o VALOR difere. Se
+  um dia existir bobina **estreita** (< 400 mm), o caminho é marcação explícita no
+  grupo — **não** baixar o piso. As 26 fichas de `TIRA OVERLOCK 5MM` (cadastradas com
+  1370 mm copiado de napa) seguem classificadas como bobina: o piso não as muda.
+
+  ⚠ **Os dois lados são espelho.** Mudar `ROLL_WIDTH_FLOOR_MM` sem a função SQL (ou
+  vice-versa) recria a divergência TS×SQL fechada na auditoria de 2026-07-21. Travado
+  por `lib/__tests__/materialLinearDireto.test.ts` + `lib/__tests__/materialUnit.test.ts`.
+
+  ⚠ **Sem backfill, de propósito**: os valores já gravados não foram convertidos
+  (`specs/materiais-cabedal-por-posicao.md`). O que muda é a leitura deles.
 - **Solado**: por par, segmentado por **numeração** (`sizeBreakdown`), nunca por área.
+
+### Unidade exibida na ficha = unidade do ITEM (CANÔNICO, 12/10/2026)
+
+O rótulo da grade de consumo por numeração **nunca** é literal. Sai de
+`resolveConsumptionUnit` (`src/lib/materialUnit.ts`) — fonte única do Cabedal Material 1,
+dos Materiais 2+ e do toast de auto-preenchimento — que devolve `{ unit, basis }`:
+`roll_area` → `dm²`, `native_linear`/`count` → a unidade de estoque do item.
+
+⚠ A largura vem da **ficha de componente** (cascata item → grupo → `product_groups`), a
+MESMA que o motor usa pra dividir. Ler `product_groups.dimensions_width` punha o rótulo
+em desacordo com o cálculo: NAPA PALHA tem grupo `0` e ficha `1370`, então a tela dizia
+`m/par` enquanto o motor dividia por 137.
+
+⚠ `dimensions_unit` **não** é fallback de unidade de consumo: é unidade de dimensão
+física (default `'mm'`), e devolvia `"mm"` como unidade de consumo em todo grupo sem
+item. O default honesto é `un`.
+
+⚠ O que continua travado é **POR PAR, não por pé** (spec `consumo-cabedal-padrao-par`) —
+era isso que os testes de contrato protegiam, nunca o "é área". O readout `= X/pé` ao
+lado da média segue sendo o guard anti-deriva.
 
 ### ⚠ Perda de corte NÃO existe neste sistema (decisão do dono, 03/08/2026)
 

@@ -47,7 +47,7 @@ describe('Cabedal dublado — contrato frontend e persistência', () => {
     expect(materialVariants).toContain("path.map(node => node.name).join(' › ')");
   });
 
-  it('trata o consumo do Cabedal como dm²/par e persiste a identidade UUID da folha', () => {
+  it('trata o consumo do Cabedal como POR PAR na unidade do item e persiste a identidade UUID da folha', () => {
     const materialOne = section(
       technicalSheets,
       'label="Material 1 (Principal)"',
@@ -55,9 +55,13 @@ describe('Cabedal dublado — contrato frontend e persistência', () => {
     );
 
     expect(materialOne).toContain('onGroupSelect={(group) => applyUpperMaterialGroup(group.name, group.id)}');
-    expect(materialOne).toContain('POR PAR (dm²/par, não por pé)');
-    expect(materialOne).toContain("'dm²'");
-    expect(materialOne).toContain('área consumida pelo par (2 pés)');
+    // par × pé continua travado — era esse o ponto da spec; "é área" nunca foi.
+    expect(materialOne).toContain('POR PAR ({upperUnit.unit}/par, não por pé)');
+    expect(materialOne).toContain('consumo do par (2 pés)');
+    // dm²/par segue sendo o rótulo de material cortado de BOBINA, mas vem do
+    // basis do resolvedor, não de um literal (ver materialUnit.test.ts).
+    expect(materialOne).toContain("upperUnit.basis === 'roll_area'");
+    expect(materialOne).toContain('largura da bobina');
     expect(technicalSheets).toContain('upper_material_group_id: nextGroupId');
     expect(technicalSheets).toContain('payload.upper_material_group_id = upperMaterialGroup.id;');
     expect(technicalSheets).toContain('group.parent_group_id === upperMaterialGroup.id');

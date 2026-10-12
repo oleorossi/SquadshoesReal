@@ -92,6 +92,7 @@ import { AtelierReferencePanel } from '@/components/technical-sheets/AtelierRefe
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
+import { resolveConsumptionUnit } from '@/lib/materialUnit';
 import {
   isLeftoverCabedalExtra,
   leftoverRequiresPin,
@@ -1742,7 +1743,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       const lastConsumption = candidates[0][consumptionField];
       if (lastConsumption > 0) {
         updateField(consumptionField, lastConsumption);
-        toast.info(`Consumo preenchido automaticamente: ${safeToFixed(lastConsumption, 4)} dm²/par (baseado em "${candidates[0].name}")`);
+        // A unidade sai do mesmo resolvedor da grade — dizer "dm²/par" fixo aqui
+        // mentia para material linear direto (elástico/tira vendido a metro).
+        const autoUnit = resolveConsumptionUnit(groupName, groups, products, componentSheets).unit;
+        toast.info(`Consumo preenchido automaticamente: ${safeToFixed(lastConsumption, 4)} ${autoUnit}/par (baseado em "${candidates[0].name}")`);
 
         // lining_accessories NÃO é mais copiado de fichas antigas (2026-07-11):
         // é mecanismo legado de forração alternativa (pick-one) mantido só nas
@@ -2820,39 +2824,20 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 //      estava em #2 e quebrava grupos como "Ilhós 51" (dimensions_unit=mm
                 //      por causa do diâmetro físico) cujos produtos vendem por 'un'.
                 //   5) 'un' default
-                const getUnitForGroupName = (groupName: string, storedUnit?: string): string => {
-                  if (!groupName?.trim()) return storedUnit?.trim() || 'un';
-                  const g: any = (groups || []).find((x: any) => (x.name || '').trim() === groupName.trim());
-                  // Unidade do ITEM selecionado (produto ativo do grupo) — é a fonte da verdade.
-                  const prod = g ? ((products || []).find((p: any) => p.group_id === g.id && p.active && (p.unit || '').trim())
-                    || (products || []).find((p: any) => p.group_id === g.id && (p.unit || '').trim())) : null;
-                  const prodUnit = (prod?.unit || '').toString().trim();
-                  // Material de ÁREA cortado de bobina (napa/couro/forro): produto LINEAR (m/cm).
-                  // O consumo é SEMPRE gravado em dm²/par (a conversão p/ metro usa a largura da
-                  // ficha de componente). Rótulo correto = dm²/par — INDEPENDENTE de a largura
-                  // estar cadastrada. Detecta área pelo sinal de bobina (consumption_unit de área
-                  // OU comprimento de rolo), igual ao cabedalWidthWarning. Antes exigia largura > 0,
-                  // então sem largura o rótulo mostrava "(m/par)" enquanto o valor digitado é dm²/par
-                  // (inconsistência que assustava o operador). O aviso âmbar continua sinalizando que
-                  // falta a largura pra converter dm²→metro.
-                  if (['m', 'cm', 'metro', 'metros', 'mt'].includes(prodUnit.toLowerCase())) {
-                    const consUnit = (g?.consumption_unit || '').toString().trim().toLowerCase().replace(/2/g, '²');
-                    const isAreaConsumption = ['dm²', 'm²', 'cm²'].includes(consUnit);
-                    const hasRollDims = Number(g?.dimensions_length) > 0;
-                    const width = Number(g?.dimensions_width) || 0;
-                    if (width > 0 || isAreaConsumption || hasRollDims) return 'dm²';
-                  }
-                  // Senão, a unidade vem do ITEM SELECIONADO (produto) — NÃO do consumption_unit do
-                  // grupo, que pode divergir (ex.: grupo ELÁSTICO SARJA tinha consumption_unit='m'
-                  // mas o produto é 'un', fazendo o operador digitar valor errado).
-                  if (prodUnit) return prodUnit;
-                  const consumption = ((g?.consumption_unit) || '').toString().trim();
-                  if (consumption) return consumption;
-                  if (storedUnit?.trim()) return storedUnit.trim();
-                  const dimsFallback = ((g?.dimensions_unit) || '').toString().trim();
-                  if (dimsFallback) return dimsFallback;
-                  return 'un';
-                };
+                // Fonte ÚNICA, extraída pra `@/lib/materialUnit` (testável por
+                // comportamento — este arquivo tem 5.5k linhas e o resolvedor
+                // ficava intestável aqui dentro). Ela espelha o motor: a largura
+                // sai da FICHA DE COMPONENTE, igual a `get_material_conversion_info`.
+                //
+                // ⚠ A versão anterior morava aqui e tratava QUALQUER `width > 0`
+                // do GRUPO como sinal de bobina. Com isso o ELÁSTICO ESPECIAL G
+                // (fita de 25 mm, SKU próprio vendido a metro) era rotulado
+                // 'dm²/par' — e o motor ainda dividia 1,37 por 2,5, debitando
+                // 0,548 m/par. Ver ROLL_WIDTH_FLOOR_MM em materialConsumption.ts.
+                const resolveUnitFor = (groupName?: string | null, storedUnit?: string, groupId?: string | null) =>
+                  resolveConsumptionUnit(groupName, groups, products, componentSheets, { groupId, storedUnit });
+                const getUnitForGroupName = (groupName: string, storedUnit?: string): string =>
+                  resolveUnitFor(groupName, storedUnit).unit;
                 // Aviso do quebra-silencioso nº 1: material de ÁREA (napa/couro,
                 // cortado de bobina) cujo grupo NÃO tem largura cadastrada → o consumo
                 // (gravado em dm²/par) não converte pra metro e infla ~100× no
@@ -3097,18 +3082,35 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           achava. Renderiza imediatamente após o seletor.
                           (A tabela completa multi-material ainda aparece abaixo
                           como cross-check.) */}
-                      {form.upper_material && (
+                      {form.upper_material && (() => {
+                        // A unidade do Cabedal é DERIVADA do item selecionado —
+                        // nunca mais um literal. Napa/couro (bobina) segue em
+                        // dm²/par; material linear direto (elástico, tira: SKU
+                        // próprio vendido a metro) usa a unidade de estoque dele.
+                        // Decisão do dono 12/10/2026. O "POR PAR (não por pé)"
+                        // continua travado — era isso que a spec
+                        // consumo-cabedal-padrao-par protegia, nunca o "é área".
+                        const upperUnit = resolveUnitFor(
+                          form.upper_material,
+                          undefined,
+                          form.upper_material_group_id,
+                        );
+                        const isRollArea = upperUnit.basis === 'roll_area';
+                        return (
                         <div>
                           <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                            Consumo de Cabedal por Numeração — POR PAR (dm²/par, não por pé)
+                            Consumo de Cabedal por Numeração — POR PAR ({upperUnit.unit}/par, não por pé)
                           </Label>
                           <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
-                            Informe a <strong className="text-foreground">área consumida pelo par (2 pés)</strong> número a número, sempre em dm².
-                            A média alimenta o custo do PV e a conversão para a unidade de estoque.
+                            Informe o <strong className="text-foreground">consumo do par (2 pés)</strong> número a número, sempre em {upperUnit.unit}.
+                            {isRollArea
+                              ? ' É área por par — o sistema divide pela largura da bobina cadastrada na ficha de componente para chegar na unidade de estoque.'
+                              : ' É material linear direto (SKU próprio) — entra no estoque exatamente neste valor, sem conversão.'}
+                            {' '}A média alimenta o custo do PV.
                           </p>
                           {renderSizeGrid(
                             form.upper_consumption_per_size || {},
-                            'dm²',
+                            upperUnit.unit,
                             (newPerSize) => {
                               updateField('upper_consumption_per_size', newPerSize);
                               const filled = Object.values(newPerSize).filter(value => Number(value) > 0);
@@ -3121,7 +3123,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                             true, // showPerFoot — readout "= X/pé" anti-deriva pé×par
                           )}
                         </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Corte a fio (2026-06-12): cabedal sem costura — não
                           gera a ficha de operador "Costura Cabedal". Só camada

@@ -378,7 +378,60 @@ export function convertToProductUnit(
   return q;
 }
 
+/**
+ * Piso de largura de BOBINA (mm). Separa os dois significados que `dimensions_width`
+ * carrega hoje no mesmo campo:
+ *
+ * - `>= ROLL_WIDTH_FLOOR_MM` → é a largura do ROLO de onde a peça é cortada
+ *   (napa/couro/forro: 1000–1370 mm). O consumo está em **dm²/par** e o motor
+ *   divide por `largura/10` pra chegar no metro linear.
+ * - `< ROLL_WIDTH_FLOOR_MM` → é a largura da PRÓPRIA peça (elástico, tira:
+ *   5–25 mm). É material já pronto, com SKU próprio, comprado e estocado por
+ *   metro — **não** é cortado de napa. O consumo JÁ está na unidade de estoque
+ *   e dividir por ela é erro puro.
+ *
+ * Decisão do dono (12/10/2026), sobre ELÁSTICO ESPECIAL G: *"a largura da tira é
+ * de 25mm, e o material é vendido a metro"*, *"é um material já pronto, com SKU
+ * próprio. Não é convertido através da napa"*.
+ *
+ * ⚠ É heurística de ORDEM DE GRANDEZA, não um campo de cadastro — e é assim por
+ * falta de alternativa: medido em 12/10/2026, `products.unit` ('m' nos dois),
+ * `product_groups.consumption_unit` ('m' nos dois), `calculation_method`
+ * ('weight' em 100% dos grupos), `sector` ('Cabedal' nos dois) e
+ * `is_artisanal_strap` (false em 100%) **não** distinguem fita de bobina. Só o
+ * VALOR distingue. Larguras reais na base: bobina 1000–1370 mm, fita 25 mm — o
+ * piso fica com folga de 2,5× pra cada lado.
+ *
+ * ⚠ Ao cadastrar uma bobina ESTREITA (< 400 mm) isto passa a classificá-la como
+ * fita e o consumo dela deixa de converter. Se isso acontecer, o caminho certo é
+ * trocar a heurística por marcação explícita no grupo — não baixar o piso.
+ *
+ * ⚠ As 26 fichas de `TIRA OVERLOCK 5MM` estão cadastradas com 1370 mm (cadastro
+ * copiado de napa — ver CLAUDE.md). O piso NÃO as conserta: elas seguem
+ * classificadas como bobina, exatamente como antes desta mudança.
+ */
+export const ROLL_WIDTH_FLOOR_MM = 400;
+
+/**
+ * Item LINEAR DIRETO: tem largura cadastrada, mas ela é a largura da peça —
+ * não há área a converter. Materializa a regra canônica do CLAUDE.md ("Item
+ * linear DIRETO sem ficha de componente (tiras, elásticos): `quantity_per_unit`
+ * já está na unidade nativa → NÃO converter"), que até aqui só valia quando a
+ * ficha de componente NÃO existia. Ela passou a existir sempre: o gatilho
+ * `tg_require_width_for_area_material` obriga a cadastrar largura em todo grupo
+ * citado como `upper_material`, então "sem ficha" deixou de ser sinal.
+ *
+ * ESPELHA `get_material_conversion_info` no SQL (mig 20270101040000).
+ */
+export const isNativeLinearMaterial = (componentSheet: ComponentSheetCandidate | null): boolean => {
+  const widthMm = getLinearWidthMm(componentSheet);
+  return widthMm > 0 && widthMm < ROLL_WIDTH_FLOOR_MM;
+};
+
 export const convertDm2ToLinearMeters = (totalDm2: number, componentSheet: ComponentSheetCandidate | null) => {
+  // Material já pronto vendido por metro: o valor JÁ está em metro.
+  if (isNativeLinearMaterial(componentSheet)) return totalDm2;
+
   const linearWidthMm = getLinearWidthMm(componentSheet);
   if (linearWidthMm <= 0) return totalDm2;
 
@@ -498,6 +551,10 @@ export function areaToStockDivisor(
 ): number | null {
   const unit = normalizeText(stockUnit);
   if (LINEAR_UNITS.has(unit)) {
+    // Item linear direto: o valor já está na unidade de estoque ⇒ divisor 1.
+    // NÃO pode devolver null aqui — null significa "largura faltando" e o caller
+    // levanta `widthMissing`/`incomplete: 'largura'`, alarme falso neste caso.
+    if (isNativeLinearMaterial(componentSheet)) return 1;
     const w = getLinearWidthMm(componentSheet);
     if (w <= 0) return null;
     const dm2PerMeter = w / 10;
@@ -526,6 +583,9 @@ export function areaToStockDivisor(
  * values are in meters, the fallback for missing sizes is also in meters.
  */
 const convertFallbackToLinear = (fallbackDm2: number, componentSheet: ComponentSheetCandidate | null): number => {
+  // Item linear direto (elástico/tira): o escalar da ficha já está em metro —
+  // dividir pela largura DA PRÓPRIA FITA subestimaria o consumo (1,37 → 0,548).
+  if (isNativeLinearMaterial(componentSheet)) return fallbackDm2;
   const linearWidthMm = getLinearWidthMm(componentSheet);
   if (linearWidthMm <= 0) return fallbackDm2; // can't convert, return as-is
   // linearWidthMm is in mm (e.g. 1400mm for 1.4m width).
