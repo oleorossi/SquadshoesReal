@@ -79,6 +79,10 @@ describe('corteLookahead', () => {
     ], { today: new Date('2026-09-29T12:00:00') });
 
     // Sequência oficial: maior completion (% PV) primeiro — b antes de a.
+    // ⚠ Esta é a ordem de ALOCAÇÃO/LIBERAÇÃO (quem consome o estoque livre e
+    // por isso fica liberável), NÃO a ordem que a tela mostra: desde 12/10/2026
+    // a Fila de Corte reagrupa por PV (prazo) → referência, e esta ordem só
+    // sobrevive DENTRO de uma referência.
     expect(ranked[0].itemId).toBe('b');
     expect(ranked[0].liberable).toBe(true);
     expect(ranked[1].itemId).toBe('a');

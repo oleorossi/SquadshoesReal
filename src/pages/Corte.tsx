@@ -42,8 +42,13 @@ import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { RefChip } from '@/components/ui/ref-chip';
 import { normalizeSector } from '@/lib/sectors';
-import { safeUrlAttr } from '@/lib/htmlUtils';
+import { escapeHtml, safeUrlAttr } from '@/lib/htmlUtils';
 import { requiresUpperCut } from '@/lib/upperCutEligibility';
+import {
+  deadlineChipLabel,
+  deadlineTone,
+  groupReportByOrderThenReference,
+} from '@/lib/reportOrderGrouping';
 
 // Stage da OP correspondente a este setor. O stage_name no banco é
 // 'Corte Palmilha' desde o rename de 2026-05-06 — o match literal por 'Corte'
@@ -53,6 +58,26 @@ const isCorteStage = (stageName: string | null | undefined): boolean =>
   normalizeSector(String(stageName ?? '')) === 'corte_palmilha';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
+
+/** OP sem PV vinculado — grupo próprio, sempre no fim (prazo nulo). */
+const SEM_PEDIDO_KEY = '__sem_pedido__';
+
+/** Espelha o `.select()` de `sale_orders_for_corte`. */
+interface SaleOrderForCorte {
+  id: string;
+  order_number: string | null;
+  client_name: string | null;
+  client_order_number: string | null;
+  delivery_deadline: string | null;
+  status: string | null;
+}
+
+function deadlineBadgeClass(days: number | null): string {
+  const tone = deadlineTone(days);
+  if (tone === 'late') return 'bg-red-500/10 text-red-600 border-red-500/30';
+  if (tone === 'warn') return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
+  return 'bg-muted text-muted-foreground border-border';
+}
 
 // Maps actual product group/category to cutting sections
 const CABEDAL_KEYWORDS = ['napa', 'velvet', 'tira', 'trança', 'glow', 'couro', 'metalic'];
@@ -101,6 +126,9 @@ export default function Corte() {
       return data;
     },
   });
+  // Leitura tipada de `sale_orders` pros agrupamentos — evita `any` em cada find.
+  // Cast de payload Supabase é a convenção do projeto (TS loose + types gerados).
+  const saleOrdersForCorte = (saleOrders ?? []) as unknown as SaleOrderForCorte[];
   const { getStrapsLabel } = useOrderStraps();
   const [filterStatus, setFilterStatus] = usePersistedState<string>('corte-filterStatus', 'active');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -537,19 +565,27 @@ if (totalPairsAll !== palmTotal) {
       );
     }
 
-    // Group orders by sale_order_id
-    const grouped = new Map<string, typeof cuttingOrders>();
-    for (const order of cuttingOrders) {
-      const key = order.sale_order_id || '__sem_pedido__';
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(order);
-    }
-
-    // Sort groups: orders with sale_order first, then "sem pedido"
-    const sortedGroups = Array.from(grouped.entries()).sort(([a], [b]) => {
-      if (a === '__sem_pedido__') return 1;
-      if (b === '__sem_pedido__') return -1;
-      return 0;
+    /**
+     * Relatório: PEDIDO de cima pra baixo pelo prazo de entrega do PV
+     * (`sale_orders.delivery_deadline`), itens agrupados por REFERÊNCIA —
+     * decisão do dono, 12/10/2026. Antes a ordem dos grupos era a de inserção
+     * do Map (que vinha do `planned_delivery` da OP, não do prazo do PV).
+     *
+     * ⚠ OP sem PV entra com a sentinela e prazo nulo, então cai no FIM pela
+     * mesma regra do "sem prazo" — não é filtrada. Descartar aqui esconderia
+     * trabalho do chão de fábrica.
+     */
+    const pvGroups = groupReportByOrderThenReference(cuttingOrders, (order) => {
+      const so = saleOrdersForCorte.find((x) => x.id === order.sale_order_id);
+      const ref = references.find((r) => r.id === order.reference_id);
+      return {
+        saleOrderId: order.sale_order_id || SEM_PEDIDO_KEY,
+        orderNumber: so?.order_number || '',
+        clientName: so?.client_name ?? null,
+        deliveryDeadline: so?.delivery_deadline ?? null,
+        referenceLabel: ref?.code || ref?.name || 'Sem referência',
+        pairs: getOrderTotalPairs(order),
+      };
     });
 
     return (
@@ -565,11 +601,12 @@ if (totalPairsAll !== palmTotal) {
             {sel.hiddenSelectedCount > 0 ? ` · ${sel.hiddenSelectedCount} fora do filtro` : ''}
           </div>
         )}
-        {sortedGroups.map(([groupKey, groupOrders]) => {
-          const saleOrderInfo = groupKey !== '__sem_pedido__' ? saleOrders.find(so => so.id === groupKey) : null;
-          const groupLabel = saleOrderInfo
-            ? `Pedido ${saleOrderInfo.order_number} — ${saleOrderInfo.client_name}`
-            : 'Sem Pedido Vinculado';
+        {pvGroups.map((group) => {
+          const isSemPedido = group.saleOrderId === SEM_PEDIDO_KEY;
+          const groupOrders = group.references.flatMap(r => r.rows);
+          const groupLabel = isSemPedido
+            ? 'Sem Pedido Vinculado'
+            : `Pedido ${group.orderNumber || '—'} — ${group.clientName || '—'}`;
 
           // Check if all orders in group are selected
           const allGroupSelected = groupOrders.every(o => sel.isSelected(o.id));
@@ -581,20 +618,44 @@ if (totalPairsAll !== palmTotal) {
             }
           };
 
-          const groupTotalPairs = groupOrders.reduce((sum, o) => sum + getOrderTotalPairs(o), 0);
-
           return (
-            <div key={groupKey} className="space-y-3">
-              <div className="flex items-center gap-3 px-1 border-b pb-2">
+            <div key={group.saleOrderId} className="space-y-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1 border-b pb-2">
                 <Checkbox
                   checked={allGroupSelected}
                   onCheckedChange={toggleGroupSelection}
                 />
                 <h3 className="text-sm font-bold text-foreground">{groupLabel}</h3>
-                <Badge variant="secondary" className="text-xs">{groupOrders.length} OPs</Badge>
-                <Badge variant="outline" className="text-xs">{groupTotalPairs} pares no pedido</Badge>
+                {!isSemPedido && (
+                  <>
+                    <span className="text-xs text-muted-foreground">
+                      Entrega: <span className="font-medium text-foreground">
+                        {group.deliveryDeadline
+                          ? new Date(`${group.deliveryDeadline}T12:00:00`).toLocaleDateString('pt-BR')
+                          : '—'}
+                      </span>
+                    </span>
+                    <Badge variant="outline" className={`text-xs ${deadlineBadgeClass(group.daysUntilDeadline)}`}>
+                      {deadlineChipLabel(group.daysUntilDeadline)}
+                    </Badge>
+                  </>
+                )}
+                <Badge variant="secondary" className="text-xs">{group.rowCount} OPs</Badge>
+                <Badge variant="outline" className="text-xs">{group.pairs} pares no pedido</Badge>
+                <Badge variant="outline" className="text-xs">
+                  {group.references.length} {group.references.length === 1 ? 'referência' : 'referências'}
+                </Badge>
               </div>
-              {groupOrders.map(order => {
+              {group.references.map(refGroup => (
+                <div key={refGroup.key} className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2 pl-1">
+                    <RefChip code={refGroup.label} />
+                    <span className="text-xs text-muted-foreground">
+                      {refGroup.pairs} pares · {refGroup.rows.length} {refGroup.rows.length === 1 ? 'OP' : 'OPs'}
+                    </span>
+                    <span className="h-px flex-1 bg-border/60" aria-hidden="true" />
+                  </div>
+                  {refGroup.rows.map(order => {
           const ref = references.find(r => r.id === order.reference_id);
           const orderRows = cuttingData.filter(r => r.orderId === order.id);
           const palmilha = orderRows.filter(r => r.materialCategory === 'Palmilha');
@@ -892,7 +953,9 @@ if (totalPairsAll !== palmTotal) {
               )}
             </Card>
           );
-              })}
+                  })}
+                </div>
+              ))}
             </div>
           );
         })}
@@ -1140,34 +1203,75 @@ if (totalPairsAll !== palmTotal) {
               allActiveSizesReport.forEach(s => { opSizeTotals[s] = 0; });
               let totalPairsAll = 0;
 
-              let opSummaryRows = '';
-              ordersForReport.forEach(o => {
+              // Resumo por OP: PEDIDO de cima pra baixo pelo prazo de entrega do PV,
+              // itens agrupados por REFERÊNCIA (dono, 12/10/2026). A coluna
+              // "Referência" saiu das linhas porque virou cabeçalho do grupo —
+              // repeti-la em cada linha é a repetição que a regra 1 de print
+              // manda atacar antes de qualquer coisa.
+              const reportGroups = groupReportByOrderThenReference(ordersForReport, (o) => {
+                const so = saleOrdersForCorte.find((x) => x.id === o.sale_order_id);
                 const ref = references.find(r => r.id === o.reference_id);
-                const grade = o.grade as Record<string, number> | null;
-                const gradeSum = getGradeTotal(grade);
-                const tp = getOrderTotalPairs(o);
-                // FIX 2026-06-11: escala a grade BASE pro total REAL (Hamilton).
-                // Antes mult=1 mostrava a grade base crua (somando ~12) ao lado
-                // de um Total de centenas — o cortador não sabia quantos pares
-                // cortar por numeração. Σ(células)=tp por construção.
-                const scaled = gradeSum > 0
-                  ? scaleGradeWithLargestRemainder(grade || {}, tp / gradeSum, tp)
-                  : {};
-                totalPairsAll += tp;
-                opSummaryRows += `<tr>`;
-                opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;font-weight:600;">${o.order_number}</td>`;
-                opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;">${ref?.code || ''} ${ref?.name || ''}</td>`;
-                opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;">${o.color || '—'}</td>`;
-                allActiveSizesReport.forEach(s => {
-                  const qty = Number(scaled[s]) || 0;
-                  opSizeTotals[s] += qty;
-                  opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;font-weight:${qty > 0 ? '700' : '400'}">${qty || ''}</td>`;
+                return {
+                  saleOrderId: o.sale_order_id || SEM_PEDIDO_KEY,
+                  orderNumber: so?.order_number || '',
+                  clientName: so?.client_name ?? null,
+                  deliveryDeadline: so?.delivery_deadline ?? null,
+                  referenceLabel: ref?.code || ref?.name || 'Sem referência',
+                  pairs: getOrderTotalPairs(o),
+                };
+              });
+              const reportColSpan = 2 + allActiveSizesReport.length + 1;
+
+              let opSummaryRows = '';
+              reportGroups.forEach(group => {
+                const isSemPedido = group.saleOrderId === SEM_PEDIDO_KEY;
+                const late = group.daysUntilDeadline != null && group.daysUntilDeadline < 0;
+                const pvHead = isSemPedido
+                  ? 'Sem pedido vinculado'
+                  : `Pedido ${group.orderNumber || '—'}${group.clientName ? ' — ' + group.clientName : ''}`;
+                const prazo = isSemPedido
+                  ? ''
+                  : ` · entrega ${group.deliveryDeadline ? new Date(`${group.deliveryDeadline}T12:00:00`).toLocaleDateString('pt-BR') : 'sem prazo'} (${deadlineChipLabel(group.daysUntilDeadline)})`;
+                opSummaryRows += `<tr style="background:#e8e8d0;"><td colspan="${reportColSpan}" style="border:1px solid #999;padding:3px 6px;font-size:11px;font-weight:800;">`;
+                opSummaryRows += `${escapeHtml(pvHead)}`;
+                // Vermelho só no atraso e sempre pareado com negrito — a fábrica
+                // imprime laser P&B (regra 5 de print).
+                opSummaryRows += `<span style="font-size:10px;font-weight:800;color:${late ? '#C00000' : '#111'};">${escapeHtml(prazo)}</span>`;
+                opSummaryRows += `<span style="font-size:9px;font-weight:600;color:#666;"> · ${group.pairs} pares · ${group.rowCount} ${group.rowCount === 1 ? 'OP' : 'OPs'}</span>`;
+                opSummaryRows += `</td></tr>`;
+
+                group.references.forEach(refGroup => {
+                  opSummaryRows += `<tr><td colspan="${reportColSpan}" style="border:1px solid #999;padding:2px 6px;font-size:10px;font-weight:700;background:#f5f5f0;">`;
+                  opSummaryRows += `${escapeHtml(refGroup.label)}<span style="font-weight:600;color:#666;"> · ${refGroup.pairs} pares</span>`;
+                  opSummaryRows += `</td></tr>`;
+
+                  refGroup.rows.forEach(o => {
+                    const grade = o.grade as Record<string, number> | null;
+                    const gradeSum = getGradeTotal(grade);
+                    const tp = getOrderTotalPairs(o);
+                    // FIX 2026-06-11: escala a grade BASE pro total REAL (Hamilton).
+                    // Antes mult=1 mostrava a grade base crua (somando ~12) ao lado
+                    // de um Total de centenas — o cortador não sabia quantos pares
+                    // cortar por numeração. Σ(células)=tp por construção.
+                    const scaled = gradeSum > 0
+                      ? scaleGradeWithLargestRemainder(grade || {}, tp / gradeSum, tp)
+                      : {};
+                    totalPairsAll += tp;
+                    opSummaryRows += `<tr>`;
+                    opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;font-weight:600;">${escapeHtml(o.order_number || '')}</td>`;
+                    opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;">${escapeHtml(o.color || '—')}</td>`;
+                    allActiveSizesReport.forEach(s => {
+                      const qty = Number(scaled[s]) || 0;
+                      opSizeTotals[s] += qty;
+                      opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;font-weight:${qty > 0 ? '700' : '400'}">${qty || ''}</td>`;
+                    });
+                    opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-weight:700;font-size:11px;background:#f5f5f0;">${tp}</td>`;
+                    opSummaryRows += `</tr>`;
+                  });
                 });
-                opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-weight:700;font-size:11px;background:#f5f5f0;">${tp}</td>`;
-                opSummaryRows += `</tr>`;
               });
               opSummaryRows += `<tr style="background:#e8e8d0;font-weight:700;border-top:2px solid #333;">`;
-              opSummaryRows += `<td colspan="3" style="border:1px solid #999;padding:3px 6px;text-align:right;font-size:10px;">TOTAL</td>`;
+              opSummaryRows += `<td colspan="2" style="border:1px solid #999;padding:3px 6px;text-align:right;font-size:10px;">TOTAL</td>`;
               allActiveSizesReport.forEach(s => {
                 opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;">${opSizeTotals[s] || ''}</td>`;
               });
@@ -1179,7 +1283,6 @@ if (totalPairsAll !== palmTotal) {
                 <table style="width:100%;border-collapse:collapse;">
                   <thead><tr style="background:#e8e8d0;">
                     <th style="border:1px solid #999;padding:4px 6px;text-align:left;font-size:10px;">OP</th>
-                    <th style="border:1px solid #999;padding:4px 6px;text-align:left;font-size:10px;">Referência</th>
                     <th style="border:1px solid #999;padding:4px 6px;text-align:left;font-size:10px;">Cor</th>
                     ${allActiveSizesReport.map(s => `<th style="border:1px solid #999;padding:4px 6px;text-align:center;font-size:10px;">${s}</th>`).join('')}
                     <th style="border:1px solid #999;padding:4px 6px;text-align:center;font-size:10px;background:#e0e0c8;">Total</th>
