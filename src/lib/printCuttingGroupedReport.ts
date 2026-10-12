@@ -3,6 +3,13 @@ import { getOrderTotalPairs, getGradeTotal } from './cuttingCounts';
 import { escapeHtml } from './htmlUtils';
 import { scaleGradeWithLargestRemainder } from './scaleGrade';
 import { requiresUpperCut } from './upperCutEligibility';
+import { consolidateRowsByColor, deadlineChipLabel, groupReportByOrderThenReference } from './reportOrderGrouping';
+
+/** OP sem PV vinculado — grupo próprio, sempre no fim (prazo nulo). */
+const SEM_PEDIDO_KEY = '__sem_pedido__';
+
+const formatDayBR = (iso: string | null | undefined): string =>
+  iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : 'sem prazo';
 
 const SIZES = ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45'];
 
@@ -50,6 +57,8 @@ type SaleOrderData = {
   order_number?: string;
   client_name?: string;
   client_order_number?: string;
+  /** Prazo de entrega do PV — eixo de ordenação do detalhamento. */
+  delivery_deadline?: string | null;
 };
 
 type GroupedByColor = {
@@ -286,28 +295,66 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
     let cabedalHtml = buildSheetHeader('Cabedal', '👟', upperCutOrders.length, cabedal.grandTotal, 'Com consumo de cabedal');
     cabedalHtml += buildColorGradeTable('Cabedal — por Cor', '👟', cabedal.items, cabedal.activeSizes, cabedal.grandTotal);
 
-    // Apêndice: grade individual por solado/referência/cor (auditoria)
+    /**
+     * Apêndice: grade individual por PEDIDO / referência / cor (auditoria).
+     *
+     * Decisão do dono (12/10/2026): o PEDIDO manda, de cima pra baixo pelo prazo
+     * de entrega do PV; dentro dele, os itens agrupados por REFERÊNCIA.
+     *
+     * ⚠ O SOLADO era o nível 1 e virou COLUNA — a informação continua na ficha,
+     * só deixou de reger a ordem. Ele é derivado da cor da OP (`deriveSoleType`),
+     * ou seja, é dado de linha; como nível de agrupamento quebrava o pedido em
+     * dois blocos distantes quando a mesma referência vinha em cores de solados
+     * diferentes.
+     *
+     * ⚠ As tabelas consolidadas por cor (Cabedal por Cor, Forração) e a soma da
+     * Palmilha NÃO são agrupadas por pedido de propósito: elas existem pra somar
+     * o corte ATRAVÉS dos pedidos. Quebrá-las por PV desfaria a consolidação que
+     * é a razão da ficha.
+     */
     cabedalHtml += '<div style="margin-top:4px;border-top:2px dashed #999;padding-top:6px;"></div>';
-    cabedalHtml += '<h2 style="font-size:13px;margin:0 0 4px;">📐 Detalhamento por Solado / Referência / Cor</h2>';
+    cabedalHtml += '<h2 style="font-size:13px;margin:0 0 4px;">📐 Detalhamento por Pedido / Referência / Cor</h2>';
 
-    const bySole = new Map<string, Map<string, { ref: ReferenceData; orders: OrderData[] }>>();
-    for (const order of upperCutOrders) {
-      const ref = references.find(r => r.id === order.reference_id);
-      if (!ref) continue;
-      const soleType = deriveSoleType(order.color);
-      if (!bySole.has(soleType)) bySole.set(soleType, new Map());
-      const refMap = bySole.get(soleType)!;
-      if (!refMap.has(order.reference_id)) refMap.set(order.reference_id, { ref, orders: [] });
-      refMap.get(order.reference_id)!.orders.push(order);
-    }
+    const pvGroups = groupReportByOrderThenReference(
+      upperCutOrders.filter(o => references.some(r => r.id === o.reference_id)),
+      (order) => {
+        const so = saleOrders?.find(x => x.id === order.sale_order_id);
+        const ref = references.find(r => r.id === order.reference_id);
+        return {
+          saleOrderId: order.sale_order_id || SEM_PEDIDO_KEY,
+          orderNumber: so?.order_number || '',
+          clientName: so?.client_name ?? null,
+          deliveryDeadline: so?.delivery_deadline ?? null,
+          referenceLabel: ref?.code || ref?.name || 'Sem referência',
+          pairs: getOrderTotalPairs(order),
+        };
+      },
+    );
 
-    for (const [soleType, refMap] of bySole) {
-      const soleBorderColor = soleType === 'Solado Preto' ? '#333' : '#c9a84c';
-      const soleEmoji = soleType === 'Solado Preto' ? '⬛' : '🟨';
-      cabedalHtml += '<div style="margin-top:4px;border-top:2px solid ' + soleBorderColor + ';padding-top:3px;"></div>';
-      cabedalHtml += '<h3 style="font-size:12px;margin:0 0 3px;font-weight:800;">' + soleEmoji + ' ' + escapeHtml(soleType) + '</h3>';
+    for (const group of pvGroups) {
+      const isSemPedido = group.saleOrderId === SEM_PEDIDO_KEY;
+      const late = group.daysUntilDeadline != null && group.daysUntilDeadline < 0;
+      const pvLabel = isSemPedido
+        ? 'Sem pedido vinculado'
+        : 'Pedido ' + (group.orderNumber || '—') + (group.clientName ? ' — ' + group.clientName : '');
+      cabedalHtml += '<div style="margin-top:4px;border-top:2px solid #111;padding-top:3px;"></div>';
+      cabedalHtml += '<h3 style="font-size:12px;margin:0 0 3px;font-weight:800;">📋 ' + escapeHtml(pvLabel);
+      if (!isSemPedido) {
+        // Vermelho só no atraso e SEMPRE pareado com negrito: a fábrica imprime
+        // laser P&B, onde o vermelho vira cinza (regra 5 de print).
+        cabedalHtml += '<span style="font-size:11px;font-weight:800;'
+          + (late ? 'color:#C00000;' : 'color:#111;')
+          + '"> · entrega ' + escapeHtml(formatDayBR(group.deliveryDeadline))
+          + ' (' + escapeHtml(deadlineChipLabel(group.daysUntilDeadline)) + ')</span>';
+      }
+      cabedalHtml += '<span style="font-weight:600;font-size:10px;color:#666;"> · '
+        + group.pairs + ' pares · ' + group.references.length
+        + (group.references.length === 1 ? ' referência' : ' referências') + '</span></h3>';
 
-      for (const [, { ref, orders: refOrders }] of refMap) {
+      for (const refGroup of group.references) {
+        const refOrders = refGroup.rows;
+        const ref = references.find(r => r.id === refOrders[0]?.reference_id);
+        if (!ref) continue;
         const refCode = ref.code || '—';
         const refName = ref.name || '';
 
@@ -341,8 +388,8 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
         cabedalHtml += '<h4 style="font-size:11px;margin:4px 0 2px;font-weight:700;">' + escapeHtml(refCode) + ' — ' + escapeHtml(refName) + clientLabel + '</h4>';
         cabedalHtml += '<table style="width:100%;border-collapse:collapse;">';
         cabedalHtml += '<thead><tr style="background:#e8e8d0;">';
-        cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:left;font-size:9px;">OP</th>';
         cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:left;font-size:9px;">Cor</th>';
+        cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:left;font-size:9px;">Solado</th>';
         cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:left;font-size:9px;">Loja</th>';
         refActiveSizes.forEach(s => { cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:center;font-size:9px;">' + s + '</th>'; });
         cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:center;font-size:9px;background:#e0e0c8;">Total</th>';
@@ -352,32 +399,62 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
         refActiveSizes.forEach(s => { refSizeTotals[s] = 0; });
         let refGrandTotal = 0;
 
-        for (const order of refOrders) {
+        // A linha é o ITEM DO PEDIDO (cor), não a OP — `consolidateRowsByColor`
+        // é a fonte única disso, compartilhada com o "Resumo por Pedido".
+        // Cor, solado, loja e silk são do item; a OP só entra como rastreio.
+        const itemRows = consolidateRowsByColor(refOrders, (order) => {
           const grade = order.grade as Record<string, number> | null;
           const gradeSum = getGradeTotal(grade);
           const totalPairs = getOrderTotalPairs(order);
           const multiplier = gradeSum > 0 ? totalPairs / gradeSum : 0;
           const scaled = scaleGradeWithLargestRemainder(grade, multiplier, totalPairs);
-          const orderClientName = saleOrders ? (() => { const so = saleOrders.find(s => s.id === order.sale_order_id); return so?.client_name || '—'; })() : '—';
+          const sizes: Record<string, number> = {};
+          refActiveSizes.forEach(sz => { sizes[sz] = scaled[sz] || 0; });
+          return {
+            color: order.color,
+            opNumber: order.order_number,
+            sizes,
+            total: totalPairs,
+          };
+        });
 
+        // Atributos que acompanham a cor (iguais em toda OP da mesma cor).
+        const attrsByColor = new Map<string, { soleType: string; clientName: string; silkName: string | null }>();
+        for (const order of refOrders) {
+          const key = String(order.color || '—').trim().toUpperCase();
+          if (attrsByColor.has(key)) continue;
+          const so = saleOrders?.find(x => x.id === order.sale_order_id);
+          const silk = getOrderSilk(order);
+          attrsByColor.set(key, {
+            soleType: deriveSoleType(order.color),
+            clientName: so?.client_name || '—',
+            silkName: silk ? silk.silk_name : null,
+          });
+        }
+
+        for (const item of itemRows) {
+          const attrs = attrsByColor.get(item.color.trim().toUpperCase());
           cabedalHtml += '<tr>';
-           const silk = getOrderSilk(order);
-           const silkLabel = silk ? ` <span style="font-size:8px;padding:1px 3px;background:#f5f5f0;border:1px solid #ddd;border-radius:2px;color:#444;font-weight:700;">SILK: ${escapeHtml(silk.silk_name)}</span>` : '';
-
-           cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:10px;font-weight:600;">' + escapeHtml(order.order_number) + '</td>';
-           cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:10px;">' + escapeHtml(order.color || '—') + silkLabel + '</td>';
-          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:9px;color:#0369a1;">' + escapeHtml(orderClientName) + '</td>';
-          refActiveSizes.forEach(s => {
-            const qty = scaled[s] || 0;
-            refSizeTotals[s] += qty;
+          const silkLabel = attrs?.silkName
+            ? ` <span style="font-size:8px;padding:1px 3px;background:#f5f5f0;border:1px solid #ddd;border-radius:2px;color:#444;font-weight:700;">SILK: ${escapeHtml(attrs.silkName)}</span>`
+            : '';
+          const opTrace = item.opNumbers.length > 0
+            ? `<span style="font-size:8px;color:#666;font-weight:400;"> (${escapeHtml(item.opNumbers.join(', '))})</span>`
+            : '';
+          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:10px;font-weight:600;">' + escapeHtml(item.color) + silkLabel + opTrace + '</td>';
+          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:9px;">' + escapeHtml(attrs?.soleType || '—') + '</td>';
+          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:9px;color:#0369a1;">' + escapeHtml(attrs?.clientName || '—') + '</td>';
+          refActiveSizes.forEach(sz => {
+            const qty = item.sizes[sz] || 0;
+            refSizeTotals[sz] += qty;
             cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;text-align:center;font-family:monospace;font-size:10px;font-weight:' + (qty > 0 ? '700' : '400') + '">' + (qty || '') + '</td>';
           });
-          refGrandTotal += totalPairs;
-          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;text-align:center;font-family:monospace;font-weight:700;font-size:10px;background:#f5f5f0;">' + totalPairs + '</td>';
+          refGrandTotal += item.total;
+          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;text-align:center;font-family:monospace;font-weight:700;font-size:10px;background:#f5f5f0;">' + item.total + '</td>';
           cabedalHtml += '</tr>';
         }
 
-        if (refOrders.length > 1) {
+        if (itemRows.length > 1) {
           cabedalHtml += '<tr style="background:#e8e8d0;font-weight:700;border-top:2px solid #333;">';
           cabedalHtml += '<td colspan="3" style="border:1px solid #999;padding:2px 4px;text-align:right;font-size:9px;">SUBTOTAL</td>';
           refActiveSizes.forEach(s => { cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;text-align:center;font-family:monospace;font-size:10px;">' + (refSizeTotals[s] || '') + '</td>'; });

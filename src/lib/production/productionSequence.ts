@@ -15,7 +15,7 @@
 
 import type { AtelierPipelineStatus } from '@/lib/atelier';
 
-function daysUntilDeadline(deadline: string | null | undefined, today = new Date()): number | null {
+export function daysUntilDeadline(deadline: string | null | undefined, today = new Date()): number | null {
   if (!deadline) return null;
   const d = new Date(`${deadline}T12:00:00`);
   if (Number.isNaN(d.getTime())) return null;

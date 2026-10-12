@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Scissors,
@@ -31,6 +31,11 @@ import {
 } from '@/hooks/useProductionEngine';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import type { CorteLookaheadChip } from '@/lib/corteLookahead';
+import {
+  deadlineChipLabel,
+  deadlineTone,
+  groupReportByOrderThenReference,
+} from '@/lib/reportOrderGrouping';
 import { toast } from 'sonner';
 
 const SECTOR_SHORT: Record<CorteLookaheadSector, string> = {
@@ -41,6 +46,13 @@ const SECTOR_SHORT: Record<CorteLookaheadSector, string> = {
 };
 
 const fmtPairs = (n: number) => n.toLocaleString('pt-BR');
+
+function deadlineVariant(days: number | null): 'warning-soft' | 'destructive-soft' | 'outline' {
+  const tone = deadlineTone(days);
+  if (tone === 'late') return 'destructive-soft';
+  if (tone === 'warn') return 'warning-soft';
+  return 'outline';
+}
 const fmtDay = (iso: string | null) =>
   iso
     ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
@@ -53,9 +65,17 @@ function chipVariant(tone: CorteLookaheadChip['tone']): 'success-soft' | 'warnin
   return 'outline';
 }
 
+/**
+ * Chips de LINHA. `prazo`, `score` e `pct_pv` saíram daqui: são do PV, iguais em
+ * toda linha dele, e com a tabela agrupada por pedido repetiriam N vezes a mesma
+ * informação. Agora moram no cabeçalho do PV, uma vez.
+ */
+const ROW_LEVEL_CHIPS = new Set<CorteLookaheadChip['key']>(['estoque', 'gap']);
+
 function RowChips({ chips }: { chips: CorteLookaheadChip[] }) {
   // Evita duplicar o chip de gap (já vem no de estoque quando bloqueado).
   const shown = chips.filter((c, i, arr) => {
+    if (!ROW_LEVEL_CHIPS.has(c.key)) return false;
     if (c.key !== 'gap') return true;
     return !arr.some((o) => o.key === 'estoque' && o.label === c.label);
   });
@@ -76,7 +96,12 @@ function RowChips({ chips }: { chips: CorteLookaheadChip[] }) {
 
 /**
  * Fila de Corte — look-ahead (specs/fila-corte-lookahead.md).
- * Demanda futura de PV sem OP, ordenada por estoque livre + score de fechar caixa.
+ * Demanda futura de PV sem OP.
+ *
+ * Apresentação (dono, 12/10/2026): PEDIDO de cima pra baixo pelo prazo de entrega,
+ * itens agrupados por REFERÊNCIA. ⚠ A PRIORIDADE DE LIBERAÇÃO não mudou: quem aloca
+ * o estoque livre e decide o liberável é `rankCorteLookaheadRows` pela sequência
+ * oficial (fechar PV → urgência → cor → ref). O agrupamento é só leitura.
  */
 export default function ProducaoCorteLookahead() {
   const { value: sector, setValue: setSector } = useUrlTabState({
@@ -96,6 +121,28 @@ export default function ProducaoCorteLookahead() {
   const capacity = Number(setting?.daily_capacity_pairs) || 0;
 
   const liberableRows = useMemo(() => rows.filter((r) => r.liberable), [rows]);
+
+  /**
+   * Relatório: PV de cima pra baixo pelo prazo de entrega, itens agrupados por
+   * referência (decisão do dono, 12/10/2026).
+   *
+   * ⚠ Agrupa `rows` JÁ RANQUEADO — `rankCorteLookaheadRows` continua ordenando
+   * pela sequência oficial, porque é essa ordem que aloca o estoque livre e decide
+   * quem fica liberável. Reordenar a entrada dele mudaria quem pode ser liberado,
+   * não só a aparência do relatório.
+   */
+  const orderGroups = useMemo(
+    () =>
+      groupReportByOrderThenReference(rows, (r) => ({
+        saleOrderId: r.saleOrderId,
+        orderNumber: r.orderNumber,
+        clientName: r.clientName,
+        deliveryDeadline: r.deliveryDeadline,
+        referenceLabel: r.referenceCode || r.referenceName,
+        pairs: r.quantity,
+      })),
+    [rows],
+  );
   const selectedRows = useMemo(
     () => rows.filter((r) => selected.has(r.itemId) && r.liberable),
     [rows, selected],
@@ -158,7 +205,7 @@ export default function ProducaoCorteLookahead() {
       <EditorialPageHeader
         sectionLabel="Produção"
         title="Fila de Corte"
-        description="Look-ahead da carteira aprovada: libera OP adiantada só com material livre, priorizando fechar PV pra faturar."
+        description="Look-ahead da carteira aprovada: pedido de entrega mais próxima no topo, itens agrupados por referência. Libera OP adiantada só com material livre."
         actions={
           <Button variant="outline" className="h-9 gap-2" asChild>
             <Link to="/imprimir-fichas">
@@ -208,7 +255,7 @@ export default function ProducaoCorteLookahead() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm text-muted-foreground">
                     {selectedRows.length === 0
-                      ? `${liberableRows.length} liberável(is) · ${rows.length} na fila`
+                      ? `${liberableRows.length} liberável(is) · ${rows.length} na fila · ${orderGroups.length} ${orderGroups.length === 1 ? 'pedido' : 'pedidos'}`
                       : (
                         <>
                           Selecionados:{' '}
@@ -272,63 +319,92 @@ export default function ProducaoCorteLookahead() {
                               aria-label="Selecionar liberáveis"
                             />
                           </TableHead>
-                          <TableHead>PV</TableHead>
-                          <TableHead>Referência</TableHead>
                           <TableHead>Cor</TableHead>
                           <TableHead className="text-right">Pares</TableHead>
-                          <TableHead>Prazo</TableHead>
                           <TableHead>Motivo</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {rows.map((row) => {
-                          const checked = selected.has(row.itemId);
+                        {orderGroups.map((group) => {
+                          const head = group.references[0]?.rows[0];
                           return (
-                            <TableRow
-                              key={row.itemId}
-                              className={row.liberable ? undefined : 'opacity-70'}
-                            >
-                              <TableCell>
-                                <Checkbox
-                                  checked={checked}
-                                  disabled={!row.liberable}
-                                  onCheckedChange={(v) => toggleRow(row, v === true)}
-                                  aria-label={`Selecionar ${row.orderNumber} ${row.referenceName}`}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <div className="space-y-0.5">
-                                  <Badge variant="mono" className="normal-case tracking-normal text-[11px]">
-                                    {row.orderNumber}
-                                  </Badge>
-                                  <p className="text-[11px] text-muted-foreground truncate max-w-[10rem]">
-                                    {row.clientName || '—'}
-                                  </p>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="min-w-0">
-                                  <p className="font-medium text-sm truncate max-w-[14rem]">
-                                    {row.referenceCode || row.referenceName}
-                                  </p>
-                                  {row.referenceCode && row.referenceName !== row.referenceCode && (
-                                    <p className="text-[11px] text-muted-foreground truncate max-w-[14rem]">
-                                      {row.referenceName}
-                                    </p>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-sm">{row.color || '—'}</TableCell>
-                              <TableCell className="text-right font-mono text-sm">
-                                {fmtPairs(row.quantity)}
-                              </TableCell>
-                              <TableCell className="font-mono text-sm">
-                                {fmtDay(row.deliveryDeadline)}
-                              </TableCell>
-                              <TableCell>
-                                <RowChips chips={row.chips} />
-                              </TableCell>
-                            </TableRow>
+                            <Fragment key={group.saleOrderId}>
+                              <TableRow className="bg-muted/50 hover:bg-muted/50">
+                                <TableCell colSpan={4} className="py-2">
+                                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                    <Badge variant="mono" className="normal-case tracking-normal text-[11px]">
+                                      {group.orderNumber}
+                                    </Badge>
+                                    <span className="truncate text-sm font-medium text-foreground">
+                                      {group.clientName || '—'}
+                                    </span>
+                                    <span className="font-mono text-[11px] text-muted-foreground">
+                                      entrega {fmtDay(group.deliveryDeadline)}
+                                    </span>
+                                    <Badge
+                                      variant={deadlineVariant(group.daysUntilDeadline)}
+                                      className="normal-case tracking-normal text-[10px] font-medium"
+                                    >
+                                      {deadlineChipLabel(group.daysUntilDeadline)}
+                                    </Badge>
+                                    {head && (
+                                      <Badge
+                                        variant={head.completionPct >= 80 ? 'success-soft' : 'outline'}
+                                        className="normal-case tracking-normal text-[10px] font-medium"
+                                      >
+                                        PV {Math.round(head.completionPct)}%
+                                      </Badge>
+                                    )}
+                                    <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+                                      {fmtPairs(group.pairs)} pares · {group.references.length}{' '}
+                                      {group.references.length === 1 ? 'referência' : 'referências'}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+
+                              {group.references.map((ref) => (
+                                <Fragment key={ref.key}>
+                                  <TableRow className="hover:bg-transparent">
+                                    <TableCell className="py-1.5" />
+                                    <TableCell colSpan={3} className="py-1.5">
+                                      <div className="flex items-baseline gap-2">
+                                        <span className="text-sm font-semibold text-foreground">
+                                          {ref.label}
+                                        </span>
+                                        <span className="font-mono text-[11px] text-muted-foreground">
+                                          {fmtPairs(ref.pairs)} pares · {ref.rows.length}{' '}
+                                          {ref.rows.length === 1 ? 'cor' : 'cores'}
+                                        </span>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+
+                                  {ref.rows.map((row) => (
+                                    <TableRow
+                                      key={row.itemId}
+                                      className={row.liberable ? undefined : 'opacity-70'}
+                                    >
+                                      <TableCell>
+                                        <Checkbox
+                                          checked={selected.has(row.itemId)}
+                                          disabled={!row.liberable}
+                                          onCheckedChange={(v) => toggleRow(row, v === true)}
+                                          aria-label={`Selecionar ${row.orderNumber} ${row.referenceName} ${row.color || ''}`}
+                                        />
+                                      </TableCell>
+                                      <TableCell className="pl-6 text-sm">{row.color || '—'}</TableCell>
+                                      <TableCell className="text-right font-mono text-sm">
+                                        {fmtPairs(row.quantity)}
+                                      </TableCell>
+                                      <TableCell>
+                                        <RowChips chips={row.chips} />
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </Fragment>
+                              ))}
+                            </Fragment>
                           );
                         })}
                       </TableBody>
