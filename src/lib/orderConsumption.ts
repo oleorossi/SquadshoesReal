@@ -2307,6 +2307,19 @@ export function computeConsumptionForItems(
         const facheteWarning = facheteMissing.length > 0
           ? `Tamanhos sem consumo de fachete: ${facheteMissing.join(', ')}`
           : undefined;
+        // Grupo do fachete cadastrado mas SEM produto ativo que resolva. O SQL
+        // (`calculate_order_consumption_by_grade`, ramo CONS-8) devolve a linha com
+        // `required = 0` e `source = 'unresolved'`, então reserva, débito, custeio e
+        // MRP ignoram o fachete inteiro. A UI mantinha a quantidade MUDA: o operador
+        // lia metragem que o estoque nunca ia empenhar. Mesmo padrão da Palmilha
+        // (`insoleNoProductWarning`) — a linha segue com a quantidade, porque a ficha
+        // do operador precisa saber quanto cortar, mas avisa que nada será reservado.
+        // Medido na S33 (12/10/2026): o grupo `NAPA SOFT COM PU 600` existe e tem
+        // ZERO itens, e a escolha da ficha VENCE o grupo do solado e o lining_material
+        // (mig 20270101035400), então não há fallback pra salvar o cálculo.
+        const facheteNoProductWarning = !facheteProd
+          ? `Material do fachete "${facheteMaterialName}" não resolve nenhum produto ativo no estoque — o consumo aparece aqui, mas NÃO será reservado nem debitado. Cadastre o produto no grupo (Materiais → Estoque).`
+          : undefined;
         const widthMissing = isLinearWidthMissing(facheteSheet, 'm');
         const facheteTotal = widthMissing ? facheteDm2 : convertDm2ToLinearMeters(facheteDm2, facheteSheet);
         addConsumptionRow(consumptionMap, {
@@ -2317,7 +2330,7 @@ export function computeConsumptionForItems(
           color: mappedLiningColor,
           totalQuantity: facheteTotal,
           widthMissing,
-          warning: facheteWarning,
+          warning: [facheteWarning, facheteNoProductWarning].filter(Boolean).join(' ') || undefined,
         });
       } else {
         // Solado fachetado SEM consumo de fachete cadastrado. Espelha o
