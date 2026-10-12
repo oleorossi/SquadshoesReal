@@ -3,7 +3,7 @@ import { getOrderTotalPairs, getGradeTotal } from './cuttingCounts';
 import { escapeHtml } from './htmlUtils';
 import { scaleGradeWithLargestRemainder } from './scaleGrade';
 import { requiresUpperCut } from './upperCutEligibility';
-import { deadlineChipLabel, groupReportByOrderThenReference } from './reportOrderGrouping';
+import { consolidateRowsByColor, deadlineChipLabel, groupReportByOrderThenReference } from './reportOrderGrouping';
 
 /** OP sem PV vinculado — grupo próprio, sempre no fim (prazo nulo). */
 const SEM_PEDIDO_KEY = '__sem_pedido__';
@@ -388,7 +388,6 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
         cabedalHtml += '<h4 style="font-size:11px;margin:4px 0 2px;font-weight:700;">' + escapeHtml(refCode) + ' — ' + escapeHtml(refName) + clientLabel + '</h4>';
         cabedalHtml += '<table style="width:100%;border-collapse:collapse;">';
         cabedalHtml += '<thead><tr style="background:#e8e8d0;">';
-        cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:left;font-size:9px;">OP</th>';
         cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:left;font-size:9px;">Cor</th>';
         cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:left;font-size:9px;">Solado</th>';
         cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:left;font-size:9px;">Loja</th>';
@@ -400,35 +399,64 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
         refActiveSizes.forEach(s => { refSizeTotals[s] = 0; });
         let refGrandTotal = 0;
 
-        for (const order of refOrders) {
+        // A linha é o ITEM DO PEDIDO (cor), não a OP — `consolidateRowsByColor`
+        // é a fonte única disso, compartilhada com o "Resumo por Pedido".
+        // Cor, solado, loja e silk são do item; a OP só entra como rastreio.
+        const itemRows = consolidateRowsByColor(refOrders, (order) => {
           const grade = order.grade as Record<string, number> | null;
           const gradeSum = getGradeTotal(grade);
           const totalPairs = getOrderTotalPairs(order);
           const multiplier = gradeSum > 0 ? totalPairs / gradeSum : 0;
           const scaled = scaleGradeWithLargestRemainder(grade, multiplier, totalPairs);
-          const orderClientName = saleOrders ? (() => { const so = saleOrders.find(s => s.id === order.sale_order_id); return so?.client_name || '—'; })() : '—';
+          const sizes: Record<string, number> = {};
+          refActiveSizes.forEach(sz => { sizes[sz] = scaled[sz] || 0; });
+          return {
+            color: order.color,
+            opNumber: order.order_number,
+            sizes,
+            total: totalPairs,
+          };
+        });
 
+        // Atributos que acompanham a cor (iguais em toda OP da mesma cor).
+        const attrsByColor = new Map<string, { soleType: string; clientName: string; silkName: string | null }>();
+        for (const order of refOrders) {
+          const key = String(order.color || '—').trim().toUpperCase();
+          if (attrsByColor.has(key)) continue;
+          const so = saleOrders?.find(x => x.id === order.sale_order_id);
+          const silk = getOrderSilk(order);
+          attrsByColor.set(key, {
+            soleType: deriveSoleType(order.color),
+            clientName: so?.client_name || '—',
+            silkName: silk ? silk.silk_name : null,
+          });
+        }
+
+        for (const item of itemRows) {
+          const attrs = attrsByColor.get(item.color.trim().toUpperCase());
           cabedalHtml += '<tr>';
-           const silk = getOrderSilk(order);
-           const silkLabel = silk ? ` <span style="font-size:8px;padding:1px 3px;background:#f5f5f0;border:1px solid #ddd;border-radius:2px;color:#444;font-weight:700;">SILK: ${escapeHtml(silk.silk_name)}</span>` : '';
-
-           cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:10px;font-weight:600;">' + escapeHtml(order.order_number) + '</td>';
-           cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:10px;">' + escapeHtml(order.color || '—') + silkLabel + '</td>';
-          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:9px;">' + escapeHtml(deriveSoleType(order.color)) + '</td>';
-          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:9px;color:#0369a1;">' + escapeHtml(orderClientName) + '</td>';
-          refActiveSizes.forEach(s => {
-            const qty = scaled[s] || 0;
-            refSizeTotals[s] += qty;
+          const silkLabel = attrs?.silkName
+            ? ` <span style="font-size:8px;padding:1px 3px;background:#f5f5f0;border:1px solid #ddd;border-radius:2px;color:#444;font-weight:700;">SILK: ${escapeHtml(attrs.silkName)}</span>`
+            : '';
+          const opTrace = item.opNumbers.length > 0
+            ? `<span style="font-size:8px;color:#666;font-weight:400;"> (${escapeHtml(item.opNumbers.join(', '))})</span>`
+            : '';
+          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:10px;font-weight:600;">' + escapeHtml(item.color) + silkLabel + opTrace + '</td>';
+          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:9px;">' + escapeHtml(attrs?.soleType || '—') + '</td>';
+          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;font-size:9px;color:#0369a1;">' + escapeHtml(attrs?.clientName || '—') + '</td>';
+          refActiveSizes.forEach(sz => {
+            const qty = item.sizes[sz] || 0;
+            refSizeTotals[sz] += qty;
             cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;text-align:center;font-family:monospace;font-size:10px;font-weight:' + (qty > 0 ? '700' : '400') + '">' + (qty || '') + '</td>';
           });
-          refGrandTotal += totalPairs;
-          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;text-align:center;font-family:monospace;font-weight:700;font-size:10px;background:#f5f5f0;">' + totalPairs + '</td>';
+          refGrandTotal += item.total;
+          cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;text-align:center;font-family:monospace;font-weight:700;font-size:10px;background:#f5f5f0;">' + item.total + '</td>';
           cabedalHtml += '</tr>';
         }
 
-        if (refOrders.length > 1) {
+        if (itemRows.length > 1) {
           cabedalHtml += '<tr style="background:#e8e8d0;font-weight:700;border-top:2px solid #333;">';
-          cabedalHtml += '<td colspan="4" style="border:1px solid #999;padding:2px 4px;text-align:right;font-size:9px;">SUBTOTAL</td>';
+          cabedalHtml += '<td colspan="3" style="border:1px solid #999;padding:2px 4px;text-align:right;font-size:9px;">SUBTOTAL</td>';
           refActiveSizes.forEach(s => { cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;text-align:center;font-family:monospace;font-size:10px;">' + (refSizeTotals[s] || '') + '</td>'; });
           cabedalHtml += '<td style="border:1px solid #999;padding:2px 4px;text-align:center;font-family:monospace;font-size:10px;font-weight:700;">' + refGrandTotal + '</td>';
           cabedalHtml += '</tr>';

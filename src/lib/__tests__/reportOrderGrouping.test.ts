@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compareDeadlineAsc,
+  consolidateRowsByColor,
   deadlineChipLabel,
   deadlineTone,
   groupReportByOrderThenReference,
@@ -200,5 +201,100 @@ describe('rótulo do prazo', () => {
     expect(deadlineTone(-1)).toBe('late');
     expect(deadlineTone(2)).toBe('warn');
     expect(deadlineTone(30)).toBe('neutral');
+  });
+});
+
+describe('consolidateRowsByColor — a linha é o item do pedido, não a OP', () => {
+  interface Op {
+    op: string;
+    cor: string;
+    sizes: Record<string, number>;
+    total: number;
+  }
+  const mapOp = (o: Op) => ({
+    color: o.cor,
+    opNumber: o.op,
+    sizes: o.sizes,
+    total: o.total,
+  });
+
+  it('duas OPs da mesma cor somam numa linha só, com a grade somada', () => {
+    const lines = consolidateRowsByColor(
+      [
+        { op: 'OP-001', cor: 'OFF WHITE', sizes: { '34': 10, '35': 2 }, total: 12 },
+        { op: 'OP-002', cor: 'OFF WHITE', sizes: { '34': 5, '36': 3 }, total: 8 },
+      ],
+      mapOp,
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0].total).toBe(20);
+    expect(lines[0].sizes).toEqual({ '34': 15, '35': 2, '36': 3 });
+    expect(lines[0].opNumbers).toEqual(['OP-001', 'OP-002']);
+  });
+
+  it('cores diferentes não se misturam e saem em ordem alfabética', () => {
+    const lines = consolidateRowsByColor(
+      [
+        { op: 'OP-001', cor: 'PRETO', sizes: { '34': 4 }, total: 4 },
+        { op: 'OP-002', cor: 'BEGE', sizes: { '34': 6 }, total: 6 },
+      ],
+      mapOp,
+    );
+    expect(lines.map((l) => l.color)).toEqual(['BEGE', 'PRETO']);
+  });
+
+  it('casa a cor ignorando acento e caixa, preservando o rótulo da 1ª', () => {
+    const lines = consolidateRowsByColor(
+      [
+        { op: 'OP-001', cor: 'Marrom Café', sizes: { '34': 2 }, total: 2 },
+        { op: 'OP-002', cor: 'MARROM CAFE', sizes: { '34': 3 }, total: 3 },
+      ],
+      mapOp,
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0].color).toBe('Marrom Café');
+    expect(lines[0].total).toBe(5);
+  });
+
+  it('mantém o rastreio das OPs sem repetir número', () => {
+    const lines = consolidateRowsByColor(
+      [
+        { op: 'OP-001', cor: 'PRETO', sizes: {}, total: 1 },
+        { op: 'OP-001', cor: 'PRETO', sizes: {}, total: 1 },
+      ],
+      mapOp,
+    );
+    expect(lines[0].opNumbers).toEqual(['OP-001']);
+  });
+
+  it('OP sem número não some da linha nem inventa rastreio', () => {
+    const lines = consolidateRowsByColor(
+      [{ op: '', cor: 'PRETO', sizes: { '34': 7 }, total: 7 }],
+      mapOp,
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0].opNumbers).toEqual([]);
+    expect(lines[0].total).toBe(7);
+  });
+
+  it('cor vazia vira rótulo neutro em vez de sumir', () => {
+    const lines = consolidateRowsByColor(
+      [{ op: 'OP-001', cor: '', sizes: { '34': 3 }, total: 3 }],
+      mapOp,
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0].color).toBe('—');
+  });
+
+  it('numeração zerada não cria célula, e total negativo não baixa a soma', () => {
+    const lines = consolidateRowsByColor(
+      [
+        { op: 'OP-001', cor: 'PRETO', sizes: { '34': 0, '35': 4 }, total: 4 },
+        { op: 'OP-002', cor: 'PRETO', sizes: { '35': 1 }, total: -9 },
+      ],
+      mapOp,
+    );
+    expect(lines[0].sizes).toEqual({ '35': 5 });
+    expect(lines[0].total).toBe(4);
   });
 });

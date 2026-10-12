@@ -45,6 +45,7 @@ import { normalizeSector } from '@/lib/sectors';
 import { escapeHtml, safeUrlAttr } from '@/lib/htmlUtils';
 import { requiresUpperCut } from '@/lib/upperCutEligibility';
 import {
+  consolidateRowsByColor,
   deadlineChipLabel,
   deadlineTone,
   groupReportByOrderThenReference,
@@ -1245,7 +1246,9 @@ if (totalPairsAll !== palmTotal) {
                   opSummaryRows += `${escapeHtml(refGroup.label)}<span style="font-weight:600;color:#666;"> · ${refGroup.pairs} pares</span>`;
                   opSummaryRows += `</td></tr>`;
 
-                  refGroup.rows.forEach(o => {
+                  // A linha é o ITEM DO PEDIDO (cor), não a OP — mesma fonte única
+                  // (`consolidateRowsByColor`) do detalhamento do relatório agrupado.
+                  const itemRows = consolidateRowsByColor(refGroup.rows, (o) => {
                     const grade = o.grade as Record<string, number> | null;
                     const gradeSum = getGradeTotal(grade);
                     const tp = getOrderTotalPairs(o);
@@ -1256,18 +1259,25 @@ if (totalPairsAll !== palmTotal) {
                     const scaled = gradeSum > 0
                       ? scaleGradeWithLargestRemainder(grade || {}, tp / gradeSum, tp)
                       : {};
-                    totalPairsAll += tp;
-                    opSummaryRows += `<tr>`;
-                    opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;font-weight:600;">${escapeHtml(o.order_number || '')}</td>`;
-                    opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;">${escapeHtml(o.color || '—')}</td>`;
-                    allActiveSizesReport.forEach(s => {
-                      const qty = Number(scaled[s]) || 0;
-                      opSizeTotals[s] += qty;
-                      opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;font-weight:${qty > 0 ? '700' : '400'}">${qty || ''}</td>`;
-                    });
-                    opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-weight:700;font-size:11px;background:#f5f5f0;">${tp}</td>`;
-                    opSummaryRows += `</tr>`;
+                    const sizes: Record<string, number> = {};
+                    allActiveSizesReport.forEach(s => { sizes[s] = Number(scaled[s]) || 0; });
+                    return { color: o.color, opNumber: o.order_number, sizes, total: tp };
                   });
+
+                  itemRows
+                    .forEach(item => {
+                      totalPairsAll += item.total;
+                      opSummaryRows += `<tr>`;
+                      opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:10px;font-weight:600;">${escapeHtml(item.color)}</td>`;
+                      opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;font-size:8px;color:#666;">${escapeHtml(item.opNumbers.join(', '))}</td>`;
+                      allActiveSizesReport.forEach(s => {
+                        const qty = item.sizes[s] || 0;
+                        opSizeTotals[s] += qty;
+                        opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-size:11px;font-weight:${qty > 0 ? '700' : '400'}">${qty || ''}</td>`;
+                      });
+                      opSummaryRows += `<td style="border:1px solid #999;padding:3px 6px;text-align:center;font-family:monospace;font-weight:700;font-size:11px;background:#f5f5f0;">${item.total}</td>`;
+                      opSummaryRows += `</tr>`;
+                    });
                 });
               });
               opSummaryRows += `<tr style="background:#e8e8d0;font-weight:700;border-top:2px solid #333;">`;
@@ -1279,11 +1289,11 @@ if (totalPairsAll !== palmTotal) {
               opSummaryRows += `</tr>`;
 
               const detailHtml = `
-                <h2 style="font-size:13px;margin:20px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px;">Resumo por OP</h2>
+                <h2 style="font-size:13px;margin:20px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px;">Resumo por Pedido</h2>
                 <table style="width:100%;border-collapse:collapse;">
                   <thead><tr style="background:#e8e8d0;">
-                    <th style="border:1px solid #999;padding:4px 6px;text-align:left;font-size:10px;">OP</th>
                     <th style="border:1px solid #999;padding:4px 6px;text-align:left;font-size:10px;">Cor</th>
+                    <th style="border:1px solid #999;padding:4px 6px;text-align:left;font-size:10px;">OPs</th>
                     ${allActiveSizesReport.map(s => `<th style="border:1px solid #999;padding:4px 6px;text-align:center;font-size:10px;">${s}</th>`).join('')}
                     <th style="border:1px solid #999;padding:4px 6px;text-align:center;font-size:10px;background:#e0e0c8;">Total</th>
                   </tr></thead>

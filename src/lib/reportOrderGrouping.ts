@@ -174,6 +174,65 @@ export function groupReportByOrderThenReference<T>(
   });
 }
 
+/**
+ * Linha de relatório = ITEM DO PEDIDO (uma cor), não a OP.
+ *
+ * Decisão do dono, 12/10/2026: *"esses agrupamentos eu quero por pedido, ao
+ * invés de OP"*. A OP é artefato interno de produção — o mesmo
+ * `referência × cor` do mesmo pedido saía em linhas separadas, e quem corta
+ * tem uma faca e uma cor pela frente, não duas ordens. As numerações somam.
+ *
+ * Medido em 12/10/2026: `sale_order_item_id` → OP é 1:1 (nenhum item com 2 OPs),
+ * mas 3 grupos `(pedido, referência, cor)` tinham 2 OPs — essas fundem. E 15 OPs
+ * vivas não têm item de pedido; elas continuam como linha própria porque não há
+ * item a que atribuí-las.
+ *
+ * ⚠ Os números das OPs são preservados em `opNumbers` de propósito: tirar o
+ * rastreio de uma ficha de corte é pior que manter a OP fora do eixo principal.
+ */
+export interface ReportItemLine {
+  color: string;
+  opNumbers: string[];
+  sizes: Record<string, number>;
+  total: number;
+}
+
+export function consolidateRowsByColor<T>(
+  rows: readonly T[],
+  map: (row: T) => {
+    color: string | null | undefined;
+    opNumber?: string | null;
+    sizes: Record<string, number>;
+    total: number;
+  },
+): ReportItemLine[] {
+  const byColor = new Map<string, ReportItemLine>();
+
+  for (const row of rows) {
+    const f = map(row);
+    const label = String(f.color || '').trim() || '—';
+    const key = normalizeSequenceKey(label) || label.toUpperCase();
+    let line = byColor.get(key);
+    if (!line) {
+      line = { color: label, opNumbers: [], sizes: {}, total: 0 };
+      byColor.set(key, line);
+    }
+    const op = String(f.opNumber || '').trim();
+    if (op && !line.opNumbers.includes(op)) line.opNumbers.push(op);
+    for (const [size, qty] of Object.entries(f.sizes || {})) {
+      const n = Number(qty);
+      if (!Number.isFinite(n) || n <= 0) continue;
+      line.sizes[size] = (line.sizes[size] || 0) + n;
+    }
+    const total = Number(f.total);
+    if (Number.isFinite(total) && total > 0) line.total += total;
+  }
+
+  return [...byColor.values()].sort((a, b) =>
+    a.color.localeCompare(b.color, 'pt-BR', { numeric: true, sensitivity: 'base' }),
+  );
+}
+
 /** Rótulo curto do prazo, igual nas quatro telas. */
 export function deadlineChipLabel(days: number | null): string {
   if (days == null) return 'Sem prazo';
