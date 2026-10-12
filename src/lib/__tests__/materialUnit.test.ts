@@ -190,9 +190,11 @@ describe('paridade rótulo × motor', () => {
 
     const basis = resolveConsumptionUnit('X', g, p, cs).basis;
     // O que o MOTOR faz com o mesmo cadastro:
-    const sheet: any = width > 0
-      ? { dimensions_width: width, dimensions_unit: 'mm', products: { unit: 'm' } }
-      : { dimensions_width: 0, dimensions_unit: 'mm', products: { unit: 'm' } };
+    const sheet = {
+      dimensions_width: width > 0 ? width : 0,
+      dimensions_unit: 'mm',
+      products: { unit: 'm' },
+    };
     const motorConverte = !isNativeLinearMaterial(sheet);
 
     expect(basis === 'roll_area').toBe(motorConverte);

@@ -13,6 +13,7 @@ import {
   pickConsumptionForSize,
   LINEAR_UNITS,
   isNativeLinearMaterial,
+  type ComponentSheetCandidate,
 } from '@/lib/materialConsumption';
 import { calculateStrapConsumptionCm, resolveOrderStraps } from '@/lib/strapConsumption';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
@@ -1740,15 +1741,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       // orderConsumption.ts, caminho BOM.)
       const cs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
       if (isLinearUnit && cs) {
-        if (isNativeLinearMaterial(cs as any)) {
+        if (isNativeLinearMaterial(cs as ComponentSheetCandidate)) {
           // Linear direto (fita/elástico): rawQty JÁ está na unidade de estoque do
           // item. O ramo `unitLc === 'cm'` abaixo é inalcançável aqui (há ficha),
           // então o /100 do centímetro precisa acontecer nesta perna — senão um
           // produto em 'cm' sai rotulado 'metro' com o número 100× maior.
           totalQty = unitLc === 'cm' ? rawQty / 100 : rawQty;
           productUnit = 'metro';
-        } else if (!isLinearWidthMissing(cs as any, productUnit)) {
-          totalQty = convertDm2ToLinearMeters(rawQty, cs as any);
+        } else if (!isLinearWidthMissing(cs as ComponentSheetCandidate, productUnit)) {
+          totalQty = convertDm2ToLinearMeters(rawQty, cs as ComponentSheetCandidate);
           productUnit = 'metro';
         } else {
           // Ficha de área SEM largura → não dá pra converter dm²→metro.

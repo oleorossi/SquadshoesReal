@@ -92,7 +92,7 @@ import { AtelierReferencePanel } from '@/components/technical-sheets/AtelierRefe
 import { cn, getSoleModelName, parseSafeNumber, formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { needsWidthForConversion, effectiveConversionFactor } from '@/lib/purchaseConversion';
 import { bomMaterialCostPerPair } from '@/lib/materialConsumption';
-import { resolveConsumptionUnit } from '@/lib/materialUnit';
+import { resolveConsumptionUnit, type GroupLike } from '@/lib/materialUnit';
 import {
   isLeftoverCabedalExtra,
   leftoverRequiresPin,
@@ -2866,8 +2866,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   if (!(groupName || '').trim() && !groupId) return null;
                   const r = resolveUnitFor(groupName, undefined, groupId);
                   if (r.basis !== 'native_linear' || r.widthMm <= 0) return null;
-                  const g: any = (groupId ? (groups || []).find((x: any) => x.id === groupId) : null)
-                    || (groups || []).find((x: any) => (x.name || '').trim() === (groupName || '').trim());
+                  const g: GroupLike | undefined | null = (groupId ? (groups || []).find((x: GroupLike) => x.id === groupId) : null)
+                    || (groups || []).find((x: GroupLike) => (x.name || '').trim() === (groupName || '').trim());
                   const lengthMm = Number(g?.dimensions_length) || 0;
                   return lengthMm >= 400 ? `${r.widthMm} mm` : null;
                 };

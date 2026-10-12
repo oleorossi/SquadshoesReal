@@ -47,6 +47,37 @@ export interface ResolvedConsumptionUnit {
   productUnit: string;
 }
 
+/**
+ * Formas de entrada. São LOOSE de propósito: chegam do React Query sobre as
+ * tabelas do Supabase (tipos gerados) e dos fixtures de teste, e esta função só
+ * lê este punhado de campos. Tipar o que se lê evita o `any` sem acoplar ao
+ * schema inteiro.
+ */
+export interface GroupLike {
+  id?: string | null;
+  name?: string | null;
+  consumption_unit?: string | null;
+  dimensions_width?: number | string | null;
+  dimensions_length?: number | string | null;
+  dimensions_unit?: string | null;
+}
+
+export interface ProductLike {
+  id?: string | null;
+  group_id?: string | null;
+  unit?: string | null;
+  active?: boolean | null;
+}
+
+export interface ComponentSheetLike {
+  product_id?: string | null;
+  group_id?: string | null;
+  dimensions_width?: number | string | null;
+  dimensions_length?: number | string | null;
+  dimensions_unit?: string | null;
+  products?: { group_id?: string | null } | null;
+}
+
 const norm = (value: unknown): string => (value ?? '').toString().trim().toLowerCase();
 
 /** mm a partir de (valor, unidade) — mesma tabela de `convertDimensionToMm`. */
@@ -65,19 +96,17 @@ const toMm = (value: unknown, unit: unknown): number => {
  * física (m/cm/placa): num grupo misto como NAPA SOFT + MASSABOX ('m' e 'un') é
  * a napa que define como o consumo do cabedal é digitado.
  */
-const pickProduct = (groupId: string | undefined | null, products: any[]) => {
+const pickProduct = (groupId: string | undefined | null, products: ProductLike[]): ProductLike | null => {
   if (!groupId) return null;
-  const withUnit = (products || []).filter(
-    (p: any) => p.group_id === groupId && norm(p.unit),
-  );
+  const withUnit = (products || []).filter(p => p.group_id === groupId && norm(p.unit));
   if (withUnit.length === 0) return null;
-  const actives = withUnit.filter((p: any) => p.active !== false);
+  const actives = withUnit.filter(p => p.active !== false);
   const pool = actives.length > 0 ? actives : withUnit;
-  const isPhysical = (p: any) => LINEAR_UNITS.has(norm(p.unit)) || PLATE_UNITS.has(norm(p.unit));
+  const isPhysical = (p: ProductLike) => LINEAR_UNITS.has(norm(p.unit)) || PLATE_UNITS.has(norm(p.unit));
   return pool.find(isPhysical) || pool[0];
 };
 
-const sheetWidthMm = (cs: any): number =>
+const sheetWidthMm = (cs: ComponentSheetLike | null | undefined): number =>
   toMm(cs?.dimensions_width, cs?.dimensions_unit) || toMm(cs?.dimensions_length, cs?.dimensions_unit);
 
 /**
@@ -92,10 +121,14 @@ const sheetWidthMm = (cs: any): number =>
  * divide por 137 — e `useProducts` ordena por `updated_at DESC`, então a ordem
  * MUDA sozinha. Com `anyRoll`, a dúvida cai para o lado seguro (dm², o status quo).
  */
-const resolveWidths = (group: any, product: any, componentSheets: any[]): { widthMm: number; anyRoll: boolean } => {
+const resolveWidths = (
+  group: GroupLike | null,
+  product: ProductLike | null,
+  componentSheets: ComponentSheetLike[],
+): { widthMm: number; anyRoll: boolean } => {
   const sheets = componentSheets || [];
-  const ofGroup = sheets.filter((cs: any) => cs.group_id === group?.id || cs.products?.group_id === group?.id);
-  const own = product ? sheets.find((cs: any) => cs.product_id === product.id) : null;
+  const ofGroup = sheets.filter(cs => cs.group_id === group?.id || cs.products?.group_id === group?.id);
+  const own = product ? sheets.find(cs => cs.product_id === product.id) : null;
 
   const anyRoll = [own, ...ofGroup].some(cs => cs && sheetWidthMm(cs) >= ROLL_WIDTH_FLOOR_MM);
 
@@ -110,21 +143,21 @@ const resolveWidths = (group: any, product: any, componentSheets: any[]): { widt
 
 export function resolveConsumptionUnit(
   groupName: string | null | undefined,
-  groups: any[],
-  products: any[],
-  componentSheets: any[] = [],
+  groups: GroupLike[],
+  products: ProductLike[],
+  componentSheets: ComponentSheetLike[] = [],
   opts?: { groupId?: string | null; storedUnit?: string | null },
 ): ResolvedConsumptionUnit {
   const stored = (opts?.storedUnit ?? '').toString().trim();
-  const byId = opts?.groupId ? (groups || []).find((g: any) => g.id === opts.groupId) : null;
+  const byId = opts?.groupId ? (groups || []).find(g => g.id === opts.groupId) : null;
   const key = norm(groupName);
-  const group: any = byId || (key ? (groups || []).find((g: any) => norm(g.name) === key) : null);
+  const group: GroupLike | null = byId || (key ? (groups || []).find(g => norm(g.name) === key) : null) || null;
 
   if (!group) {
     return { unit: stored || 'un', basis: 'unknown', widthMm: 0, productUnit: '' };
   }
 
-  const product: any = pickProduct(group.id, products);
+  const product = pickProduct(group.id, products);
   const productUnit = (product?.unit ?? '').toString().trim();
   const pu = norm(productUnit);
   const { widthMm, anyRoll } = resolveWidths(group, product, componentSheets);
@@ -175,10 +208,10 @@ export function resolveConsumptionUnit(
 /** Atalho pros call sites que só querem o rótulo. */
 export const resolveGroupUnit = (
   groupName: string | null | undefined,
-  groups: any[],
-  products: any[],
+  groups: GroupLike[],
+  products: ProductLike[],
   storedUnit?: string,
-  componentSheets: any[] = [],
+  componentSheets: ComponentSheetLike[] = [],
 ): string =>
   resolveConsumptionUnit(groupName, groups, products, componentSheets, { storedUnit }).unit;
 
