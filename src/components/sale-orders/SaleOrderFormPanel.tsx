@@ -64,6 +64,7 @@ import {
 } from '@/lib/saleOrderStateMachine';
 import { applyClientCommercialDefaultsToForm } from '@/lib/saleOrderCommercialDefaults';
 import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import { strapPresentationLines } from '@/lib/reconcileStrapSnapshots';
 import {
   applyStrapPvOrigemChangesToItems,
   collectStrapPvOrigemChanges,
@@ -703,6 +704,8 @@ interface SaleOrderItemsListProps {
   sharedStrapStockLinesByKey?: ReadonlyMap<string, StrapStockLine[]>;
   sharedStrapStockLinesLoading?: boolean;
   sharedStrapStockLinesError?: boolean;
+  /** O preview em lote já respondeu ao menos uma vez (`isFetched`). */
+  sharedStrapStockLinesSettled?: boolean;
   sharedReferenceTerceirizacoesByRef?: ReadonlyMap<string, ReferenceTerceirizacao[]>;
   sharedReferenceTerceirizacoesLoading?: boolean;
   sharedReferenceTerceirizacoesFailed?: boolean;
@@ -740,6 +743,7 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
   sharedStrapStockLinesByKey,
   sharedStrapStockLinesLoading,
   sharedStrapStockLinesError,
+  sharedStrapStockLinesSettled,
   sharedReferenceTerceirizacoesByRef,
   sharedReferenceTerceirizacoesLoading,
   sharedReferenceTerceirizacoesFailed,
@@ -921,6 +925,7 @@ const SaleOrderItemsList = memo(function SaleOrderItemsList({
                 }
                 sharedStrapStockLinesLoading={sharedStrapStockLinesLoading}
                 sharedStrapStockLinesError={sharedStrapStockLinesError}
+                sharedStrapStockLinesSettled={sharedStrapStockLinesSettled}
                 sharedReferenceTerceirizacoes={
                   item.reference_id
                     ? sharedReferenceTerceirizacoesByRef?.get(item.reference_id)
@@ -1094,8 +1099,26 @@ export default function SaleOrderFormPanel({
         clientKey: item.clientKey,
       });
       if (!itemKey || !item.reference_id) return [];
-      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
-      if (!straps.some((strap) => !!technicalStrapLineId(strap))) return [];
+      // ⚠ As MESMAS linhas que o item desenha. Perguntar ao servidor sobre
+      // `item.strap_colors` cru enquanto a tela renderiza as linhas
+      // reconciliadas com a ficha é o que produzia tira sem preview — e tira
+      // sem preview virava "A ficha não identifica o material-base" (dono,
+      // 12/10/2026, S300/GLOW METALIC). O hook avulso sempre usou as
+      // reconciliadas; o lote é que estava fora de passo.
+      const referenceLines = (references as Array<{ id?: string; strap_colors?: unknown }>)
+        .find((reference) => reference.id === item.reference_id)?.strap_colors;
+      // `undefined` = catálogo de fichas ainda não carregou; aí o snapshot do
+      // item é a única verdade disponível e não se reconcilia com nada.
+      const straps = strapPresentationLines(
+        Array.isArray(item.strap_colors) ? item.strap_colors : [],
+        referenceLines === undefined
+          ? undefined
+          : (Array.isArray(referenceLines) ? referenceLines : []) as NonNullable<typeof item.strap_colors>,
+        !!item.id && isCommittedSaleOrderStrapSnapshotStatus(form.status),
+      );
+      // Linha legada sem UUID também vai: o motor devolve `technical_line_missing`
+      // e a tela mostra o motivo, em vez de silenciar o item inteiro.
+      if (straps.length === 0) return [];
       return [{
         itemKey,
         saleOrderId: saleOrderId || null,
@@ -1114,6 +1137,8 @@ export default function SaleOrderFormPanel({
     });
   }, [
     items,
+    references,
+    form.status,
     saleOrderId,
     billingWeekForStraps,
     mainProductionStartForStraps,
@@ -1124,6 +1149,7 @@ export default function SaleOrderFormPanel({
     data: strapStockLinesByKey = EMPTY_STRAP_STOCK_LINES_MAP,
     isLoading: strapStockLinesLoading,
     isError: strapStockLinesFailed,
+    isFetched: strapStockLinesFetched,
   } = useStrapStockLinesBatch(
     strapStockLinesInputs,
     strapStockLinesInputs.length > 0,
@@ -2733,6 +2759,7 @@ export default function SaleOrderFormPanel({
           sharedStrapStockLinesByKey={strapStockLinesByKey}
           sharedStrapStockLinesLoading={strapStockLinesLoading}
           sharedStrapStockLinesError={strapStockLinesFailed}
+          sharedStrapStockLinesSettled={strapStockLinesFetched}
           sharedReferenceTerceirizacoesByRef={terceirizacoesByRef}
           sharedReferenceTerceirizacoesLoading={terceirizacoesLoading}
           sharedReferenceTerceirizacoesFailed={terceirizacoesFailed}

@@ -93,6 +93,11 @@ import {
   strapChoosesReferenceNapa,
   strapMaterialMode,
 } from '@/lib/strapMaterialPolicy';
+import {
+  strapBaseGroupBlamesSheet,
+  strapBaseGroupState,
+  type StrapBaseGroupState,
+} from '@/lib/strapBaseGroupState';
 import { useReferenceStrapNapas } from '@/hooks/useReferenceStrapNapas';
 import {
   itemDefaultNapaId,
@@ -203,6 +208,14 @@ interface Props {
   sharedStrapStockLines?: StrapStockLine[];
   sharedStrapStockLinesLoading?: boolean;
   sharedStrapStockLinesError?: boolean;
+  /**
+   * O preview em lote já respondeu ao menos uma vez (`isFetched`). ⚠ NÃO dá pra
+   * deduzir isso de `loading`: no React Query v5 `isLoading` é
+   * `isPending && isFetching`, logo é **false** enquanto a query está
+   * DESABILITADA — e era essa janela que fazia a tela acusar a ficha de
+   * incompleta sem ter perguntado nada ao servidor.
+   */
+  sharedStrapStockLinesSettled?: boolean;
   sharedReferenceTerceirizacoes?: ReferenceTerceirizacao[];
   sharedReferenceTerceirizacoesLoading?: boolean;
   sharedReferenceTerceirizacoesFailed?: boolean;
@@ -247,7 +260,7 @@ function materialBaseForStrap(strap: ReconcileStrapLineLike, inheritedBase?: str
   });
 }
 
-function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt, mainProductionStart, sharedProducts, sharedProductGroups, sharedStrapCatalog, sharedStrapCatalogLoading, sharedInternalStrapReadiness, sharedStrapStockLines, sharedStrapStockLinesLoading, sharedStrapStockLinesError, sharedReferenceTerceirizacoes, sharedReferenceTerceirizacoesLoading, sharedReferenceTerceirizacoesFailed, onRetrySharedReferenceTerceirizacoes, isExpanded: isExpandedProp, itemUiKey, onToggleExpand }: Props) {
+function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, onUpdate, onUpdateFields, onRemove, onCopyGradeFromPrevious, onSaveStateAndNavigate, isSelected, onToggleSelect, priceLookup, maxDiscountPct = 0, variantsByRef = EMPTY_VARIANTS_BY_REF, onColorIssueChange, onSheetMaterialSelectableChange, saleOrderId, saleOrderStatus, billingWeek, requiredAt, mainProductionStart, sharedProducts, sharedProductGroups, sharedStrapCatalog, sharedStrapCatalogLoading, sharedInternalStrapReadiness, sharedStrapStockLines, sharedStrapStockLinesLoading, sharedStrapStockLinesError, sharedStrapStockLinesSettled, sharedReferenceTerceirizacoes, sharedReferenceTerceirizacoesLoading, sharedReferenceTerceirizacoesFailed, onRetrySharedReferenceTerceirizacoes, isExpanded: isExpandedProp, itemUiKey, onToggleExpand }: Props) {
   const densityControlled = typeof onToggleExpand === 'function' && !!itemUiKey;
   const isExpanded = densityControlled ? !!isExpandedProp : true;
   const [coverAlertOpen, setCoverAlertOpen] = useState(false);
@@ -813,6 +826,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const strapLinesError = usesSharedStrapStockLines
     ? !!sharedStrapStockLinesError
     : localStrapStockLinesQuery.isError;
+  // Ver `sharedStrapStockLinesSettled`: sem isto, query desabilitada (inputs
+  // ainda não montados, item fora do lote) é indistinguível de "respondeu vazio".
+  const strapLinesSettled = usesSharedStrapStockLines
+    ? !!sharedStrapStockLinesSettled
+    : !!localStrapStockLinesQuery.isFetched;
   const strapLineByKey = useMemo(
     () => new Map(strapLines.map((l) => [l.key, l])),
     [strapLines],
@@ -863,11 +881,23 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   const canonicalMainStrapColor = canonicalStrapColorByKey.get(
     normalizeStrapColorKey(item.color),
   );
+  // Diagnóstico recolhido (decisão do dono, 12/10/2026): o motivo bruto na cara
+  // do operador é ruído de chão de fábrica; recolhido e só para admin, ele dá a
+  // causa raiz no primeiro print em vez de obrigar a adivinhar.
+  const showStrapPreviewDiagnostics = !!isAdmin || !!access.isAdmin;
+  const shortLineId = (value: string) => String(value || '').slice(0, 8);
+  const strapPreviewDiagnostics = useMemo(() => ({
+    expectedKeys: referenceStrapDefinitions
+      .map((strap) => technicalStrapLineId(strap))
+      .map((lineId) => lineId ? shortLineId(lineId) : 'sem-uuid'),
+    returnedKeys: strapLines.map((line) => shortLineId(line.key)),
+  }), [referenceStrapDefinitions, strapLines]);
   const strapStructuralContext = useMemo(() => {
     // A ficha publicada é a autoridade estrutural. O snapshot do item conserva
     // somente escolhas comerciais (como cor) e pode ser legado/incompleto.
     const straps = referenceStrapDefinitions;
     let issueCount = 0;
+    let previewMissingCount = 0;
     const resolvedBaseGroups = new Set<string>();
     let requiresReferenceBase = false;
     let hasPurchasedReady = false;
@@ -895,15 +925,27 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       if (!usesFinishedGroup && isUuid(resolvedBaseGroupId)) {
         resolvedBaseGroups.add(resolvedBaseGroupId);
       }
+      // Quatro estados, não dois: "ainda não perguntei ao estoque" e "o estoque
+      // não respondeu por esta tira" NÃO são cadastro incompleto. Só o cadastro
+      // conta para esta pendência — é ela que abre o CTA "Corrigir no estoque".
+      const baseGroupState = strapBaseGroupState({
+        line: strap,
+        identityResolved: identityGroupResolved,
+        previewLine: resolvedLine,
+        previewSettled: strapLinesSettled,
+        previewFailed: strapLinesError,
+      });
+      if (baseGroupState === 'preview_missing') previewMissingCount += 1;
       // Enquanto o preview carrega, só a ausência já conhecida da medida abre
       // a pendência; isso evita piscar o CTA em fichas canônicas.
       if (canonicalIdsMissing
           || (!strapCatalogLoading && !measureResolved)
-          || (!strapLinesLoading && !identityGroupResolved)) issueCount += 1;
+          || strapBaseGroupBlamesSheet(baseGroupState)) issueCount += 1;
     });
     return {
       hasIssue: issueCount > 0,
       issueCount,
+      previewMissingCount,
       suggestedBaseGroupId: resolvedBaseGroups.size === 1
         ? Array.from(resolvedBaseGroups)[0]
         : null,
@@ -914,8 +956,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     referenceStrapDefinitions,
     strapCatalog?.measures,
     strapCatalogLoading,
+    strapLinesError,
+    strapLinesSettled,
     strapLineByKey,
-    strapLinesLoading,
   ]);
 
   // Tira comprada pronta sem variante comercial ativa: o servidor recusa o
@@ -2856,6 +2899,37 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                 </div>
               )}
 
+              {/* O estoque respondeu, mas não trouxe linha para estas tiras. NÃO é
+                  cadastro incompleto — a ficha pode estar perfeita (foi o caso do
+                  S300/GLOW METALIC em 12/10/2026, com a napa resolvendo no servidor
+                  enquanto a tela acusava a ficha). Sem CTA de estoque: não há o que
+                  corrigir lá. O detalhe fica recolhido e só para admin. */}
+              {strapStructuralContext.previewMissingCount > 0 && (
+                <div className="flex flex-col gap-1 border-b border-amber-500/40 bg-amber-500/10 px-3 py-3">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <Warning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <div>
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        O estoque não respondeu por {strapStructuralContext.previewMissingCount} tira{strapStructuralContext.previewMissingCount === 1 ? '' : 's'}
+                      </p>
+                      <p className="text-xs leading-snug text-muted-foreground">
+                        A ficha não está em questão. Recarregue o pedido; se persistir, avise o administrador.
+                      </p>
+                    </div>
+                  </div>
+                  {showStrapPreviewDiagnostics && (
+                    <details className="ml-6 text-[10px] leading-snug text-muted-foreground">
+                      <summary className="cursor-pointer select-none">Diagnóstico</summary>
+                      <p className="mt-1 break-all font-mono">
+                        preview {strapLinesError ? 'falhou' : 'ok'}
+                        {' · '}esperadas {strapPreviewDiagnostics.expectedKeys.length}: {strapPreviewDiagnostics.expectedKeys.join(', ') || '—'}
+                        {' · '}devolvidas {strapPreviewDiagnostics.returnedKeys.length}: {strapPreviewDiagnostics.returnedKeys.join(', ') || '—'}
+                      </p>
+                    </details>
+                  )}
+                </div>
+              )}
+
               {/* O save materializa a tira interna pela napa-base efetiva da referência e
                   aborta o PV INTEIRO quando falta perfil de largura, SKU oficial
                   da cor ou rendimento aprovado. Antes disso só se descobria pelo
@@ -2947,6 +3021,15 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const identityGroupResolved = usesFinishedGroup
                     ? isUuid(strap.identity_group_id)
                     : isUuid(baseGroupId);
+                  // Separa "ainda não perguntei" e "o estoque não respondeu" de
+                  // "a ficha está incompleta" — ver `strapBaseGroupState`.
+                  const cardBaseGroupState: StrapBaseGroupState = strapBaseGroupState({
+                    line: strap,
+                    identityResolved: identityGroupResolved,
+                    previewLine: resolvedLine,
+                    previewSettled: strapLinesSettled,
+                    previewFailed: strapLinesError,
+                  });
                   const canonicalMeasure = isUuid(strap.measure_id)
                     ? strapCatalog?.measures.find((entry) => entry.id === strap.measure_id && entry.active !== false)
                     : null;
@@ -3210,21 +3293,34 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           A cor {referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.
                         </p>
                       )}
-                      {!strapLinesLoading && (!identityGroupResolved || !measureResolved) && (
-                        <p className="truncate text-[11px] leading-tight text-destructive" title={!measureResolved
-                            ? 'A linha técnica não identifica uma família e medida canônicas coerentes por UUID.'
-                            : usesFinishedGroup
-                              ? 'A linha técnica não identifica o grupo do produto acabado por UUID.'
-                              : materialMode === 'select_on_order'
-                                ? 'Selecione um dos materiais permitidos para esta posição.'
-                                : 'A ficha não identifica o material-base desta posição. Revise o cadastro técnico.'}>
-                          {!measureResolved
-                            ? 'A linha técnica não identifica uma família e medida canônicas coerentes por UUID.'
-                            : usesFinishedGroup
-                              ? 'A linha técnica não identifica o grupo do produto acabado por UUID.'
-                              : materialMode === 'select_on_order'
-                                ? 'Selecione um dos materiais permitidos para esta posição.'
-                                : 'A ficha não identifica o material-base desta posição. Revise o cadastro técnico.'}
+                      {/* A medida é fato local da ficha e segue acusando na hora.
+                          A napa-base, não: ela só vira acusação depois que o
+                          preview respondeu e devolveu grupo nulo. */}
+                      {!strapLinesLoading && (strapBaseGroupBlamesSheet(cardBaseGroupState) || !measureResolved) && (() => {
+                        const message = !measureResolved
+                          ? 'A linha técnica não identifica uma família e medida canônicas coerentes por UUID.'
+                          : usesFinishedGroup
+                            ? 'A linha técnica não identifica o grupo do produto acabado por UUID.'
+                            : materialMode === 'select_on_order'
+                              ? 'Selecione um dos materiais permitidos para esta posição.'
+                              : 'A ficha não identifica o material-base desta posição. Revise o cadastro técnico.';
+                        return (
+                          <p className="truncate text-[11px] leading-tight text-destructive" title={message}>
+                            {message}
+                          </p>
+                        );
+                      })()}
+                      {measureResolved && cardBaseGroupState === 'pending' && (
+                        <p className="truncate text-[11px] leading-tight text-muted-foreground">
+                          Resolvendo material-base…
+                        </p>
+                      )}
+                      {measureResolved && cardBaseGroupState === 'preview_missing' && (
+                        <p
+                          className="truncate text-[11px] leading-tight text-amber-700 dark:text-amber-400"
+                          title="O preview de estoque não devolveu linha para esta tira. A ficha não está em questão."
+                        >
+                          O estoque não respondeu por esta tira.
                         </p>
                       )}
                       {selectsOnOrder
