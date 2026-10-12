@@ -187,19 +187,26 @@ describe('R-Consumo · PV-00224 (DÁLIA, 12 pares, 4 linhas Fazer, rendimento 70
     const html = buildMaterialConsumptionReportHtml({
       rows, artisanalStrapRows, title: 'PV-00224', generatedAt: new Date('2026-10-10T12:00:00Z'),
     });
-    // §02 (redesenho 11/10/2026): as 4 linhas da ficha viram UMA linha por
-    // tipo × cor com o total (6 + 6 + 6,24 + 5,04 = 23,28 m) — sem pares,
-    // metros por numeração ou "enviar ao prestador".
-    const materials = html.slice(html.indexOf('Materiais por aplicação'), html.indexOf('<h2>Setor de Tiras</h2>'));
+    // §02 (redesenho 11/10/2026, repartido por origem em 12/10/2026): as 4
+    // linhas da ficha viram UMA linha por tipo × cor com o total
+    // (6 + 6 + 6,24 + 5,04 = 23,28 m) — sem pares, metros por numeração ou
+    // "enviar ao prestador". A napa saiu do §03 e entrou na coluna do bloco
+    // de prestador, mas segue fora de todo total de napa.
+    const materials = html.slice(html.indexOf('Materiais por aplicação'), html.indexOf('<p class="footer-note">'));
     expect(materials).toContain('<td><strong>TIRA CHATA 8 mm · NAPA SOFT</strong>');
     expect(materials).toContain('<td>DÁLIA</td>');
-    expect(materials).toContain('<td class="num strong">23,28</td>');
+    // O total do tipo é a linha-chave; a cor repete o número como detalhe.
+    expect(materials).toContain('<td class="num strong">23,28 m</td>');
+    expect(materials).toContain('<td class="num">23,28</td>');
     expect(materials).not.toContain('Prestador · TIRA 1');
     expect(materials).not.toContain('12 pares');
     expect(materials).not.toContain('0,0857');
     expect(materials).not.toContain('enviar ao prestador');
-    // §03: napa total = 23,28 ÷ 70 = 0,3326 m
+    // Napa = 23,28 ÷ 70 = 0,3326 m, agora na coluna "Napa a enviar".
+    expect(materials).toContain('Napa a enviar');
     expect(html).toContain('0,3326 m');
+    // O §03 deixou de existir: nada pode apontar para ele.
+    expect(html).not.toContain('<h2>Setor de Tiras</h2>');
   });
 
   it('totais nunca somam metro de tira com metro de napa; a napa da tira fica fora da compra', async () => {

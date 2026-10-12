@@ -83,20 +83,23 @@ const renderScope = (orderHeaders?: MaterialConsumptionReportOrderHeader[]): str
 const mCell = (qty: number): string =>
   qty > 0 ? `${formatQty(qty, 'm')} m` : '<span class="muted">—</span>';
 
+/** Nome do bloco que carrega a napa das tiras — citado em nota e manifesto. */
+const BLOCO_TIRAS = 'no bloco Tiras · prestador';
+
 /**
- * O §03 "Setor de Tiras" só existe quando há tira de Prestador no escopo. Num
- * PV só de strass (ou sem tira) o documento não pode mandar o leitor para uma
- * seção que não foi impressa.
+ * O bloco "Tiras · prestador" só existe quando há tira de Prestador no escopo.
+ * Num PV só de strass (ou sem tira) o documento não pode mandar o leitor para
+ * um bloco que não foi impresso.
  */
 const STRAP_SECTOR_NOTE = (hasStrapSector: boolean): string =>
-  (hasStrapSector ? ' A napa das tiras está só no §03 Setor de Tiras.' : '');
+  (hasStrapSector ? ` A napa das tiras está só ${BLOCO_TIRAS}.` : '');
 
 /**
  * §01 — napa cortada DIRETO do rolo, por família → cor. Total da cor =
  * Cabedal + Forração (as duas colunas fecham com ele). Decisão do dono
  * (11/10/2026): a napa das tiras — convertida ou com rendimento pendente — não
- * entra aqui; mora só no §03 "Setor de Tiras", que também mostra o "cadastro
- * incompleto". A coluna "Situação" (contagem de tira pendente por cor) saiu
+ * entra aqui; mora só no bloco "Tiras · prestador", que também mostra o
+ * "cadastro incompleto". A coluna "Situação" (contagem de tira pendente por cor) saiu
  * junto: sem tira no §01 ela seria só espaço morto.
  */
 const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean, hasStrapSector: boolean): string => {
@@ -228,7 +231,7 @@ const costCellsHtml = (unitPrice: number | null, totalCost: number | null, unit?
 // ── §02 · bloco TIRAS (redesenho de 11/10/2026) ───────────────────────────
 // Decisão do dono: no §02 a tira é só o TOTAL por tipo × cor — sem metros por
 // numeração, sem pares e sem a nota "enviar ao prestador ≈ x m napa" (a napa
-// das tiras mora só no §03 Setor de Tiras). Todas as linhas da ficha
+// das tiras mora só no bloco Tiras · prestador). Todas as linhas da ficha
 // (TIRA 1..4, TRASEIRA) e de todas as referências do escopo viram UMA linha
 // por tipo × cor; o strass (comprado pronto) entra no mesmo bloco, com a
 // coluna Origem. Tabela própria: as colunas Aplicação, Un. e Preço/un. da
@@ -361,42 +364,272 @@ export function aggregateStrapTypeColorLines(rows: ConsumptionRow[]): StrapTypeC
       || STRAP_LINE_ORIGIN_TEXT(a.origin).localeCompare(STRAP_LINE_ORIGIN_TEXT(b.origin), 'pt-BR'));
 }
 
-const renderStrapBlock = (rows: ConsumptionRow[], totalMode: boolean): string => {
+/**
+ * Napa por tipo × cor, indexada para casar com as linhas do §02.
+ *
+ * As duas agregações derivam o nome do tipo por caminhos diferentes — o §02 por
+ * `normalizeBaseFamilyName` sobre `groupName`, o setor por `artisanalStrapTypeKey`
+ * — então a chave é normalizada dos dois lados antes de casar. Medido no
+ * PV-00195: as quatro chaves batem. Mas o casamento NÃO pode ser a única porta:
+ * linha de tira sem row de corte (identidade canônica pendente) e row de corte
+ * sem linha de tira precisam as duas aparecer, senão a absorção do antigo §03
+ * perde material de vista.
+ */
+const napaKey = (typeName: string, color: string): string =>
+  `${strapKeyPart(typeName)}\u0000${strapKeyPart(color)}`;
+
+type NapaEntry = { napaM: number; blocked: boolean; blockedReason?: string; needsYield: boolean };
+
+const buildNapaIndex = (cutRows: ArtisanalStrapCutRow[]): Map<string, NapaEntry> => {
+  const index = new Map<string, NapaEntry>();
+  for (const type of aggregateStrapNapaSector(cutRows).types) {
+    const key = napaKey(type.typeName, type.color);
+    const previous = index.get(key);
+    index.set(key, {
+      napaM: (previous?.napaM || 0) + type.napaM,
+      blocked: (previous?.blocked || false) || type.blocked,
+      blockedReason: type.blockedReason || previous?.blockedReason,
+      needsYield: (previous?.needsYield || false) || type.needsYield,
+    });
+  }
+  return index;
+};
+
+const napaCell = (entry: NapaEntry | undefined): string => {
+  if (!entry || entry.blocked || !(entry.napaM > 0)) return '<span class="muted">—</span>';
+  return `${formatNapaMeters(entry.napaM)} m`;
+};
+
+const situacaoCell = (entry: NapaEntry | undefined): string => {
+  if (!entry) {
+    return '<span class="flag warning">sem rendimento</span>';
+  }
+  if (entry.blocked) {
+    return `<span class="flag warning">cadastro incompleto</span>${entry.blockedReason
+      ? `<small class="row-warning">${escapeHtml(entry.blockedReason)}</small>` : ''}`;
+  }
+  return '<span class="flag ok">ok</span>';
+};
+
+/** Linha do bloco de prestador: vem da linha de tira do pedido ou da row de corte. */
+type PrestadorRow = {
+  typeName: string; color: string; unit: string;
+  tiraM: number; preview: number; available: number; known: boolean;
+  toMake: number; pending: boolean; warnings: string[]; napa?: NapaEntry;
+};
+
+/** Agrupa as linhas por TIPO preservando a ordem já ordenada. */
+const groupByType = (lines: StrapTypeColorLine[]): { typeName: string; lines: StrapTypeColorLine[] }[] => {
+  const out: { typeName: string; lines: StrapTypeColorLine[] }[] = [];
+  for (const line of lines) {
+    const last = out[out.length - 1];
+    if (last && strapKeyPart(last.typeName) === strapKeyPart(line.typeName)) last.lines.push(line);
+    else out.push({ typeName: line.typeName, lines: [line] });
+  }
+  return out;
+};
+
+const qtyCell = (line: StrapTypeColorLine): string => (line.preview > 0 && !(line.total > 0)
+  ? `≈ ${formatQty(line.preview, line.unit)}<small class="qty-preview">prévia da ficha</small>`
+  : formatQty(line.total, line.unit));
+
+const warningsOf = (lines: StrapTypeColorLine[]): string => {
+  const all = Array.from(new Set(lines.flatMap((line) => line.warnings)));
+  return all.length ? `<div class="row-warning">▲ ${escapeHtml(all.join(' · '))}</div>` : '';
+};
+
+/**
+ * ── §02 · TIRAS, partido por ORIGEM (12/10/2026) ───────────────────────────
+ *
+ * Decisão do dono, escolhendo entre cinco layouts: o tipo da tira é escrito UMA
+ * vez e essa linha JÁ É o subtotal do tipo (metros e valor); as cores ficam
+ * abaixo, como detalhe. E os dois destinos viram blocos separados, porque a
+ * ação é outra em cada um:
+ *
+ *  - **Comprar pronto** fica com a coluna de dinheiro, que só ele preenche.
+ *  - **Prestador** troca a coluna de dinheiro — que era "—" em TODA linha,
+ *    porque `spend` é null por construção para tira de prestador — pela napa a
+ *    enviar e pela situação do cadastro.
+ *
+ * Com isso o bloco do prestador passa a dizer tudo o que a seção "§03 Setor de
+ * Tiras" dizia, e ela deixa de existir: as mesmas 12 tiras eram impressas duas
+ * vezes, com o nome longo repetido 3× por família em cada uma.
+ *
+ * ⚠ A napa das tiras continua FORA de todo total de napa — herói, §01, chips de
+ * família, "Necessidade total" e falta de napa seguem sem ela (decisão de
+ * 11/10/2026). O que mudou é só ONDE ela é impressa.
+ */
+const renderStrapBlocks = (
+  rows: ConsumptionRow[],
+  cutRows: ArtisanalStrapCutRow[],
+  totalMode: boolean,
+): string[] => {
   const lines = aggregateStrapTypeColorLines(rows);
-  if (!lines.length) return '';
-  const body = lines.map((line) => {
-    const unitSuffix = isMeterUnit(line.unit) ? '' : ` ${escapeHtml(formatUnit(line.unit))}`;
-    const totalHtml = line.preview > 0 && !(line.total > 0)
-      ? `≈ ${formatQty(line.preview, line.unit)}${unitSuffix}<small class="qty-preview">prévia da ficha</small>`
-      : `${formatQty(line.total, line.unit)}${unitSuffix}`;
-    const short = totalMode ? 0 : line.shortfall;
-    const coverageCells = totalMode ? '' : `
-      <td class="num">${line.known ? formatQty(line.available, line.unit) : '—'}</td>
-      ${line.origin === 'fazer'
-        ? `<td class="num muted">${line.toMake > 0
-          ? `${formatQty(line.toMake, line.unit)}<small class="qty-preview">prestador</small>`
-          : 'coberta'}</td>`
-        : `<td class="num${short > 0 ? ' shortage' : ''}">${line.known && short > 0 ? formatQty(short, line.unit) : '—'}</td>`}`;
-    return `<tr class="material-row strap-row${short > 0 ? ' is-short' : ''}${line.pending ? ' is-pending' : ''}">
-      <td><strong>${escapeHtml(line.typeName)}</strong>${line.warnings.length ? `<div class="row-warning">▲ ${escapeHtml(line.warnings.join(' · '))}</div>` : ''}</td>
-      <td>${escapeHtml(line.color)}</td>
-      <td>${escapeHtml(STRAP_LINE_ORIGIN_TEXT(line.origin))}</td>
-      <td class="num strong">${totalHtml}</td>
-      ${coverageCells}
-      <td class="num cost-spend">${line.spend != null ? escapeHtml(formatMoney(line.spend)) : '—'}</td>
-    </tr>`;
-  }).join('');
-  const head = totalMode
-    ? '<tr><th>Tipo de tira</th><th>Cor</th><th>Origem</th><th class="num">Total<span class="unit-suffix"> (m)</span></th><th class="num col-spend">A gastar</th></tr>'
-    : '<tr><th>Tipo de tira</th><th>Cor</th><th>Origem</th><th class="num">Total<span class="unit-suffix"> (m)</span></th><th class="num">Estoque</th><th class="num">Falta</th><th class="num col-spend">A gastar</th></tr>';
-  return `
+  const napaIndex = buildNapaIndex(cutRows);
+  const buy = lines.filter((line) => line.origin !== 'fazer');
+  const make = lines.filter((line) => line.origin === 'fazer');
+  const blocks: string[] = [];
+
+  // ── Comprar pronto ───────────────────────────────────────────────────────
+  if (buy.length) {
+    const body = groupByType(buy).map(({ typeName, lines: group }) => {
+      const total = group.reduce((sum, line) => sum + line.total, 0);
+      const spends = group.map((line) => line.spend).filter((value): value is number => value != null);
+      const spend = spends.length ? spends.reduce((sum, value) => sum + value, 0) : null;
+      const known = group.every((line) => line.known);
+      const available = group.reduce((sum, line) => sum + line.available, 0);
+      const short = totalMode ? 0 : group.reduce((sum, line) => sum + line.shortfall, 0);
+      const unit = group[0]?.unit || 'm';
+      const coverage = totalMode ? '' : `
+        <td class="num">${known ? formatQty(available, unit) : '—'}</td>
+        <td class="num${short > 0 ? ' shortage' : ''}">${known && short > 0 ? formatQty(short, unit) : '—'}</td>`;
+      const head = `<tr class="strap-type${short > 0 ? ' is-short' : ''}${group.some((line) => line.pending) ? ' is-pending' : ''}">
+        <td><strong>${escapeHtml(typeName)}</strong>${warningsOf(group)}</td>
+        <td class="num strong">${formatQty(total, unit)} ${escapeHtml(formatUnit(unit))}</td>
+        ${coverage}
+        <td class="num cost-spend">${spend != null ? escapeHtml(formatMoney(spend)) : '<span class="no-price">sem preço</span>'}</td>
+      </tr>`;
+      const colors = group.map((line) => `<tr class="strap-color${line.pending ? ' is-pending' : ''}">
+        <td>${escapeHtml(line.color)}</td>
+        <td class="num">${qtyCell(line)}</td>
+        ${totalMode ? '' : `<td class="num">${line.known ? formatQty(line.available, line.unit) : '—'}</td>
+        <td class="num${line.shortfall > 0 ? ' shortage' : ''}">${line.known && line.shortfall > 0 ? formatQty(line.shortfall, line.unit) : '—'}</td>`}
+        <td class="num cost-spend">${line.spend != null ? escapeHtml(formatMoney(line.spend)) : ''}</td>
+      </tr>`).join('');
+      return head + colors;
+    }).join('');
+    const grandTotal = buy.reduce((sum, line) => sum + line.total, 0);
+    const grandSpendValues = buy.map((line) => line.spend).filter((value): value is number => value != null);
+    const grandSpend = grandSpendValues.length ? grandSpendValues.reduce((sum, value) => sum + value, 0) : null;
+    const head = totalMode
+      ? '<tr><th style="width:56%">Tipo de tira / cor</th><th class="num" style="width:20%">Total<span class="unit-suffix"> (m)</span></th><th class="num col-spend" style="width:24%">A gastar</th></tr>'
+      : '<tr><th style="width:40%">Tipo de tira / cor</th><th class="num" style="width:15%">Total<span class="unit-suffix"> (m)</span></th><th class="num" style="width:12%">Estoque</th><th class="num" style="width:12%">Falta</th><th class="num col-spend" style="width:21%">A gastar</th></tr>';
+    blocks.push(`
       <div class="component-block">
-        <div class="component-heading"><span>Tiras</span><span>${lines.length} linha(s)</span></div>
+        <div class="component-heading"><span>Tiras · comprar pronto</span><span>${groupByType(buy).length} tipo(s) · ${buy.length} linha(s)</span></div>
         <table class="report-table straps-table${totalMode ? ' total-mode' : ''}">
           <thead>${head}</thead>
-          <tbody>${body}</tbody>
+          <tbody>${body}
+            <tr class="strap-grand">
+              <td>Total a comprar</td>
+              <td class="num">${formatQty(grandTotal, 'm')} m</td>
+              ${totalMode ? '' : '<td></td><td></td>'}
+              <td class="num cost-spend">${grandSpend != null ? escapeHtml(formatMoney(grandSpend)) : '—'}</td>
+            </tr>
+          </tbody>
         </table>
-      </div>`;
+      </div>`);
+  }
+
+  // ── Prestador (absorve o antigo §03) ─────────────────────────────────────
+  // As duas fontes entram na MESMA lista antes de agrupar: a linha de tira do
+  // pedido (autoridade sobre o que foi vendido) e a row de corte (autoridade
+  // sobre a napa). Row de corte sem linha de tira — identidade canônica que a
+  // RPC devolveu mas o §02 não casou — entra assim mesmo: o antigo §03 a
+  // mostrava, e sumir em silêncio seria perder napa de vista.
+  const matched = new Set<string>();
+  const prestadorRows: PrestadorRow[] = make.map((line) => {
+    const key = napaKey(line.typeName, line.color);
+    matched.add(key);
+    return {
+      typeName: line.typeName,
+      color: line.color,
+      unit: line.unit,
+      tiraM: line.total,
+      preview: line.preview,
+      available: line.available,
+      known: line.known,
+      toMake: line.toMake,
+      pending: line.pending,
+      warnings: line.warnings,
+      napa: napaIndex.get(key),
+    };
+  });
+  for (const type of aggregateStrapNapaSector(cutRows).types) {
+    const key = napaKey(type.typeName, type.color);
+    if (matched.has(key)) continue;
+    prestadorRows.push({
+      typeName: type.typeName,
+      color: type.color,
+      unit: 'm',
+      tiraM: type.strapM,
+      preview: 0,
+      available: 0,
+      known: true,
+      toMake: type.strapM,
+      pending: false,
+      warnings: [],
+      napa: { napaM: type.napaM, blocked: type.blocked, blockedReason: type.blockedReason, needsYield: type.needsYield },
+    });
+  }
+
+  if (prestadorRows.length) {
+    const groups: { typeName: string; rows: PrestadorRow[] }[] = [];
+    for (const row of prestadorRows) {
+      const last = groups[groups.length - 1];
+      if (last && strapKeyPart(last.typeName) === strapKeyPart(row.typeName)) last.rows.push(row);
+      else groups.push({ typeName: row.typeName, rows: [row] });
+    }
+    const body = groups.map(({ typeName, rows: group }) => {
+      const unit = group[0]?.unit || 'm';
+      const typeEntry: NapaEntry = {
+        napaM: group.reduce((sum, row) => sum + (row.napa?.napaM || 0), 0),
+        blocked: group.some((row) => !row.napa || row.napa.blocked),
+        blockedReason: group.find((row) => row.napa?.blockedReason)?.napa?.blockedReason,
+        needsYield: group.some((row) => row.napa?.needsYield),
+      };
+      const total = group.reduce((sum, row) => sum + row.tiraM, 0);
+      const toMake = group.reduce((sum, row) => sum + row.toMake, 0);
+      const known = group.every((row) => row.known);
+      const available = group.reduce((sum, row) => sum + row.available, 0);
+      const warnings = Array.from(new Set(group.flatMap((row) => row.warnings)));
+      const coverage = totalMode ? '' : `
+        <td class="num">${known ? formatQty(available, unit) : '—'}</td>
+        <td class="num muted">${toMake > 0 ? formatQty(toMake, unit) : 'coberta'}</td>`;
+      const head = `<tr class="strap-type${group.some((row) => row.pending) ? ' is-pending' : ''}">
+        <td><strong>${escapeHtml(typeName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}</td>
+        <td class="num strong">${formatQty(total, unit)} ${escapeHtml(formatUnit(unit))}</td>
+        ${coverage}
+        <td class="num">${napaCell(typeEntry.blocked ? undefined : typeEntry)}</td>
+        <td>${situacaoCell(group.some((row) => !row.napa) ? undefined : typeEntry)}</td>
+      </tr>`;
+      const colors = group.map((row) => `<tr class="strap-color${row.pending ? ' is-pending' : ''}">
+        <td>${escapeHtml(row.color)}</td>
+        <td class="num">${row.preview > 0 && !(row.tiraM > 0)
+          ? `≈ ${formatQty(row.preview, row.unit)}<small class="qty-preview">prévia da ficha</small>`
+          : formatQty(row.tiraM, row.unit)}</td>
+        ${totalMode ? '' : `<td class="num">${row.known ? formatQty(row.available, row.unit) : '—'}</td>
+        <td class="num muted">${row.toMake > 0 ? formatQty(row.toMake, row.unit) : 'coberta'}</td>`}
+        <td class="num">${napaCell(row.napa)}</td>
+        <td></td>
+      </tr>`).join('');
+      return head + colors;
+    }).join('');
+
+    const napaTotal = prestadorRows.reduce((sum, row) => sum + (row.napa && !row.napa.blocked ? row.napa.napaM : 0), 0);
+    const tiraTotal = prestadorRows.reduce((sum, row) => sum + row.tiraM, 0);
+    const head = totalMode
+      ? '<tr><th style="width:48%">Tipo de tira / cor</th><th class="num" style="width:17%">Tira<span class="unit-suffix"> (m)</span></th><th class="num" style="width:18%">Napa a enviar</th><th style="width:17%">Situação</th></tr>'
+      : '<tr><th style="width:34%">Tipo de tira / cor</th><th class="num" style="width:13%">Tira<span class="unit-suffix"> (m)</span></th><th class="num" style="width:11%">Estoque</th><th class="num" style="width:11%">A fazer</th><th class="num" style="width:15%">Napa a enviar</th><th style="width:16%">Situação</th></tr>';
+    blocks.push(`
+      <div class="component-block">
+        <div class="component-heading"><span>Tiras · prestador — a fábrica não corta tira</span><span>${groups.length} tipo(s) · ${prestadorRows.length} linha(s)</span></div>
+        <table class="report-table straps-table${totalMode ? ' total-mode' : ''}">
+          <thead>${head}</thead>
+          <tbody>${body}
+            <tr class="strap-grand">
+              <td>Total a mandar pro prestador</td>
+              <td class="num">${formatQty(tiraTotal, 'm')} m tira</td>
+              ${totalMode ? '' : '<td></td><td></td>'}
+              <td class="num">${napaTotal > 0 ? `${formatNapaMeters(napaTotal)} m napa` : '—'}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`);
+  }
+
+  return blocks;
 };
 
 /**
@@ -447,7 +680,11 @@ type MaterialCells = {
   gradeHtml: string;
 };
 
-const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): string => {
+const renderMaterialSections = (
+  rows: ConsumptionRow[],
+  cutRows: ArtisanalStrapCutRow[],
+  totalMode: boolean,
+): string => {
   const sectionMap = new Map<string, MaterialCells[]>();
   const sectionOrder = new Map<string, number>();
   const append = (componentType: string, cells: MaterialCells, order: number) => {
@@ -458,7 +695,7 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
   };
 
   // Tira (Prestador, Comprar pronto, strass, prévia) vai inteira para o bloco
-  // Tiras — tabela própria, total por tipo × cor (`renderStrapBlock`).
+  // Tiras — dois blocos próprios por origem (`renderStrapBlocks`).
   const nonSole = aggregateItems(
     rows.filter((row) => row.componentType !== 'Solado' && row.componentType !== 'Tiras'),
   )
@@ -574,8 +811,9 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       </div>`,
     };
   });
-  const strapBlock = renderStrapBlock(rows, totalMode);
-  if (strapBlock) blocks.push({ order: componentIndex('Tiras'), html: strapBlock });
+  for (const html of renderStrapBlocks(rows, cutRows, totalMode)) {
+    blocks.push({ order: componentIndex('Tiras'), html });
+  }
 
   return blocks
     .sort((a, b) => a.order - b.order)
@@ -589,42 +827,6 @@ const baseNameAlreadyInType = (typeName: string, baseName?: string): boolean => 
   return typeName.toLocaleLowerCase('pt-BR').includes(base.toLocaleLowerCase('pt-BR'));
 };
 
-const renderArtisanalStraps = (rows: ArtisanalStrapCutRow[]): string => {
-  if (!rows.length) return '';
-  const sector = aggregateStrapNapaSector(rows);
-  const body = sector.types.map((type) => {
-    const showBase = !baseNameAlreadyInType(type.typeName, type.baseName);
-    return `
-        <tr class="${type.blocked ? 'is-pending' : ''}">
-          <td><strong>${escapeHtml(type.typeName)}</strong>${showBase && type.baseName ? `<small>${escapeHtml(type.baseName)}</small>` : ''}</td>
-          <td>${escapeHtml(type.color)}</td>
-          <td class="num strong">${formatQty(type.strapM, 'm')} m</td>
-          <td class="num strong">${!type.blocked && type.napaM > 0 ? `${formatNapaMeters(type.napaM)} m` : '—'}</td>
-          <td>${type.blocked
-            ? `<span class="flag warning">cadastro incompleto</span>${type.blockedReason ? `<small class="row-warning">${escapeHtml(type.blockedReason)}</small>` : ''}`
-            : '<span class="flag ok">ok</span>'}</td>
-        </tr>`;
-  }).join('');
-  const footer = `
-        <tr class="strap-subtotal">
-          <td colspan="2"><strong>Total de napa a enviar ao prestador</strong></td>
-          <td class="num muted">${formatQty(sector.totalStrapM, 'm')} m tira</td>
-          <td class="num strong">${sector.totalNapaM > 0 ? `${formatNapaMeters(sector.totalNapaM)} m` : '—'}</td>
-          <td></td>
-        </tr>`;
-  return `<section class="report-section strap-section">
-    <div class="section-heading">
-      <span class="section-number">03</span>
-      <div><p class="section-kicker">Setor próprio</p><h2>Setor de Tiras</h2></div>
-      <p class="section-note">Só tiras de Prestador (a fábrica não corta tira), por tipo e cor: metros de tira pelo prestador (depois do estoque de tira pronta) e napa a enviar ao prestador (÷ rendimento). Sem rendimento: napa “—” e fora da compra.</p>
-    </div>
-    <table class="report-table">
-      <thead><tr><th>Tipo de tira</th><th>Cor</th><th class="num">Tira necessária</th><th class="num">Napa</th><th>Situação</th></tr></thead>
-      <tbody>${body}${footer}</tbody>
-    </table>
-  </section>`;
-};
-
 export function buildMaterialConsumptionReportHtml({
   rows,
   artisanalStrapRows,
@@ -635,9 +837,12 @@ export function buildMaterialConsumptionReportHtml({
   partitionMode = 'none',
 }: MaterialConsumptionReportInput): string {
   const totalMode = mode === 'total';
-  // O §03 só é impresso quando há tira de Prestador — sem ele, nenhum texto
-  // pode apontar para a seção (ver STRAP_SECTOR_NOTE).
-  const hasStrapSector = artisanalStrapRows.length > 0;
+  // O bloco de prestador é impresso quando há row de corte OU linha de tira
+  // Fazer no pedido — sem ele, nenhum texto pode apontar para o bloco (ver
+  // STRAP_SECTOR_NOTE). Só `artisanalStrapRows` não basta: tira Fazer sem
+  // identidade canônica ainda produz linha no bloco, com napa "—".
+  const hasStrapSector = artisanalStrapRows.length > 0
+    || rows.some((row) => row.componentType === 'Tiras' && isFazerStrapRow(row));
   const baseTotal = computeBaseMaterialTotal(rows);
   const shortCount = countShort(rows);
   const pendingCount = countPending(rows);
@@ -665,8 +870,10 @@ export function buildMaterialConsumptionReportHtml({
   const partitionBanner = partitionMode === 'order_reference'
     ? '<p class="mode-banner" style="margin-top:4px;background:transparent;color:var(--ink);border-color:var(--ink)">Visão estendida · por PV e modelo</p>'
     : '';
-  // Decisão do dono (11/10/2026): napa das tiras fora de todo total — só §03.
-  const napaOrigin = `Necessidade de napa (§01) soma cabedal (+ fachete) e forração${hasStrapSector ? '; a napa das tiras está no §03 Setor de Tiras' : ''}.`;
+  // Decisão do dono (11/10/2026): napa das tiras fora de todo total. O LUGAR
+  // onde ela é impressa mudou em 12/10/2026 (§03 absorvido pelo bloco de
+  // prestador); ficar fora dos totais, não.
+  const napaOrigin = `Necessidade de napa (§01) soma cabedal (+ fachete) e forração${hasStrapSector ? `; a napa das tiras está ${BLOCO_TIRAS}` : ''}.`;
   const strapsIn02 = 'Tiras em §02: total em metros por tipo e cor, separando Prestador de Comprar pronto.';
   /**
    * Só a COBERTURA imprime a caixa "Leitura correta", e ali ela divide a faixa
@@ -683,13 +890,13 @@ export function buildMaterialConsumptionReportHtml({
   const reading = `“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. ${napaOrigin} ${strapsIn02}`;
   const manifest = totalMode
     ? `<div class="manifest manifest-total" aria-label="Resumo do consumo total">
-    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração${hasStrapSector ? ' · napa das tiras no §03' : ''}</small></div>
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração${hasStrapSector ? ' · napa das tiras no bloco de prestador' : ''}</small></div>
     <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço cadastrado</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
     <div><dl><dt>Escopo calculado</dt><dd>${rows.length} linha${rows.length === 1 ? '' : 's'}</dd></dl><small>ficha técnica + grade + variante do PV</small></div>
   </div>`
     : `<div class="manifest" aria-label="Resumo da decisão">
-    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração${hasStrapSector ? ' · napa das tiras no §03' : ''}</small></div>
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração${hasStrapSector ? ' · napa das tiras no bloco de prestador' : ''}</small></div>
     <div><dl><dt>Itens em falta</dt><dd class="shortage">${shortCount}</dd></dl><small>estoque líquido</small></div>
     <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
@@ -704,11 +911,11 @@ export function buildMaterialConsumptionReportHtml({
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--line)">
             <p class="section-kicker">Modelo</p>
             <h3 style="font-size:11pt;margin:2px 0 6px;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(model.referenceLabel)}</h3>
-            ${renderMaterialSections(model.rows, totalMode)}
+            ${renderMaterialSections(model.rows, artisanalStrapRows, totalMode)}
           </div>
         `).join('')}
       </div>`).join('')
-    : renderMaterialSections(rows, totalMode);
+    : renderMaterialSections(rows, artisanalStrapRows, totalMode);
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -811,42 +1018,20 @@ export function buildMaterialConsumptionReportHtml({
     .materials-table th.c-unit { text-align:center; }
     .materials-table th.c-spend { text-align:right; }
     .materials-table td.cost-spend { padding-right:7px; }
-    /* Tiras (§02, 11/10/2026): tabela própria, total por tipo × cor — sem as
-       colunas Aplicação/Un./Preço, que seriam espaço morto para tira.
-       Como cada linha soma TODAS as fichas do tipo × cor, total de 4–5 dígitos
-       é o caso normal (PV-00193 já tinha 1.402,80 m numa linha só). Medido no
-       Chromium com Fira Sans/Fira Code reais, tabela de 731 px (A4) e 713 px
-       (modo por modelo): "12.852,00" cabe em Total, Estoque e Falta a 10–11%;
-       um gasto de 81.585,00 reais cabe em A gastar a 14%; "TIRA OVERLOCK 5 mm ·
-       GLOW METALIC" fica numa linha a 31%. Com Falta a 8% todo valor de 4
-       dígitos invadia a coluna do gasto (regra de print 4: número de tabela
-       fixa tem de caber na coluna). Só gasto de 6 dígitos (100 mil reais ou
-       mais) numa linha de tira passaria 1 px — irreal.
-       Cobertura: 7 cols — Tipo · Cor · Origem · Total · Estoque · Falta · A gastar */
-    /* O nome do tipo vem do SKU: tira de Prestador chega em caixa alta
-       ("TIRA OVERLOCK 5 mm · GLOW METALIC") e strass em caixa mista ("Tira
-       Strass 6mm"). Na mesma tabela viravam duas convenções. */
+    /* Tiras, partido por origem (12/10/2026): a linha do TIPO já é o subtotal
+       (metros e valor), e as cores ficam abaixo como detalhe. As larguras saem
+       INLINE no th: a mesma classe .straps-table serve a tabelas de 3 a 6
+       colunas (comprar/prestador × total/cobertura), então nth-child apontaria
+       para a coluna errada. Estoque, Falta e A fazer nunca descem de 11%: é o
+       piso MEDIDO para caber número de 4–5 dígitos (a 8% o valor invadia a
+       coluna vizinha — regra de print 4). */
     .straps-table td:first-child strong { text-transform:uppercase; }
-    /* Os 2 pontos que o Tipo ganhou (31 -> 33, para "ELÁSTICO FORRADO 7 mm ·
-       GLOW METALIC" não quebrar em duas linhas) saíram da Cor, NÃO de Estoque
-       e Falta: aqueles 10% são valor MEDIDO para caber número de 4–5 dígitos
-       (ver o bloco de comentário acima) — a 8% o valor invadia A gastar. */
-    .straps-table th:nth-child(1) { width:33%; }
-    .straps-table th:nth-child(2) { width:11%; }
-    .straps-table th:nth-child(3) { width:11%; }
-    .straps-table th:nth-child(4) { width:11%; }
-    .straps-table th:nth-child(5) { width:10%; }
-    .straps-table th:nth-child(6) { width:10%; }
-    .straps-table th:nth-child(7) { width:14%; }
-    /* Total: 5 cols — Tipo · Cor · Origem · Total · A gastar */
-    .straps-table.total-mode th:nth-child(1) { width:32%; }
-    .straps-table.total-mode th:nth-child(2) { width:24%; }
-    .straps-table.total-mode th:nth-child(3) { width:16%; }
-    .straps-table.total-mode th:nth-child(4) { width:12%; }
-    .straps-table.total-mode th:nth-child(5) { width:16%; }
-    /* Origem é vocabulário fechado (Prestador · Comprar pronto): nunca quebra
-       em duas linhas — eram 3 linhas de altura dupla nas tiras de strass. */
-    .straps-table td:nth-child(3) { white-space:nowrap; }
+    .strap-type td { background:var(--soft); border-top:1.5px solid var(--ink); font-weight:700; padding-top:5px; padding-bottom:5px; }
+    .strap-type td:first-child { text-transform:uppercase; }
+    .strap-color td:first-child { padding-left:18px; color:var(--muted); }
+    .strap-color td { border-bottom:1px solid var(--line); }
+    .strap-grand td { border-top:1.5px solid var(--ink); border-bottom:3px double var(--ink); background:#fff; font-weight:700; padding-top:6px; padding-bottom:6px; }
+    .no-price { color:var(--muted); font-weight:500; font-size:7pt; }
     .straps-table td.cost-spend { padding-right:7px; }
     /* Setor de Tiras — 5 cols: Tipo · Cor · Tira necessária · Napa · Situação.
        Sem largura declarada o 'table-layout:fixed' de '.report-table' dividia em
@@ -904,12 +1089,11 @@ export function buildMaterialConsumptionReportHtml({
       <span class="section-number">02</span>
       <div><p class="section-kicker">Conferência completa</p><h2>${partitioned.length > 0 ? 'Materiais por PV e modelo' : 'Materiais por aplicação'}</h2></div>
       <p class="section-note">${totalMode
-        ? `Somente a necessidade do pedido. Tiras: total em metros por tipo e cor${hasStrapSector ? '; a napa delas está no §03' : ''}. Tira com cadastro pendente fica com ▲.`
-        : `A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade. Tiras: total por tipo e cor (prestador × compra)${hasStrapSector ? '; napa delas no §03' : ''}. Tira pendente fica com ▲.`}</p>
+        ? `Somente a necessidade do pedido. Tiras: separadas por origem, com subtotal por tipo${hasStrapSector ? '; a napa delas está no bloco de prestador' : ''}. Tira com cadastro pendente fica com ▲.`
+        : `A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade. Tiras: separadas por origem, com subtotal por tipo${hasStrapSector ? '; napa delas no bloco de prestador' : ''}. Tira pendente fica com ▲.`}</p>
     </div>
     ${materialsBody}
   </section>
-  ${renderArtisanalStraps(artisanalStrapRows)}
   <p class="footer-note">${totalMode
     ? 'Fonte: pedido de venda, ficha técnica vigente, variante de material e grade. Estoque líquido foi ignorado neste documento. Linhas com ▲ exigem correção cadastral antes de reserva, débito ou compra.'
     : 'Fonte: pedido de venda, ficha técnica vigente, variante de material, grade e estoque líquido no momento da geração. Este relatório é uma simulação atual e pode diferir do snapshot histórico já congelado em uma OP. Linhas com ▲ exigem correção cadastral antes de reserva, débito ou compra.'}</p>
