@@ -1227,6 +1227,72 @@ o gatilho compartilhado não mudou.
   ANTES da costura; como ela fecha como `concluido` todo setor de posição menor que o destino,
   a inversão fecharia a costura ao avançar pro aviamento. Zero chamadores em `src/`.
 
+## Fila de materialização do PV — o ator e o portão de papel (CANÔNICO, 12/10/2026)
+
+> A aprovação (`confirm`/`promote`/`cancel` e a compensação Aprovado→Rascunho) **não roda
+> mais no browser**: vai para `sale_order_materialization_jobs` e é executada pelo worker
+> `process-sale-order-materialization`, como **`service_role` sem JWT**. Logo, lá dentro
+> **`auth.uid()` é sempre NULL**. Toda regra que dependia do usuário logado precisa ter um
+> caminho explícito, senão ou estoura ou grava NULL em silêncio.
+
+**O caso que expôs (PV-00232).** Dois defeitos empilhados, o segundo escondendo o primeiro:
+
+| # | Onde | O quê |
+|---|---|---|
+| 1 | `private.ensure_sale_order_internal_strap_materials` | `IF v_actor_id IS NULL THEN RAISE` com `v_actor_id := auth.uid()` ⇒ **todo PV com tira artesanal interna era inaprovável pela fila**. O portão de **papel** logo acima já tinha escapatória (`app.strap_source_rpc`); o de **ator** não tinha nenhuma |
+| 2 | `retry_sale_order_materialization` | montava a chave **concatenando** na anterior (`|| ':retry:' || uuid`), +43 chars por tentativa: medido 84 → 127 → 170 → **213**. O `enqueue_` só tinha piso (≥ 8), sem teto; o executor recusa > 200 ⇒ a partir do 4º retry o job **nascia morto**, queimava as 4 tentativas e **trocava a mensagem de erro real pela falsa** (`idempotency_key é obrigatório`), irreversível pela tela porque cada clique crescia mais 43 |
+
+**Como está agora** (mig `20270101039800`): o ator vem de
+`sale_order_materialization_jobs.requested_by`, derivado por
+`tg_sale_order_command_receipt_actor` (BEFORE INSERT/UPDATE em
+`sale_order_command_receipts`) e publicado no GUC transacional
+**`app.command_actor_id`**, que o gravador de tiras lê como fallback de `auth.uid()`.
+
+⚠ **A derivação mora num TRIGGER, não dentro do `execute_sale_order_command`** — e isso é
+load-bearing. Aquela função tem ~1.700 linhas e é **recriada por `CREATE OR REPLACE` em
+várias migrations**: uma guarda enfiada no corpo dela seria perdida em silêncio na primeira
+recriação a partir de base antiga (foi assim que caiu o P0 de `profiles.approved` e a
+regressão de `check_grade_quantity_coherence`). O INSERT do recibo é o **primeiro ato
+persistido** do comando — antes do preflight e de qualquer mutação — e carrega
+`sale_order_id`, `command_name` e `idempotency_key`, que é tudo de que a derivação e a
+guarda precisam.
+
+⚠ **`is_approved_user()`, `user_has_any_role()` e `can_execute_sale_order_command()` NÃO
+servem para checar o ator no worker.** As três começam com `is_service_role_request_128()`
+e devolvem **`true` para `service_role` independentemente de quem é o ator** — usá-las
+justamente no ramo que só roda sob service_role **compila, roda, passa no teste e não checa
+nada**. A verificação tem que ler `profiles`/`user_roles` **direto** pelo id do ator.
+Travado por `src/__tests__/filaMaterializacaoAtorEChave.contract.test.ts`.
+
+⚠ **A fila contornava o portão de papel.** `enqueue_sale_order_materialization` tem
+`GRANT EXECUTE` para `authenticated` e seu único portão era `auth.uid() IS NOT NULL AND
+is_approved_user()` — **sem** `user_has_any_role` e **sem** `can_execute_sale_order_command`.
+Como o worker executa como `service_role`, o `execute_sale_order_command` pula o bloco
+inteiro de papel/permissão ⇒ **qualquer usuário aprovado aprovava, promovia ou CANCELAVA
+qualquer PV** pela RPC, contornando a exigência de Comercial/Gerência do caminho síncrono.
+Fechado nas **duas** camadas (enqueue + trigger), de propósito: guarda em camada única é o
+que já se perdeu duas vezes neste projeto.
+
+⚠ **Chave de idempotência: os dois lados têm que concordar no limite.** `enqueue_` agora
+exige `BETWEEN 8 AND 200`, casando com o `NOT BETWEEN 1 AND 200` do executor, e o retry
+deriva a chave **da raiz** (`pv:<id>:<comando>:retry:<uuid>`, ~93 chars fixos) em vez de
+concatenar. Fila que aceita o que o executor recusa produz job que nunca pode rodar.
+
+⚠ **O pré-voo de tiras no `enqueue_` é AVISO ANTECIPADO, não a trava.** Ele varre os itens
+com `diagnose_sale_order_internal_strap_readiness` (espelho read-only do writer) só em
+`confirm`/`promote` — `cancel` e `transition` não materializam tira, e bloquear um
+cancelamento por lacuna de cadastro seria pior que o problema. **Falha do diagnóstico NÃO
+vira pendência**: o writer continua barrando no worker; inventar bloqueio por falta de
+leitura seria pior que o estado atual (mesma regra do `buyReadyVariantKeys = null` na cópia
+de tiras). Roda **antes** do `FOR UPDATE` para não segurar o lock do PV durante N
+diagnósticos.
+
+⚠ **Histórico NÃO foi tocado**, de propósito: os 12 recibos de `confirm`/`promote`/`resync`
+com `actor_id` NULL continuam NULL (inventar autor retroativo é pior que o nulo honesto), e
+os 5 jobs mortos do PV-00232 continuam `dead_letter` (são a evidência do bug; nenhum cálculo
+os lê). Os **233 recibos de `update` sem ator** são **outro caminho** — `update` roda
+síncrono no browser — e seguem **não diagnosticados**.
+
 ## Organização de Grupos de Estoque (product_groups)
 
 > Reorganizado em 2026-07-01: os dois fluxos de criação de grupo (tela **Estoque →
