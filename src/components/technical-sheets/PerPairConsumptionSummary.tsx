@@ -18,6 +18,7 @@ import {
   type PerPairRow,
   type PerPairSource,
 } from '@/lib/sheetPerPairConsumption';
+import { resolveConsumptionUnit } from '@/lib/materialUnit';
 import { isHeterogeneousGroup, materialIdentity } from '@/lib/materialIdentity';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
 import { strapMaterialMode } from '@/lib/strapMaterialPolicy';
@@ -160,21 +161,23 @@ export default function PerPairConsumptionSummary({
       name: string,
       scalar: number,
       perSize: Record<string, unknown> | null | undefined,
-      forceArea: boolean,
+      preferPhysical: boolean,
       groupId?: string | null,
     ): PerPairSource | null => {
       // O UUID gravado na ficha vence o nome (nome é texto livre legado).
       const group: any = (groupId ? groupById.get(groupId) : null) || groupByName(name);
-      const product: any = productOfGroup(group?.id, forceArea);
+      const product: any = productOfGroup(group?.id, preferPhysical);
       const stockUnit = (product?.unit || group?.consumption_unit || 'un').toString();
       const u = normalizeText(stockUnit);
-      const consUnit = normalizeText(group?.consumption_unit).replace(/2/g, '²');
-      // Mesmo critério do rótulo da grade na aba Materiais (getUnitForGroupName).
-      const isArea = forceArea
-        || u === 'dm²' || u === 'dm2'
-        || ((LINEAR_UNITS.has(u) || PLATE_UNITS.has(u))
-          && (Number(group?.dimensions_width) > 0 || Number(group?.dimensions_length) > 0
-            || ['dm²', 'm²', 'cm²'].includes(consUnit)));
+      // MESMA fonte do rótulo da grade na aba Materiais e do motor de consumo.
+      // Antes isto era uma CÓPIA do critério antigo (`dimensions_width > 0` do
+      // GRUPO) + `forceArea = true` fixo no Cabedal — então este card dizia dm²
+      // para o ELÁSTICO ESPECIAL G (fita de 25 mm vendida a metro) mesmo depois
+      // de a grade e o motor pararem de converter. Ver materialUnit.ts.
+      const isArea = u === 'dm²' || u === 'dm2'
+        || resolveConsumptionUnit(group?.name || name, groups, products, componentSheets, {
+          groupId: group?.id ?? groupId ?? null,
+        }).basis === 'roll_area';
       return {
         component,
         material: group?.name || name,

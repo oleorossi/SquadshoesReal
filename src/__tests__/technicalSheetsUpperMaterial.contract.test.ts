@@ -8,12 +8,32 @@ const materialOneEnd = source.indexOf('Corte a fio (cabedal sem costura)', mater
 const materialOneBlock = source.slice(materialOneStart, materialOneEnd);
 
 describe('Ficha Técnica — identidade e consumo do Cabedal Material 1', () => {
-  it('edita a área explicitamente em dm²/par, sem derivar a unidade do produto', () => {
+  it('edita POR PAR (nunca por pé) e deriva a unidade do item selecionado', () => {
     expect(materialOneStart).toBeGreaterThan(-1);
     expect(materialOneEnd).toBeGreaterThan(materialOneStart);
-    expect(materialOneBlock).toContain('POR PAR (dm²/par, não por pé)');
-    expect(materialOneBlock).toContain("'dm²'");
-    expect(materialOneBlock).not.toContain('getUnitForGroupName(form.upper_material)');
+
+    // O que a trava ORIGINAL protegia (spec consumo-cabedal-padrao-par): o
+    // canônico é POR PAR, com aviso explícito de que NÃO é por pé, mais o
+    // readout "= X/pé" ao lado da média como guard anti-deriva. Isso continua.
+    expect(materialOneBlock).toContain('POR PAR ({upperUnit.unit}/par, não por pé)');
+    expect(materialOneBlock).toContain('consumo do par (2 pés)');
+    // O readout "= X/pé" continua existindo; deixou de ser literal porque não
+    // faz sentido em contagem ("0,5 un/pé"). A intenção é o que se trava.
+    expect(materialOneBlock).toContain('showPerFoot, // readout "= X/pé"');
+    expect(materialOneBlock).toContain("upperUnit.basis !== 'count'");
+
+    // O que MUDOU (decisão do dono, 12/10/2026): a unidade é derivada do item,
+    // nunca mais um literal. O 'dm²' fixo mentia para material linear direto —
+    // ELÁSTICO ESPECIAL G é fita de 25 mm, SKU próprio vendido a metro, e o
+    // rótulo mandava digitar área. Comportamento coberto por
+    // src/lib/__tests__/materialUnit.test.ts.
+    expect(materialOneBlock).toContain('resolveUnitFor(');
+    expect(materialOneBlock).toContain('upperUnit.unit,');
+    expect(materialOneBlock).not.toContain("'dm²',");
+
+    // A unidade NÃO pode voltar a sair do consumption_unit do GRUPO (lição
+    // ELÁSTICO SARJA: grupo diz 'm', produto é 'un').
+    expect(materialOneBlock).not.toContain('consumption_unit');
   });
 
   it('recebe o UUID da folha e mantém o grupo de cor predominante sincronizado sem apagar override manual', () => {
