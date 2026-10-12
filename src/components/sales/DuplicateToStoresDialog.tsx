@@ -36,8 +36,10 @@ import {
 } from '@/lib/duplicateToStores';
 import {
   copyItemStraps,
+  itemStrapChoiceKey,
+  itemStrapColorChoices,
   loadStrapCopyContext,
-  type BuyReadyColorGap,
+  type ItemStrapColorGap,
   type StrapCopyContext,
 } from '@/lib/copySaleOrderStraps';
 import { resolveReferenceImageUrl } from '@/lib/referenceImage';
@@ -135,7 +137,10 @@ export default function DuplicateToStoresDialog({
   const [batches, setBatches] = useState<DupBatch[]>([]);
   // Lacunas de cor de tira comprada pronta, descobertas na passada seca do
   // "Duplicar tudo", e a escolha do dono por linha da ficha.
-  const [buyReadyGaps, setBuyReadyGaps] = useState<BuyReadyColorGap[]>([]);
+  // A lacuna é por (ITEM do pedido, tira da ficha) — nunca só por tira. A mesma
+  // tira aparece em vários itens, um por cor de forração, e cada cor tem o SEU
+  // strass: um seletor por tira aplicaria a mesma cor a todos eles.
+  const [buyReadyGaps, setBuyReadyGaps] = useState<ItemStrapColorGap[]>([]);
   const [buyReadyChoices, setBuyReadyChoices] = useState<Record<string, string>>({});
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
@@ -451,17 +456,18 @@ export default function DuplicateToStoresDialog({
     // O pedido de origem pode estar aprovado/expedido — e aí seu snapshot é
     // congelado, sem como corrigir lá. Então a escolha acontece aqui, uma vez,
     // e vale para todas as lojas: nada é criado enquanto houver lacuna aberta.
-    const choices = new Map(Object.entries(buyReadyChoices));
-    const gapsByLine = new Map<string, BuyReadyColorGap>();
+    const gapsByItemLine = new Map<string, ItemStrapColorGap>();
     for (const item of allPickedForPrep) {
       const refCode = strapContext.sheetCodeFor(item.reference_id) || item.ref_code || '';
       const label = [refCode, item.color].filter(Boolean).join(' / ') || 'Item';
-      for (const gap of copyItemStraps(item, strapContext, label, choices).gaps) {
-        if (!gapsByLine.has(gap.lineId)) gapsByLine.set(gap.lineId, gap);
+      const itemChoices = itemStrapColorChoices(buyReadyChoices, item.id);
+      for (const gap of copyItemStraps(item, strapContext, label, itemChoices).gaps) {
+        const key = itemStrapChoiceKey(item.id, gap.lineId);
+        if (!gapsByItemLine.has(key)) gapsByItemLine.set(key, { key, itemLabel: label, gap });
       }
     }
-    setBuyReadyGaps([...gapsByLine.values()]);
-    if (gapsByLine.size > 0) {
+    setBuyReadyGaps([...gapsByItemLine.values()]);
+    if (gapsByItemLine.size > 0) {
       toast.error('Escolha a cor das tiras sem cadastro', {
         description: 'O pedido de origem tem tira comprada pronta numa cor que não existe no estoque. Escolha abaixo e confirme de novo.',
       });
@@ -504,7 +510,7 @@ export default function DuplicateToStoresDialog({
         const vid = i.material_variant_id;
         const refCode = strapContext.sheetCodeFor(i.reference_id) || i.ref_code || '';
         const itemLabel = [refCode, i.color].filter(Boolean).join(' / ') || 'Item';
-        const copied = copyItemStraps(i, strapContext, itemLabel, choices);
+        const copied = copyItemStraps(i, strapContext, itemLabel, itemStrapColorChoices(buyReadyChoices, i.id));
         strapPending.push(...copied.pending);
         return {
           reference_id: i.reference_id,
@@ -709,8 +715,9 @@ export default function DuplicateToStoresDialog({
                     </p>
                   </div>
                 </div>
-                {buyReadyGaps.map((gap) => (
-                  <div key={gap.lineId} className="flex flex-wrap items-center gap-2 pl-6">
+                {buyReadyGaps.map(({ key, itemLabel, gap }) => (
+                  <div key={key} className="flex flex-wrap items-center gap-2 pl-6">
+                    <span className="text-xs font-semibold text-foreground">{itemLabel}</span>
                     <span className="text-xs font-mono uppercase text-muted-foreground">
                       {gap.strapLabel} · {gap.groupName}
                     </span>
@@ -723,9 +730,9 @@ export default function DuplicateToStoresDialog({
                       </span>
                     ) : (
                       <Select
-                        value={buyReadyChoices[gap.lineId] || ''}
+                        value={buyReadyChoices[key] || ''}
                         onValueChange={(value) => setBuyReadyChoices(
-                          (prev) => ({ ...prev, [gap.lineId]: value }),
+                          (prev) => ({ ...prev, [key]: value }),
                         )}
                       >
                         <SelectTrigger className="h-8 w-[260px]">

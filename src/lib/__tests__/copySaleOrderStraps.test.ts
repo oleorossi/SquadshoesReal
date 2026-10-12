@@ -4,6 +4,8 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
 import {
   copyStrapLinesForNewOrder,
+  itemStrapChoiceKey,
+  itemStrapColorChoices,
   type CopyStrapLineLike,
 } from '@/lib/copySaleOrderStraps';
 
@@ -275,5 +277,43 @@ describe('escolha de cor da tira pronta na duplicação', () => {
       itemLabel: 'NL02 / OFF WHITE',
     });
     expect(gaps[0].options).toEqual([]);
+  });
+});
+
+/**
+ * Escolha por ITEM, nunca por tira (12/10/2026 — relato do dono: "está copiando
+ * a cor que eu seleciono para todo o pedido, sendo que cada cor de Forração tem
+ * um tipo de strass").
+ *
+ * A mesma tira da ficha aparece em um item por cor de forração. Chavear a
+ * escolha só pela tira faz a cor escolhida para o item com lacuna valer para
+ * todos os outros — que já têm o strass certo.
+ */
+describe('itemStrapColorChoices — a escolha não vaza entre itens', () => {
+  const LINE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const ITEM_OFF_WHITE = 'item-off-white';
+  const ITEM_PRETO = 'item-preto';
+  const CRISTAL = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+  const tela = {
+    [itemStrapChoiceKey(ITEM_OFF_WHITE, LINE)]: CRISTAL,
+  };
+
+  it('entrega a escolha ao item que a recebeu', () => {
+    expect([...itemStrapColorChoices(tela, ITEM_OFF_WHITE)]).toEqual([[LINE, CRISTAL]]);
+  });
+
+  it('NÃO entrega a escolha a outro item com a mesma tira', () => {
+    expect([...itemStrapColorChoices(tela, ITEM_PRETO)]).toEqual([]);
+  });
+
+  it('a chave separa itens diferentes na mesma tira', () => {
+    expect(itemStrapChoiceKey(ITEM_OFF_WHITE, LINE))
+      .not.toBe(itemStrapChoiceKey(ITEM_PRETO, LINE));
+  });
+
+  it('ignora escolha vazia (seletor ainda não respondido)', () => {
+    expect([...itemStrapColorChoices({ [itemStrapChoiceKey(ITEM_OFF_WHITE, LINE)]: '' }, ITEM_OFF_WHITE)])
+      .toEqual([]);
   });
 });

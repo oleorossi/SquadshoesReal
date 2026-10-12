@@ -75,6 +75,37 @@ export interface BuyReadyColorGap {
   options: readonly BuyReadyColorOption[];
 }
 
+/** Lacuna de cor situada no ITEM do pedido que a tem (o que a tela pergunta). */
+export interface ItemStrapColorGap {
+  /** `itemStrapChoiceKey(itemId, lineId)` — identidade da pergunta na tela. */
+  key: string;
+  /** Rótulo do item, ex.: "NL02 / OFF WHITE". */
+  itemLabel: string;
+  gap: BuyReadyColorGap;
+}
+
+/**
+ * Chave da escolha: ITEM + tira. Nunca só a tira — a mesma tira da ficha
+ * aparece em um item por cor de forração, e cada cor tem o seu strass. Chavear
+ * só pela tira faria a cor escolhida para um item valer para todos.
+ */
+export function itemStrapChoiceKey(itemId: unknown, lineId: unknown): string {
+  return `${String(itemId ?? '')}::${String(lineId ?? '')}`;
+}
+
+/** Recorta, do mapa da tela, só as escolhas do item — chaveadas por linha. */
+export function itemStrapColorChoices(
+  choices: Readonly<Record<string, string>> | null | undefined,
+  itemId: unknown,
+): Map<string, string> {
+  const prefix = itemStrapChoiceKey(itemId, '');
+  const own = new Map<string, string>();
+  for (const [key, value] of Object.entries(choices || {})) {
+    if (key.startsWith(prefix) && value) own.set(key.slice(prefix.length), value);
+  }
+  return own;
+}
+
 /** Escopo de uma tira comprada pronta: medida + grupo acabado. */
 export function buyReadyScopeKey(measureId: unknown, identityGroupId: unknown): string {
   return [measureId, identityGroupId]

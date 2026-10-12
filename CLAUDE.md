@@ -949,10 +949,17 @@ para todas as lojas do lote e **não toca o pedido de origem**.
 `createOrder` — senão as primeiras lojas entrariam e as seguintes falhariam, deixando o
 lote pela metade.
 
+⚠ **A escolha é por (ITEM, tira) — NUNCA só por tira.** Relato do dono em 12/10/2026:
+*"está copiando a cor que eu seleciono para todo o pedido, sendo que cada cor de Forração
+tem um tipo de strass"*. A mesma tira da ficha aparece em um item por cor de forração, e
+cada uma tem o seu strass; um seletor por tira aplica a mesma cor a todos eles. A chave é
+`itemStrapChoiceKey(itemId, lineId)` e cada item recebe só as suas via
+`itemStrapColorChoices` — travado por `lib/__tests__/copySaleOrderStraps.test.ts`. O painel
+mostra o rótulo do item em cada linha, senão a pergunta é ambígua na tela.
+
 ⚠ **A escolha só entra na linha SEM cadastro** (guarda `alreadyValid` em
-`copyStrapLinesForNewOrder`). A mesma tira da ficha aparece em vários itens do pedido, um
-por cor do calçado, e quase todos já têm a cor certa: sem a guarda, a escolha feita para o
-item com lacuna sobrescreveria em silêncio a cor correta dos outros.
+`copyStrapLinesForNewOrder`) — segunda camada, independente da chave. Sem ela, a escolha
+feita para o item com lacuna sobrescreveria em silêncio a cor correta dos outros.
 
 ⚠ **A escolha é aplicada DEPOIS do reconcile**, nunca antes: ela é decisão comercial sobre
 o PV novo, não estrutura da ficha. Aplicada antes, o reconciliador a trataria como cor do
