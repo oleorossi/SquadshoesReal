@@ -2706,8 +2706,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               <Layers className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-semibold">Especificações por Componente</h3>
             </div>
+            {/* ⚠ NÃO afirme uma unidade única aqui. Este parágrafo dizia "informe a
+                área consumida em dm² por par" e ficava logo acima da grade do
+                Cabedal — que desde 12/10/2026 mostra a unidade do ITEM. Com um
+                elástico selecionado a tela se contradizia: o parágrafo pedia dm²
+                e o cabeçalho logo abaixo dizia m/par. A unidade concreta sai de
+                `resolveConsumptionUnit`, por bloco; aqui descreve-se a REGRA. */}
             <p className="text-xs text-muted-foreground">
-              Defina o grupo de material para cada componente. No Material 1 do Cabedal, informe a área consumida em <strong className="text-foreground">dm² por par</strong>; o sistema converte essa área para a unidade de estoque usando a largura cadastrada no material.
+              Defina o grupo de material para cada componente. O consumo é sempre <strong className="text-foreground">por par</strong>, na unidade do item selecionado:
+              material cortado de bobina (napa, couro) entra em <strong className="text-foreground">dm²/par</strong> e o sistema converte pela largura da ficha de componente;
+              material linear direto (elástico, tira) entra na <strong className="text-foreground">própria unidade de estoque</strong>, sem conversão.
             </p>
 
             {/* Helper: unidade do grupo via 1º produto ativo do grupo */}

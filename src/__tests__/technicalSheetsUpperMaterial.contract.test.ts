@@ -3,6 +3,12 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(resolve(process.cwd(), 'src/pages/TechnicalSheets.tsx'), 'utf8');
+const section = (src: string, from: string, to: string) => {
+  const a = src.indexOf(from);
+  const b = src.indexOf(to, a);
+  return a > -1 && b > a ? src.slice(a, b) : '';
+};
+
 const materialOneStart = source.indexOf('label="Material 1 (Principal)"');
 const materialOneEnd = source.indexOf('Corte a fio (cabedal sem costura)', materialOneStart);
 const materialOneBlock = source.slice(materialOneStart, materialOneEnd);
@@ -34,6 +40,21 @@ describe('Ficha Técnica — identidade e consumo do Cabedal Material 1', () => 
     // A unidade NÃO pode voltar a sair do consumption_unit do GRUPO (lição
     // ELÁSTICO SARJA: grupo diz 'm', produto é 'un').
     expect(materialOneBlock).not.toContain('consumption_unit');
+  });
+
+  it('o texto de abertura da seção NÃO afirma uma unidade única', () => {
+    // Ficava logo acima da grade do Cabedal dizendo "informe a área consumida em
+    // dm² por par". Com um elástico selecionado a tela se contradizia: o
+    // parágrafo pedia dm² e o cabeçalho abaixo dizia m/par. O parágrafo descreve
+    // a REGRA; a unidade concreta sai do resolvedor, por bloco.
+    const intro = section(
+      source,
+      'Especificações por Componente',
+      'Material 1 (Principal)',
+    );
+    expect(intro).not.toContain('informe a área consumida em');
+    expect(intro).toContain('na unidade do item selecionado');
+    expect(intro).toContain('sem conversão');
   });
 
   it('recebe o UUID da folha e mantém o grupo de cor predominante sincronizado sem apagar override manual', () => {
