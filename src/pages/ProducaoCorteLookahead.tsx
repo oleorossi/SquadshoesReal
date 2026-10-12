@@ -179,6 +179,36 @@ export default function ProducaoCorteLookahead() {
     setSelected(new Set(liberableRows.map((r) => r.itemId)));
   };
 
+  /**
+   * Seleção por GRUPO. A faca é por referência, então "libera essa referência
+   * inteira" / "esse pedido inteiro" é o clique natural depois do agrupamento —
+   * sem isso o operador volta a marcar linha por linha.
+   *
+   * Só mexe nos LIBERÁVEIS: linha bloqueada não entra na seleção nem é
+   * desmarcada, do mesmo jeito que `toggleRow` recusa.
+   */
+  const toggleGroup = (groupRows: CorteLookaheadRow[], checked: boolean) => {
+    const ids = groupRows.filter((r) => r.liberable).map((r) => r.itemId);
+    if (ids.length === 0) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  /** Estado do checkbox de grupo: marcado, vazio, ou parcial. */
+  const groupCheckState = (groupRows: CorteLookaheadRow[]): boolean | 'indeterminate' => {
+    const ids = groupRows.filter((r) => r.liberable).map((r) => r.itemId);
+    if (ids.length === 0) return false;
+    const marked = ids.filter((id) => selected.has(id)).length;
+    if (marked === 0) return false;
+    return marked === ids.length ? true : 'indeterminate';
+  };
+
   const saveCapacity = (s: SectorSetting | undefined, value: number) => {
     if (!s) {
       toast.error(`Setor "${sector}" ainda não está em sector_settings.`);
@@ -327,10 +357,26 @@ export default function ProducaoCorteLookahead() {
                       <TableBody>
                         {orderGroups.map((group) => {
                           const head = group.references[0]?.rows[0];
+                          const groupRows = group.references.flatMap((r) => r.rows);
+                          const groupLiberableCount = groupRows.filter((r) => r.liberable).length;
+                          // Por que este PV perdeu material: o relatório ordena por
+                          // prazo, a alocação segue a sequência oficial. Sem nomear
+                          // quem levou, a tela parece contraditória.
+                          const tookMaterial = [
+                            ...new Set(groupRows.flatMap((r) => r.blockedByOrderNumbers ?? [])),
+                          ];
                           return (
                             <Fragment key={group.saleOrderId}>
                               <TableRow className="bg-muted/50 hover:bg-muted/50">
-                                <TableCell colSpan={4} className="py-2">
+                                <TableCell className="py-2 align-middle">
+                                  <Checkbox
+                                    checked={groupCheckState(groupRows)}
+                                    onCheckedChange={(v) => toggleGroup(groupRows, v === true)}
+                                    disabled={groupLiberableCount === 0}
+                                    aria-label={`Selecionar liberáveis do pedido ${group.orderNumber || 'sem número'}`}
+                                  />
+                                </TableCell>
+                                <TableCell colSpan={3} className="py-2">
                                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                                     <Badge variant="mono" className="normal-case tracking-normal text-[11px]">
                                       {group.orderNumber}
@@ -356,9 +402,20 @@ export default function ProducaoCorteLookahead() {
                                       </Badge>
                                     )}
                                     <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-                                      {fmtPairs(group.pairs)} pares · {group.references.length}{' '}
+                                      {fmtPairs(group.pairs)} pares · {groupLiberableCount}/{group.rowCount}{' '}
+                                      liberável{groupLiberableCount === 1 ? '' : 'is'} · {group.references.length}{' '}
                                       {group.references.length === 1 ? 'referência' : 'referências'}
                                     </span>
+                                    {tookMaterial.length > 0 && (
+                                      <p className="w-full text-[11px] text-muted-foreground">
+                                        Material deste pedido foi alocado a{' '}
+                                        <span className="font-medium text-foreground">
+                                          {tookMaterial.join(', ')}
+                                        </span>
+                                        {' '}— a fila dá o estoque livre a quem está mais perto de fechar o PV,
+                                        não a quem entrega primeiro.
+                                      </p>
+                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -366,7 +423,14 @@ export default function ProducaoCorteLookahead() {
                               {group.references.map((ref) => (
                                 <Fragment key={ref.key}>
                                   <TableRow className="hover:bg-transparent">
-                                    <TableCell className="py-1.5" />
+                                    <TableCell className="py-1.5 align-middle">
+                                      <Checkbox
+                                        checked={groupCheckState(ref.rows)}
+                                        onCheckedChange={(v) => toggleGroup(ref.rows, v === true)}
+                                        disabled={ref.rows.every((r) => !r.liberable)}
+                                        aria-label={`Selecionar liberáveis da referência ${ref.label}`}
+                                      />
+                                    </TableCell>
                                     <TableCell colSpan={3} className="py-1.5">
                                       <div className="flex items-baseline gap-2">
                                         <span className="text-sm font-semibold text-foreground">

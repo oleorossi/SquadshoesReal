@@ -35,6 +35,8 @@ import {
   ATELIER_SECTOR_LABEL,
   ATELIER_SECTORS,
   atelierLotColumn,
+  atelierReportRows,
+  groupAtelierLotsByReference,
   type AtelierSector,
 } from '@/lib/atelier';
 import {
@@ -54,9 +56,15 @@ import {
   type AtelierLotRow,
 } from '@/hooks/useAtelier';
 import { useContractors } from '@/hooks/useContractors';
+import {
+  deadlineChipLabel,
+  deadlineTone,
+  groupReportByOrderThenReference,
+} from '@/lib/reportOrderGrouping';
+import { daysUntilDeadline } from '@/lib/production/productionSequence';
 import { cn } from '@/lib/utils';
 
-const VIEW_SET = new Set(['cadastro', 'fila']);
+const VIEW_SET = new Set(['cadastro', 'fila', 'relatorio']);
 
 function sheetLabel(s: {
   code?: string | null;
@@ -73,6 +81,14 @@ function formatQty(n: number) {
 function formatDay(iso: string) {
   const [, m, d] = iso.slice(0, 10).split('-');
   return `${d}/${m}`;
+}
+
+/** Tom do prazo de entrega do PV mais apertado do lote. */
+function deadlineChipClass(lot: { min_delivery_deadline: string | null }): string {
+  const tone = deadlineTone(daysUntilDeadline(lot.min_delivery_deadline));
+  if (tone === 'late') return 'border-red-500/30 bg-red-500/10 text-red-600';
+  if (tone === 'warn') return 'border-amber-500/30 bg-amber-500/10 text-amber-600';
+  return 'border-border bg-muted text-muted-foreground';
 }
 
 function GradeStrip({ grade }: { grade: Record<string, number> }) {
@@ -213,6 +229,17 @@ function LotCard({ lot, contractors }: { lot: AtelierLotRow; contractors: { id: 
           {lot.orders.map((o) => o.order_number).join(', ')}
           {lot.min_ready_date ? ` · pronto até ${formatDay(lot.min_ready_date)}` : ''}
         </p>
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className="text-muted-foreground">
+            Entrega{' '}
+            <span className="font-medium text-foreground">
+              {lot.min_delivery_deadline ? formatDay(lot.min_delivery_deadline) : '—'}
+            </span>
+          </span>
+          <span className={cn('rounded border px-1.5 py-0.5 font-medium', deadlineChipClass(lot))}>
+            {deadlineChipLabel(daysUntilDeadline(lot.min_delivery_deadline))}
+          </span>
+        </div>
         {clients.length > 0 && <p className="truncate text-[11px] text-muted-foreground">{clients.join(', ')}</p>}
       </header>
 
@@ -530,8 +557,8 @@ function FilaView() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Cada lote junta a mesma referência e cor de vários pedidos. Corte aqui, envie ao prestador e, quando voltar,
-          a OP nasce com essas etapas prontas.
+          Cada lote junta a mesma referência e cor de vários pedidos, agrupado por referência e com a entrega mais
+          próxima no topo. Corte aqui, envie ao prestador e, quando voltar, a OP nasce com essas etapas prontas.
         </p>
         <Button variant="outline" size="sm" className="h-8" onClick={() => void refetch()}>
           Atualizar
@@ -566,7 +593,22 @@ function FilaView() {
                   {colLots.length === 0 ? (
                     <p className="py-6 text-center text-xs text-muted-foreground">Nada aqui</p>
                   ) : (
-                    colLots.map((lot) => <LotCard key={lot.id} lot={lot} contractors={contractorOpts} />)
+                    groupAtelierLotsByReference(colLots).map((refGroup) => (
+                      <section key={refGroup.key} className="space-y-2">
+                        <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
+                          <h3 className="font-display text-sm leading-none text-foreground">
+                            {refGroup.label}
+                          </h3>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {refGroup.pairs} pares · {refGroup.lots.length}{' '}
+                            {refGroup.lots.length === 1 ? 'cor' : 'cores'}
+                          </span>
+                        </header>
+                        {refGroup.lots.map((lot) => (
+                          <LotCard key={lot.id} lot={lot} contractors={contractorOpts} />
+                        ))}
+                      </section>
+                    ))
                   )}
                 </div>
               </section>
@@ -574,6 +616,135 @@ function FilaView() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Relatório do Ateliê — `?view=relatorio`.
+ *
+ * Decisão do dono (12/10/2026): PEDIDO de cima pra baixo pelo prazo de entrega,
+ * todos os itens do pedido agrupados por REFERÊNCIA. É a hierarquia que a fila
+ * operacional não pode ter, porque lá o eixo 1 é o lote (`referência × cor`
+ * atravessando vários PVs) e `atelier_confirm_lot_cut` opera por lote.
+ *
+ * ⚠ Leitura, não operação: não corta, não envia, não recebe. Quem age é a fila.
+ */
+function RelatorioView() {
+  const { data: lots = [], isLoading, isError, refetch } = useAtelierLots();
+
+  const groups = useMemo(() => {
+    // Uma linha por (pedido × lote): o lote junta vários PVs, então o mesmo
+    // lote aparece no relatório de cada pedido que o alimenta, com os pares
+    // DAQUELE pedido — nunca com o total do lote, que somaria os outros.
+    const rows = atelierReportRows(lots);
+    return groupReportByOrderThenReference(rows, ({ lot, order }) => ({
+      saleOrderId: order.sale_order_id,
+      orderNumber: order.order_number,
+      clientName: order.client_name,
+      deliveryDeadline: order.delivery_deadline,
+      referenceLabel: lot.reference_code ?? lot.reference_name ?? 'Sem referência',
+      referenceKey: lot.reference_id,
+      pairs: Number(order.pairs) || 0,
+    }));
+  }, [lots]);
+
+  if (isError) {
+    return <p className="text-sm text-destructive">Não foi possível carregar o relatório.</p>;
+  }
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (groups.length === 0) {
+    return (
+      <EmptyState
+        icon={CheckCircle}
+        title="Nenhum pedido no Ateliê"
+        description="Quando um pedido com referência do Ateliê for aprovado, ele aparece aqui pela data de entrega."
+      />
+    );
+  }
+
+  const totalPairs = groups.reduce((sum, g) => sum + g.pairs, 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          Entrega mais próxima no topo, itens de cada pedido agrupados por referência.
+          {' '}
+          <span className="font-medium text-foreground">
+            {groups.length} {groups.length === 1 ? 'pedido' : 'pedidos'} · {formatQty(totalPairs)} pares
+          </span>
+        </p>
+        <Button variant="outline" size="sm" className="h-8" onClick={() => void refetch()}>
+          Atualizar
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {groups.map((group) => (
+          <Panel key={group.saleOrderId} className="p-4 space-y-3">
+            <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-border/60 pb-2">
+              <h2 className="font-display text-lg leading-none text-foreground">{group.orderNumber || '—'}</h2>
+              <span className="text-sm text-muted-foreground">{group.clientName || '—'}</span>
+              <span className="text-xs text-muted-foreground">
+                Entrega{' '}
+                <span className="font-medium text-foreground">
+                  {group.deliveryDeadline ? formatDay(group.deliveryDeadline) : '—'}
+                </span>
+              </span>
+              <span
+                className={cn(
+                  'rounded border px-1.5 py-0.5 text-[11px] font-medium',
+                  deadlineChipClass({ min_delivery_deadline: group.deliveryDeadline }),
+                )}
+              >
+                {deadlineChipLabel(group.daysUntilDeadline)}
+              </span>
+              <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+                {formatQty(group.pairs)} pares · {group.references.length}{' '}
+                {group.references.length === 1 ? 'referência' : 'referências'}
+              </span>
+            </header>
+
+            {group.references.map((ref) => (
+              <section key={ref.key} className="space-y-1">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <h3 className="font-display text-sm leading-none text-foreground">{ref.label}</h3>
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {formatQty(ref.pairs)} pares · {ref.rows.length}{' '}
+                    {ref.rows.length === 1 ? 'cor' : 'cores'}
+                  </span>
+                </div>
+                <ul className="divide-y divide-border/50 rounded border border-border/60">
+                  {ref.rows.map(({ lot, order }) => (
+                    <li
+                      key={`${lot.id}-${order.sale_order_id}`}
+                      className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="font-medium text-foreground">{lot.color ?? 'Sem cor'}</span>
+                      <span className="font-mono text-[11px] text-muted-foreground">{lot.lot_number}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {COLUMN_TITLE[
+                          atelierLotColumn(lot.status, lot.jobs.map((j) => j.pipeline_status))
+                        ] ?? lot.status}
+                      </span>
+                      <span className="font-mono font-semibold tabular-nums text-foreground">
+                        {formatQty(Number(order.pairs) || 0)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </Panel>
+        ))}
+      </div>
     </div>
   );
 }
@@ -615,12 +786,18 @@ export default function Atelie() {
           <TabsTrigger value="fila" className="text-xs sm:text-sm">
             Fila operacional
           </TabsTrigger>
+          <TabsTrigger value="relatorio" className="text-xs sm:text-sm">
+            Relatório
+          </TabsTrigger>
           <TabsTrigger value="cadastro" className="text-xs sm:text-sm">
             Modelos complexos
           </TabsTrigger>
         </TabsList>
         <TabsContent value="fila">
           <FilaView />
+        </TabsContent>
+        <TabsContent value="relatorio">
+          <RelatorioView />
         </TabsContent>
         <TabsContent value="cadastro">
           <CadastroView />

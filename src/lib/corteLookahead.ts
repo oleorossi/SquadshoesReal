@@ -124,6 +124,11 @@ export interface CorteLookaheadRankInput {
   reference?: string | null;
   /** Due / delivery (billing); eixo 2. */
   dueDate?: string | null;
+  /**
+   * Nº do PV — só pra NOMEAR quem consumiu o SKU quando outro item fica sem.
+   * Não entra em nenhuma comparação de ordem.
+   */
+  orderNumber?: string | null;
   daysUntilPlannedStart?: number | null;
   gapLabel?: string | null;
 }
@@ -132,6 +137,16 @@ export interface CorteLookaheadRanked extends CorteLookaheadRankInput {
   liberable: boolean;
   simulatedFreeAfter: number;
   chips: CorteLookaheadChip[];
+  /**
+   * Pedidos que consumiram este SKU ANTES desta linha na alocação simulada —
+   * só preenchido quando a linha ficou bloqueada por falta.
+   *
+   * Existe porque o relatório é ordenado por PRAZO e a alocação segue a
+   * sequência oficial (fechar PV → urgência → cor → ref): sem isso, o PV do
+   * topo aparece bloqueado e um de baixo verde, e a tela parece quebrada.
+   * Nomear quem levou transforma a contradição aparente em explicação.
+   */
+  blockedByOrderNumbers?: string[];
 }
 
 export interface CorteLookaheadChip {
@@ -159,6 +174,8 @@ export function rankCorteLookaheadRows(
 
   const sortedForSim = [...rows].sort((a, b) => compareCorteLookahead(a, b, today, opts?.deadlineByItemId));
   const ranked: CorteLookaheadRanked[] = [];
+  // Quem já consumiu cada SKU nesta simulação, na ordem em que consumiu.
+  const consumersByProduct = new Map<string, string[]>();
 
   for (const row of sortedForSim) {
     const productId = row.stock.productId;
@@ -166,6 +183,7 @@ export function rankCorteLookaheadRows(
     let liberable = row.liberableBase && !!productId;
     let gap = row.gapLabel || null;
     let simulatedFreeAfter = productId ? (freePool.get(productId) ?? 0) : 0;
+    let blockedByOrderNumbers: string[] | undefined;
 
     if (!productId) {
       liberable = false;
@@ -178,9 +196,18 @@ export function rankCorteLookaheadRows(
         liberable = false;
         gap = gap || `Falta ${row.stock.productName || 'material'} (${fmtQty(required - free)})`;
         simulatedFreeAfter = free;
+        // Quem levou o material antes desta linha — exclui o próprio pedido,
+        // que não é explicação pra ele mesmo.
+        const own = String(row.orderNumber || '').trim();
+        const takers = (consumersByProduct.get(productId) ?? []).filter((n) => n !== own);
+        if (takers.length > 0) blockedByOrderNumbers = [...new Set(takers)];
       } else {
         freePool.set(productId, Math.max(0, free - required));
         simulatedFreeAfter = free - required;
+        const taker = String(row.orderNumber || '').trim();
+        if (taker) {
+          consumersByProduct.set(productId, [...(consumersByProduct.get(productId) ?? []), taker]);
+        }
       }
     }
 
@@ -190,6 +217,7 @@ export function rankCorteLookaheadRows(
       liberable,
       simulatedFreeAfter,
       gapLabel: gap,
+      blockedByOrderNumbers,
       chips: buildChips({
         liberable,
         stockName: row.stock.productName,

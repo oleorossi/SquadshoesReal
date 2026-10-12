@@ -337,12 +337,17 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
       const pvLabel = isSemPedido
         ? 'Sem pedido vinculado'
         : 'Pedido ' + (group.orderNumber || '—') + (group.clientName ? ' — ' + group.clientName : '');
-      cabedalHtml += '<div style="margin-top:4px;border-top:2px solid #111;padding-top:3px;"></div>';
-      cabedalHtml += '<h3 style="font-size:12px;margin:0 0 3px;font-weight:800;">📋 ' + escapeHtml(pvLabel);
+      // Corpo do cabeçalho de PV: 15px. O pedido é a IDENTIDADE do bloco (quem
+      // lê a 1m precisa saber de que pedido é a folha), e o piso de identidade
+      // do CLAUDE.md é 14px — os 12px herdados dos headings vizinhos furavam.
+      // O prazo anda junto, no mesmo corpo, porque é o número que decide a
+      // ordem; os totais ficam em corpo menor, que é metadado (prioridade 3).
+      cabedalHtml += '<div style="margin-top:6px;border-top:2px solid #111;padding-top:4px;"></div>';
+      cabedalHtml += '<h3 style="font-size:15px;line-height:1.2;margin:0 0 4px;font-weight:800;">📋 ' + escapeHtml(pvLabel);
       if (!isSemPedido) {
         // Vermelho só no atraso e SEMPRE pareado com negrito: a fábrica imprime
         // laser P&B, onde o vermelho vira cinza (regra 5 de print).
-        cabedalHtml += '<span style="font-size:11px;font-weight:800;'
+        cabedalHtml += '<span style="font-size:15px;font-weight:800;'
           + (late ? 'color:#C00000;' : 'color:#111;')
           + '"> · entrega ' + escapeHtml(formatDayBR(group.deliveryDeadline))
           + ' (' + escapeHtml(deadlineChipLabel(group.daysUntilDeadline)) + ')</span>';
@@ -385,7 +390,13 @@ function groupOrdersByColor(orders: OrderData[], saleOrders?: SaleOrderData[]): 
           : '';
 
         cabedalHtml += '<div style="margin-bottom:5px;page-break-inside:avoid;">';
-        cabedalHtml += '<h4 style="font-size:11px;margin:4px 0 2px;font-weight:700;">' + escapeHtml(refCode) + ' — ' + escapeHtml(refName) + clientLabel + '</h4>';
+        // 14px = piso de IDENTIDADE do CLAUDE.md. A referência virou cabeçalho de
+        // grupo por causa do agrupamento novo, então o tamanho dela é parte desta
+        // mudança: o código da referência é identidade (regra 5), não metadado.
+        // O nome longo fica em corpo menor, que é o que o cortador não precisa ler
+        // de longe.
+        cabedalHtml += '<h4 style="font-size:14px;line-height:1.2;margin:5px 0 2px;font-weight:800;">' + escapeHtml(refCode)
+          + '<span style="font-size:10px;font-weight:600;color:#444;"> — ' + escapeHtml(refName) + '</span>' + clientLabel + '</h4>';
         cabedalHtml += '<table style="width:100%;border-collapse:collapse;">';
         cabedalHtml += '<thead><tr style="background:#e8e8d0;">';
         cabedalHtml += '<th style="border:1px solid #999;padding:2px 4px;text-align:left;font-size:9px;">Cor</th>';

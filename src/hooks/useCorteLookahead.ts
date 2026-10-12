@@ -50,6 +50,8 @@ export interface CorteLookaheadRow {
   freeQty: number;
   requiredQty: number;
   createdAt: string;
+  /** Pedidos que levaram o material antes deste item (só quando bloqueado). */
+  blockedByOrderNumbers?: string[];
 }
 
 interface SaleOrderLite {
@@ -530,6 +532,7 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
       color: item.color,
       reference: sheet.code || sheet.name,
       dueDate: so.delivery_deadline,
+      orderNumber: so.order_number,
       gapLabel,
     };
   });
@@ -556,6 +559,7 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
       freeQty: meta.freeQty,
       requiredQty: meta.requiredQty,
       createdAt: r.createdAt,
+      blockedByOrderNumbers: r.blockedByOrderNumbers,
     };
   });
 }
