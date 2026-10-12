@@ -845,6 +845,44 @@ nada a exclui porque **nenhum** grupo tem `is_artisanal_strap = true`. Marcar a 
 (a função já a honra), mas ela também governa compra e ajuste de estoque de 23 SKUs —
 decisão de cadastro do dono, não foi feita.
 
+### Cópia de PV: cor de tira pronta é validada contra o CATÁLOGO (CANÔNICO, 11/10/2026)
+
+Os dois botões de cópia (`copySaleOrderStraps.ts` — "Duplicar para lojas" e "Copiar p/ novo
+PV") validavam a cor da tira **só** contra `canonical_colors.active`. Isso não basta para
+tira comprada pronta (`identity_basis = 'finished_product_group'`): o writer
+`prepare_sale_order_item_internal_straps` exige uma `artisanal_strap_variants` **ativa e
+exata** em (medida, grupo acabado, cor). Faltando, ele dá `RAISE` — e como ele roda **antes
+de gravar qualquer linha**, o PV inteiro aborta e a loja toda falha com a string crua do
+Postgres, sem dizer qual item nem qual tira.
+
+**O caso que expôs (PV-00148 → AGITO NITEROI):** de 15 tiras Strass do pedido, **uma** —
+NL02 / OFF WHITE, TIRA 1 — tinha a cor gravada como texto `"OFF WHITE"`, que é a cor do
+**calçado**, não a da tira. O grupo `TIRA STRASS 6MM` só tem variante para CRISTAL COM FUNDO
+BRANCO, PRETO COM FUNDO PRETO e ROSADO COM FUNDO ROSADO (há um SKU `OFF WHITE`, mas
+**inativo** e sem variante). O texto resolvia para uma cor canônica ativa, passava na cópia e
+explodia no save.
+
+Agora `loadStrapCopyContext` carrega as variantes ativas e a cópia devolve **pendência
+nomeada** (item + tira + cor + grupo) em vez do erro cru. Travado por
+`lib/__tests__/copySaleOrderStraps.test.ts`.
+
+⚠ **A cópia NÃO escolhe a cor por você.** Sem variante, a linha vira pendência — nunca cai
+num "parecido". Inventar a tira acabada é identidade comercial, decisão do dono (ver *Tiras
+artesanais no PV*).
+
+⚠ **`buyReadyVariantKeys = null` (leitura do catálogo falhou) = NÃO validar.** O writer
+continua barrando; o que não se faz é inventar pendência por falta de leitura.
+
+⚠ **O `group_name` do grupo acabado só existe no SNAPSHOT do PV legado.** Quando a linha é
+casada por rótulo, a estrutura vem da ficha e descarta esse campo — por isso a mensagem o
+guarda em `snapshotGroupNameById` no momento do casamento. Sem isso o aviso sai com "o grupo
+acabado" genérico, que não diz ao operador onde ir.
+
+⚠ **PV já expedido NÃO se corrige por SQL.** `tg_enforce_sale_order_command_boundary` recusa
+(*"alteracao de PV exige Comercial/Gerencia e can_edit em /sales"*) — verificado em
+11/10/2026 tentando normalizar o PV-00148. A correção de cadastro de um PV antigo é feita na
+tela, por quem tem o papel; o código só precisa não mentir sobre o motivo da falha.
+
 ### Napa por tira na multicolor — automática (CANÔNICO, 11/10/2026)
 
 Decisão do dono (grill N1–N10 em `specs/tiras-redesenho.md`): a tira `reference_base` com
