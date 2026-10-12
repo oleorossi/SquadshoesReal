@@ -219,3 +219,29 @@ export const resolveGroupUnit = (
 export function isAreaUnit(unit: string | null | undefined): boolean {
   return ['dm²', 'dm2', 'm²', 'm2', 'cm²', 'cm2'].includes((unit || '').toLowerCase());
 }
+
+/**
+ * Unidade do campo `component_sheets.yield_per_size` (tela Materiais → Ficha de
+ * Componente, aba "Consumo/Par").
+ *
+ * É OUTRO campo e OUTRA semântica que o `*_consumption` da ficha técnica — por
+ * isso não passa por `resolveConsumptionUnit`. Espelha o ramo do motor em
+ * `calculateConsumptionWithUnit`:
+ *
+ *   const isLinear = LINEAR_UNITS.has(products.unit)
+ *   if (isLinear && yieldHasData && !hasDm2Override) → os yields JÁ estão na
+ *       unidade linear do item (m ou cm) e saem como 'metro'
+ *   senão → o total é tratado como dm² (placa/área)
+ *
+ * Ou seja: para item linear a unidade é a DO ITEM; só fora disso é dm².
+ *
+ * ⚠ A tela dizia "Consumo por Par (dm²)" fixo. Para item linear isso mentia:
+ * o operador digitava achando que era área e o motor lia como metro. Medido em
+ * 12/10/2026 na ficha EC111 (cabedal NEW VELVET, largura 1370 mm, yield 36):
+ * o motor devolvia 36 m/par onde 36 dm² seriam 0,2628 m/par — 137× (decisão do
+ * dono: o rótulo é que estava errado, a unidade exibida sai do item).
+ */
+export function resolveYieldUnit(productUnit: string | null | undefined): string {
+  const raw = (productUnit ?? '').toString().trim();
+  return LINEAR_UNITS.has(norm(raw)) ? raw : 'dm²';
+}

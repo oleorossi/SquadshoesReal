@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveConsumptionUnit, resolveGroupUnit, isAreaUnit } from '@/lib/materialUnit';
-import { isNativeLinearMaterial } from '@/lib/materialConsumption';
+import { resolveConsumptionUnit, resolveGroupUnit, isAreaUnit, resolveYieldUnit } from '@/lib/materialUnit';
+import { isNativeLinearMaterial, calculateConsumptionWithUnit } from '@/lib/materialConsumption';
 
 const groups = [
   // Napa cortada de bobina: a largura (1370 mm) é a do ROLO.
@@ -198,5 +198,48 @@ describe('paridade rótulo × motor', () => {
     const motorConverte = !isNativeLinearMaterial(sheet);
 
     expect(basis === 'roll_area').toBe(motorConverte);
+  });
+});
+
+/**
+ * `yield_per_size` é OUTRO campo (ficha de componente), com OUTRA semântica:
+ * para item linear o motor lê os yields como JÁ lineares. A tela dizia "dm²"
+ * fixo — 137× na ficha EC111.
+ */
+describe('resolveYieldUnit — rótulo da ficha de componente', () => {
+  it('item linear usa a unidade do ITEM', () => {
+    expect(resolveYieldUnit('m')).toBe('m');
+    expect(resolveYieldUnit('cm')).toBe('cm');
+  });
+
+  it('grafia legada e maiúscula continuam sendo do item', () => {
+    expect(resolveYieldUnit('metro')).toBe('metro');
+    expect(resolveYieldUnit('M')).toBe('M');
+  });
+
+  it('placa / contagem / massa caem em dm² — ali o motor trata como área', () => {
+    expect(resolveYieldUnit('placa')).toBe('dm²');
+    expect(resolveYieldUnit('un')).toBe('dm²');
+    expect(resolveYieldUnit('kg')).toBe('dm²');
+  });
+
+  it('sem item resolvido cai em dm² (caminho de área do motor)', () => {
+    expect(resolveYieldUnit(null)).toBe('dm²');
+    expect(resolveYieldUnit('')).toBe('dm²');
+  });
+
+  it('paridade com o MOTOR: linear ⇒ o total sai na unidade do item, não em dm²', () => {
+    // Cadastro real da EC111: NEW VELVET PRETO, largura 1370 mm, yield 36.
+    const cs = {
+      dimensions_width: 1370,
+      dimensions_unit: 'mm',
+      products: { unit: 'm' },
+      yield_per_size: { '34': 36 },
+    };
+    const item = { grade: { '34': 1 }, quantity: 1 };
+    const r = calculateConsumptionWithUnit(item, 0, cs, 'metro', {});
+    // O motor devolve 36 "metro" — logo o rótulo da tela TEM de ser 'm', não dm².
+    expect(r.total).toBeCloseTo(36, 6);
+    expect(resolveYieldUnit('m')).toBe('m');
   });
 });
