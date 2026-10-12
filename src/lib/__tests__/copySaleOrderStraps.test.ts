@@ -143,7 +143,7 @@ describe('copyStrapLinesForNewOrder', () => {
   });
 
   it('ficha sem tiras devolve vazio', () => {
-    expect(copy([{ id: '1', label: 'TIRA 1' }], [])).toEqual({ lines: [], pending: [] });
+    expect(copy([{ id: '1', label: 'TIRA 1' }], [])).toEqual({ lines: [], pending: [], gaps: [] });
   });
 
   it('ficha com tira sem UUID vira pendência, não exceção', () => {
@@ -203,5 +203,77 @@ describe('tira comprada pronta sem variante comercial', () => {
 
   it('sem catálogo carregado não inventa pendência — o writer ainda barra', () => {
     expect(run(null).pending).toEqual([]);
+  });
+});
+
+/**
+ * Escolher a cor no diálogo de duplicação (12/10/2026).
+ *
+ * O pedido de origem pode estar APROVADO/EXPEDIDO, e aí seu snapshot é
+ * congelado (`isCommittedSaleOrderStrapSnapshotStatus`) — a cor errada não tem
+ * como ser corrigida lá. Sem uma saída na própria duplicação, um PV legado com
+ * tira sem variante nunca mais duplica.
+ */
+describe('escolha de cor da tira pronta na duplicação', () => {
+  const COLOR_OFF_WHITE = 'aaaa1111-1111-4111-8111-111111111111';
+  const scope = `${MEASURE}|${GROUP_STRASS}`.toLowerCase();
+  const keys = new Set([`${MEASURE}|${GROUP_STRASS}|${COLOR_ROSADO}`.toLowerCase()]);
+  const colorsByScope = new Map([[scope, [{ id: COLOR_ROSADO, name: 'ROSADO COM FUNDO ROSADO' }]]]);
+
+  const semVariante: CopyStrapLineLike[] = [
+    { id: '1', label: 'TIRA 1', color: 'OFF WHITE', group_id: GROUP_STRASS, group_name: 'TIRA STRASS 6MM' },
+  ];
+  const comVariante: CopyStrapLineLike[] = [
+    { id: '1', label: 'TIRA 1', color: 'ROSADO COM FUNDO ROSADO', group_id: GROUP_STRASS, group_name: 'TIRA STRASS 6MM' },
+  ];
+
+  const run = (
+    snapshotLines: CopyStrapLineLike[],
+    buyReadyColorChoices?: ReadonlyMap<string, string> | null,
+  ) => copyStrapLinesForNewOrder({
+    snapshotLines,
+    technicalLines: [technical[0]],
+    resolveColorId: (name) => (name.trim().toUpperCase() === 'OFF WHITE' ? COLOR_OFF_WHITE : resolveColorId(name)),
+    activeColorIds: new Set([...activeColorIds, COLOR_OFF_WHITE]),
+    buyReadyVariantKeys: keys,
+    buyReadyColorsByScope: colorsByScope,
+    buyReadyColorChoices,
+    itemLabel: 'NL02 / OFF WHITE',
+  });
+
+  it('expõe a lacuna com as cores cadastradas para escolher', () => {
+    const { gaps } = run(semVariante);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].strapLabel).toBe('TIRA 1');
+    expect(gaps[0].currentColorName).toBe('OFF WHITE');
+    expect(gaps[0].groupName).toBe('TIRA STRASS 6MM');
+    expect(gaps[0].options).toEqual([{ id: COLOR_ROSADO, name: 'ROSADO COM FUNDO ROSADO' }]);
+  });
+
+  it('a escolha resolve a lacuna e entra na linha copiada', () => {
+    const { gaps, pending, lines } = run(semVariante, new Map([[LINE_A, COLOR_ROSADO]]));
+    expect(gaps).toEqual([]);
+    expect(pending).toEqual([]);
+    expect(lines[0].color_id).toBe(COLOR_ROSADO);
+    expect(lines[0].color).toBe('ROSADO COM FUNDO ROSADO');
+  });
+
+  it('NÃO sobrescreve a cor de um item que já estava correta', () => {
+    const { lines, pending } = run(comVariante, new Map([[LINE_A, COLOR_ROSADO]]));
+    expect(pending).toEqual([]);
+    expect(lines[0].color_id).toBe(COLOR_ROSADO);
+  });
+
+  it('sem cadastro no escopo, a lacuna vem sem opção — só o Hub resolve', () => {
+    const { gaps } = copyStrapLinesForNewOrder({
+      snapshotLines: semVariante,
+      technicalLines: [technical[0]],
+      resolveColorId: (name) => (name.trim().toUpperCase() === 'OFF WHITE' ? COLOR_OFF_WHITE : resolveColorId(name)),
+      activeColorIds: new Set([...activeColorIds, COLOR_OFF_WHITE]),
+      buyReadyVariantKeys: keys,
+      buyReadyColorsByScope: new Map(),
+      itemLabel: 'NL02 / OFF WHITE',
+    });
+    expect(gaps[0].options).toEqual([]);
   });
 });
