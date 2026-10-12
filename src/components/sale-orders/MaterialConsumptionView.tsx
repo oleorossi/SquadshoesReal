@@ -841,7 +841,11 @@ export default function MaterialConsumptionView({
     const strapPairs = strapPairsText(row);
     const strapSizes = strapSizeMetersText(row);
     const strapSplit = strapStockSplitText(row);
-    const strapNapa = strapNapaDisplay(row);
+    // Decisão do dono (11/10/2026): metro de napa de tira só no bloco Setor de
+    // Tiras. O aviso de cadastro (`blocked`) e o "coberta pelo estoque"
+    // (`covered`) ficam — não são quantidade de napa, são o estado DESTA linha.
+    const strapNapaRaw = strapNapaDisplay(row);
+    const strapNapa = strapNapaRaw?.kind === 'napa' ? null : strapNapaRaw;
     const known = rowKnown(row);
     const avail = rowAvailable(row);
     const short = rowShortfall(row);
