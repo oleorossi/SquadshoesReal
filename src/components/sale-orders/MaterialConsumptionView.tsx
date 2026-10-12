@@ -87,9 +87,14 @@ import {
  *    não fica mais enterrado na ordenação nem depende de uma seta minúscula.
  *  - Os três banners âmbar viraram um cartão recolhível no trilho.
  *
- * O que NÃO mudou de propósito: a aritmética. Disponibilidade, falta, agregação
- * por balde de estoque e conversão de tira→napa moram em
- * `consumptionAvailability.ts` e `buyList.ts`, testados à parte.
+ * O que NÃO mudou de propósito: a aritmética. Disponibilidade, falta e
+ * agregação por balde de estoque moram em `consumptionAvailability.ts` e
+ * `buyList.ts`, testados à parte.
+ *
+ * Decisão do dono (11/10/2026): a napa convertida das tiras não entra em total
+ * nenhum desta tela (herói, painel de napa, chips de família, faixa por
+ * aplicação, "Necessidade total", falta de napa). Ela aparece só no bloco
+ * "Setor de Tiras" (`ArtisanalStrapRollCutBlock`).
  */
 export type OrderHeader = { order_number: string; client_order_number?: string | null };
 
@@ -136,7 +141,8 @@ type Props = {
 // Separador interno da chave de seção composta cor|família (agrupamento por Cor).
 const SECTION_SEP = String.fromCharCode(31);
 
-// Família de napa de uma linha: tira artesanal cai na napa da receita.
+// Família de napa de uma linha (só napa direta; tira não pertence à família —
+// a napa dela fica no Setor de Tiras desde 11/10/2026).
 const rowFamily = (r: ConsumptionRow): string | null => baseMaterialName(r);
 
 type SortKey = 'componentType' | 'groupName' | 'materialName' | 'color' | 'totalQuantity' | 'productUnit';
@@ -1055,19 +1061,18 @@ export default function MaterialConsumptionView({
           className="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-border bg-muted/30 px-3 py-2"
           aria-label={`Consumo por aplicação em ${split.color}`}
         >
+          {/* Só cabedal e forração: a napa das tiras fica no Setor de Tiras
+              (11/10/2026) — a soma à direita fecha com as duas parcelas. */}
           {([
             { label: 'Cabedal', qty: split.cabedal },
             { label: 'Forração', qty: split.forracao },
-            { label: 'Tira', qty: split.tira },
           ] as const).map((part) => (
-            part.qty > 0 || part.label !== 'Tira' ? (
             <span key={part.label} className="inline-flex items-baseline gap-1.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{part.label}</span>
               <span className="font-mono text-sm font-bold tabular-nums">
                 {part.qty > 0 ? `${formatQty(part.qty, 'm')} m` : '—'}
               </span>
             </span>
-            ) : null
           ))}
           <span className="ml-auto font-mono text-sm font-bold tabular-nums">
             {formatQty(split.qty, 'm')} m
@@ -1115,7 +1120,7 @@ export default function MaterialConsumptionView({
             <dd className="mt-1 font-mono text-lg font-bold leading-none tabular-nums">
               {baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}
             </dd>
-            <dd className="mt-1 text-[10px] text-muted-foreground">cabedal + forração + tiras</dd>
+            <dd className="mt-1 text-[10px] text-muted-foreground">cabedal + forração</dd>
           </dl>
           <dl className="border-r border-border px-3 py-2">
             <dt className="eyebrow">Em falta</dt>
@@ -1569,8 +1574,9 @@ export default function MaterialConsumptionView({
                   ).size;
                   const [secLabel, secFamily] = String(sectionKey).split(SECTION_SEP);
                   const applicationSplit = (() => {
-                    // A tabela omite tiras convertidas; o band de aplicação
-                    // precisa do buyList completo pra cabedal/forração/tira fecharem.
+                    // O band de aplicação lê o buyList completo (não só as
+                    // linhas visíveis) pra cabedal/forração fecharem com o chip
+                    // da família. Tira não entra (napa dela: Setor de Tiras).
                     if (secFamily) {
                       const famName = groupBy === 'base' ? secLabel : secFamily;
                       const colorName = groupBy === 'base' ? secFamily : secLabel;

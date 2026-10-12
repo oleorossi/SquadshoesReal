@@ -125,8 +125,11 @@ export default function GeneratePurchaseOrdersDialog({
     enabled: open && pvIds.length > 0,
     staleTime: 30_000,
   });
+  // A OC ainda compra a napa das tiras (até a virada "tira = material de
+  // estoque"): o rollup daqui segue somando a tira convertida, ao contrário
+  // da tela/PDF de consumo, que a excluem desde 11/10/2026.
   const napaRollup = useMemo(
-    () => buildNapaRollup(consumptionQuery.data?.rows || []),
+    () => buildNapaRollup(consumptionQuery.data?.rows || [], { includeStrapNapa: true }),
     [consumptionQuery.data?.rows],
   );
   const [yieldTarget, setYieldTarget] = useState<{

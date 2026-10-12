@@ -1,9 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// TOTAL DO MATERIAL BASE — napa (cabedal / forração / fachete + tiras)
+// TOTAL DO MATERIAL BASE — napa (cabedal / forração / fachete)
 // ═══════════════════════════════════════════════════════════════════════════
-// Decisão do dono (27/09/2026): o total INCLUI napa convertida de tiras
-// artesanais (revoga a exclusão de 24/09). Detalhe por destino: `napaRollup.ts`.
-// Pendência de rendimento (`artisanal.pending`) → skipped.
+// Decisão do dono (11/10/2026, revoga a de 27/09/2026): a napa convertida de
+// tiras artesanais NÃO entra em total nenhum de napa. Ela aparece só no setor
+// próprio — §03 "Setor de Tiras" do PDF (`aggregateStrapNapaSector`) e o bloco
+// equivalente da tela (`ArtisanalStrapRollCutBlock`). Antes o total da cor
+// somava cabedal + forração + tira e a tabela só mostrava Cabedal e Forração:
+// o número não fechava com as parcelas visíveis.
+//
+// ⚠ A geração de OC (Compras por Pedido) ainda compra a napa das tiras até a
+// virada "tira = material de estoque" — por isso `buildNapaRollup` tem a opção
+// `includeStrapNapa`, usada SÓ lá. Não ligue essa opção na tela/PDF de consumo.
 
 import { stripColorFromName } from '@/lib/utils';
 
@@ -58,8 +65,10 @@ export type BaseMaterialInput = {
   warning?: string;
   /** Equivalente em material base quando a linha é tira artesanal.
    *  `pending` = a napa-base (família da ficha da referência) é conhecida mas
-   *  não há rendimento exato cadastrado para ela
-   *  → fica FORA do total e conta como "a cadastrar".
+   *  não há rendimento exato cadastrado para ela.
+   *  Desde 11/10/2026 a linha de tira fica FORA do total de napa (convertida
+   *  ou pendente) — só o rollup da OC (opção `includeStrapNapa` de
+   *  `buildNapaRollup`) ainda a lê.
    */
   artisanal?: { baseName: string; baseQty: number; yieldPerMeter: number; pending?: boolean };
 };
@@ -147,23 +156,16 @@ export function isSuspectUnrolledArtisanal(
   return (artisanalCountByGroup.get(gid) || 0) > 0;
 }
 
-/** Soma o material base das linhas (direto + tiras convertidas).
+/** Soma o material base cortado DIRETO do rolo (cabedal / forração / fachete).
+ *  Tira artesanal — convertida ou pendente — não entra nem conta como
+ *  `skipped` (decisão de 11/10/2026: a napa dela mora só no Setor de Tiras).
  *  Devolve null quando não há napa nenhuma — a UI então não desenha a faixa. */
 export function computeBaseMaterialTotal(rows: BaseMaterialInput[]): BaseMaterialTotal | null {
   const byName = new Map<string, number>();
   let skipped = 0;
 
   for (const r of rows) {
-    if (r.artisanal) {
-      if (r.artisanal.pending) {
-        skipped++;
-        continue;
-      }
-      if (!(r.artisanal.baseQty > 0)) continue;
-      const family = normalizeBaseFamilyName(r.artisanal.baseName, r.color);
-      byName.set(family, (byName.get(family) || 0) + r.artisanal.baseQty);
-      continue;
-    }
+    if (r.artisanal) continue;
     if (!BASE_MATERIAL_COMPONENTS.has(r.componentType)) continue;
     if (!BASE_LINEAR_UNITS.has((r.productUnit || '').toLowerCase())) continue;
     if (r.widthMissing || r.warning) { skipped++; continue; }

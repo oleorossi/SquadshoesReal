@@ -187,25 +187,31 @@ describe('R-Consumo · PV-00224 (DÁLIA, 12 pares, 4 linhas Fazer, rendimento 70
     const html = buildMaterialConsumptionReportHtml({
       rows, artisanalStrapRows, title: 'PV-00224', generatedAt: new Date('2026-10-10T12:00:00Z'),
     });
-    expect(html).toContain('TIRA CHATA 8 mm · NAPA SOFT · DÁLIA');
-    expect(html).toContain('Prestador · TIRA 1');
-    expect(html).toContain('6,24');
-    expect(html).toContain('5,04');
-    expect(html).toContain('12 pares');
-    expect(html).toContain('≈ 0,0857 m NAPA SOFT');
+    // §02 (redesenho 11/10/2026): as 4 linhas da ficha viram UMA linha por
+    // tipo × cor com o total (6 + 6 + 6,24 + 5,04 = 23,28 m) — sem pares,
+    // metros por numeração ou "enviar ao prestador".
+    const materials = html.slice(html.indexOf('Materiais por aplicação'), html.indexOf('<h2>Setor de Tiras</h2>'));
+    expect(materials).toContain('<td><strong>TIRA CHATA 8 mm · NAPA SOFT</strong>');
+    expect(materials).toContain('<td>DÁLIA</td>');
+    expect(materials).toContain('<td class="num strong">23,28</td>');
+    expect(materials).not.toContain('Prestador · TIRA 1');
+    expect(materials).not.toContain('12 pares');
+    expect(materials).not.toContain('0,0857');
+    expect(materials).not.toContain('enviar ao prestador');
     // §03: napa total = 23,28 ÷ 70 = 0,3326 m
     expect(html).toContain('0,3326 m');
   });
 
-  it('totais nunca somam metro de tira com metro de napa; compra = napa', async () => {
+  it('totais nunca somam metro de tira com metro de napa; a napa da tira fica fora da compra', async () => {
     const { rows } = await annotateConsumptionAvailability([], ctx, pv00224Dalia(), opts);
     const totals = unitTotals(rows);
-    expect(totals.get('m')).toBeCloseTo(23.28 / 70, 6);
+    // 11/10/2026: nem os metros de tira de Prestador nem a napa deles no strip.
+    expect(totals.has('m')).toBe(false);
     expect(totals.has(STRAP_METER_TOTAL_UNIT)).toBe(false);
     const purchase = toPurchaseDecisionRows(rows);
     expect(purchase.filter((row) => row.componentType === 'Tiras')).toHaveLength(0);
-    const napa = purchase.find((row) => row.groupName === 'NAPA SOFT')!;
-    expect(napa.totalQuantity).toBeCloseTo(23.28 / 70, 9);
+    // A napa (23,28 ÷ 70) mora só no Setor de Tiras — não vira balde de compra.
+    expect(purchase.find((row) => row.groupName === 'NAPA SOFT')).toBeUndefined();
     // A linha da tira não vira falta de tira (não se compra tira Fazer).
     expect(rows.filter((row) => row.componentType === 'Tiras').every((row) => rowShortfall(row) === 0))
       .toBe(true);
@@ -280,9 +286,15 @@ describe('D9 · bloqueio consistente em linha, bloco, PDF e compra', () => {
       title: 'PV-00224',
       generatedAt: new Date('2026-10-10T12:00:00Z'),
     });
-    expect(html).toContain('TIRA OVERLOCK 5 mm · GLOW METALIC · COBRE');
-    expect(html).toContain('6,88');
-    expect(html).toContain('napa GLOW METALIC: —');
+    // §02: total da tira por tipo × cor, pendente com ▲ e o motivo; a napa
+    // (“—” + motivo) fica no §03 — o §02 não fala de napa (11/10/2026).
+    const materials = html.slice(html.indexOf('Materiais por aplicação'), html.indexOf('<h2>Setor de Tiras</h2>'));
+    expect(materials).toContain('<td><strong>TIRA OVERLOCK 5 mm · GLOW METALIC</strong>');
+    expect(materials).toContain('<td>COBRE</td>');
+    expect(materials).toContain('6,88');
+    expect(materials).toContain('is-pending');
+    expect(materials).toMatch(/row-warning">▲ [^<]*Não há receita aprovada/);
+    expect(materials).not.toContain('napa GLOW METALIC');
     expect(html).toContain('cadastro incompleto');
     expect(html).toContain('Não há receita aprovada');
   });

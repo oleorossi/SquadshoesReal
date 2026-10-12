@@ -1,9 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// ROLLUP DE NAPA — por família+cor, com destino (cabedal / forração / tira)
+// ROLLUP DE NAPA — por família+cor, com destino (cabedal / forração [/ tira])
 // ═══════════════════════════════════════════════════════════════════════════
-// Decisão do dono (27/09/2026): o total de material base INCLUI napa convertida
-// de tiras artesanais. Cada família+cor lista os destinos e soma no fim.
-// Pendência de rendimento aparece sem metros de napa até o cadastro.
+// Decisão do dono (11/10/2026, revoga a de 27/09/2026): a napa convertida de
+// tiras NÃO entra no rollup da tela/PDF de consumo — só cabedal, forração e
+// fachete. A napa das tiras fica no Setor de Tiras (§03 do PDF /
+// `ArtisanalStrapRollCutBlock` na tela).
+//
+// ⚠ EXCEÇÃO TRANSITÓRIA: a geração de OC (`GeneratePurchaseOrdersDialog` +
+// `printPerPvMaterials`) continua comprando a napa das tiras até a virada
+// "tira = material de estoque" e por isso chama com `includeStrapNapa: true`
+// — comportamento idêntico ao de antes desta decisão (destino "Tira" +
+// pendência de rendimento sem metros). Não ligue a opção em outro lugar.
 
 import {
   BASE_LINEAR_UNITS,
@@ -40,8 +47,10 @@ export type NapaFamilyColor = {
 };
 
 export type NapaRollup = {
-  /** Soma de napa (m) com rendimento confirmado. */
+  /** Soma de napa (m) — com `includesStrapNapa`, inclui a tira convertida. */
   total: number;
+  /** O rollup soma a napa das tiras (só a OC, até a virada). */
+  includesStrapNapa: boolean;
   /** Famílias+cores, maior total primeiro. */
   byFamilyColor: NapaFamilyColor[];
   /** Partes planas pra KPI legado (família agregada, sem cor). */
@@ -83,11 +92,25 @@ function mergeDestination(
   }
 }
 
+export type NapaRollupOptions = {
+  /**
+   * Soma a napa convertida das tiras (destino "Tira") e lista a tira sem
+   * rendimento como pendência. SÓ a geração de OC passa `true`, até a virada
+   * "tira = material de estoque". Padrão: fora (decisão de 11/10/2026).
+   */
+  includeStrapNapa?: boolean;
+};
+
 /**
  * Monta o rollup canônico de napa a partir das linhas de consumo
- * (mesmo shape que `computeBaseMaterialTotal`).
+ * (mesmo shape que `computeBaseMaterialTotal`). Sem opção, espelha
+ * `computeBaseMaterialTotal`: tira artesanal não entra.
  */
-export function buildNapaRollup(rows: BaseMaterialInput[]): NapaRollup | null {
+export function buildNapaRollup(
+  rows: BaseMaterialInput[],
+  opts: NapaRollupOptions = {},
+): NapaRollup | null {
+  const includeStrapNapa = opts.includeStrapNapa === true;
   const buckets = new Map<string, NapaFamilyColor>();
   let skipped = 0;
   let pendingCount = 0;
@@ -104,6 +127,8 @@ export function buildNapaRollup(rows: BaseMaterialInput[]): NapaRollup | null {
 
   for (const r of rows) {
     if (r.artisanal) {
+      // Tela/PDF de consumo: a napa da tira mora só no Setor de Tiras.
+      if (!includeStrapNapa) continue;
       const family = normalizeBaseFamilyName(r.artisanal.baseName, r.color);
       const color = (r.color || '—').toString().trim() || '—';
       const label = (r.groupName || 'Tira').toString().trim() || 'Tira';
@@ -178,6 +203,7 @@ export function buildNapaRollup(rows: BaseMaterialInput[]): NapaRollup | null {
 
   return {
     total: parts.reduce((s, p) => s + p.qty, 0),
+    includesStrapNapa: includeStrapNapa,
     byFamilyColor,
     parts,
     skipped,

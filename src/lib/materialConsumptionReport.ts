@@ -1,11 +1,11 @@
-import { computeBaseMaterialTotal } from '@/lib/baseMaterialTotal';
+import { computeBaseMaterialTotal, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
 import { buildBuyList } from '@/lib/buyList';
+import { STRAP_ORIGIN_LABEL } from '@/lib/canonicalStrapDemandPreview';
 import {
   aggregateItems,
   countPending,
   countShort,
   isFazerStrapRow,
-  isStrassStrapRow,
   itemShortfall,
   pendingStrapMeters,
   rowAvailable,
@@ -23,13 +23,7 @@ import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import { aggregateStrapNapaSector } from '@/lib/strapRollCut';
 import { formatCurrency, formatMoney } from '@/lib/utils';
 import { buildOrderReferencePartitions } from '@/lib/consumptionPartitions';
-import {
-  formatNapaMeters,
-  strapNapaDisplay,
-  strapPairsText,
-  strapSizeMetersText,
-  strapStockSplitText,
-} from '@/lib/strapConsumptionDisplay';
+import { formatNapaMeters } from '@/lib/strapConsumptionDisplay';
 
 export type ConsumptionPartitionMode = 'none' | 'order_reference';
 
@@ -57,10 +51,6 @@ export interface MaterialConsumptionReportInput {
 const FONT_LINK = 'https://fonts.googleapis.com/css2?family=Anton&family=Fira+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap';
 
 const componentIndex = (componentType: string): number => {
-  if (componentType === 'Tira Strass') {
-    const tiras = COMPONENT_ORDER.indexOf('Tiras');
-    return (tiras >= 0 ? tiras : COMPONENT_ORDER.length) + 0.5;
-  }
   const index = COMPONENT_ORDER.indexOf(componentType as (typeof COMPONENT_ORDER)[number]);
   return index >= 0 ? index : COMPONENT_ORDER.length;
 };
@@ -93,9 +83,25 @@ const renderScope = (orderHeaders?: MaterialConsumptionReportOrderHeader[]): str
 const mCell = (qty: number): string =>
   qty > 0 ? `${formatQty(qty, 'm')} m` : '<span class="muted">—</span>';
 
-const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
-  const { families, pendingStraps } = buildBuyList(rows);
-  if (!families.length && !pendingStraps.length) return '';
+/**
+ * O §03 "Setor de Tiras" só existe quando há tira de Prestador no escopo. Num
+ * PV só de strass (ou sem tira) o documento não pode mandar o leitor para uma
+ * seção que não foi impressa.
+ */
+const STRAP_SECTOR_NOTE = (hasStrapSector: boolean): string =>
+  (hasStrapSector ? ' A napa das tiras está só no §03 Setor de Tiras.' : '');
+
+/**
+ * §01 — napa cortada DIRETO do rolo, por família → cor. Total da cor =
+ * Cabedal + Forração (as duas colunas fecham com ele). Decisão do dono
+ * (11/10/2026): a napa das tiras — convertida ou com rendimento pendente — não
+ * entra aqui; mora só no §03 "Setor de Tiras", que também mostra o "cadastro
+ * incompleto". A coluna "Situação" (contagem de tira pendente por cor) saiu
+ * junto: sem tira no §01 ela seria só espaço morto.
+ */
+const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean, hasStrapSector: boolean): string => {
+  const { families } = buildBuyList(rows);
+  if (!families.length) return '';
 
   const familyBlocks = families.map((family) => `
     <article class="napa-family">
@@ -110,7 +116,6 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
           <th class="num">Cabedal</th>
           <th class="num">Forração</th>
           <th class="num">Total</th>
-          ${totalMode ? '' : '<th>Situação</th>'}
         </tr></thead>
         <tbody>${family.colors.map((color) => `
           <tr>
@@ -118,24 +123,10 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
             <td class="num app-qty">${mCell(color.cabedal)}</td>
             <td class="num app-qty">${mCell(color.forracao)}</td>
             <td class="num strong">${formatQty(color.qty, 'm')} m</td>
-            ${totalMode ? '' : `<td class="status-cell">${color.pending > 0 ? `<span class="flag warning">${color.pending} cadastro${color.pending === 1 ? '' : 's'}</span>` : '<span class="muted">—</span>'}</td>`}
           </tr>`).join('')}
         </tbody>
       </table>
     </article>`).join('');
-
-  const pendingBlock = pendingStraps.length ? `
-    <table class="report-table" style="margin-top:8px">
-      <thead><tr><th>Família</th><th>Cor / tira</th><th class="num">Tira pendente</th><th>Situação</th></tr></thead>
-      <tbody>${pendingStraps.map((pending) => `
-        <tr class="pending-row">
-          <td><strong>${escapeHtml(pending.napa)}</strong></td>
-          <td>${escapeHtml(pending.color || '—')} · ${escapeHtml(pending.tira)}</td>
-          <td class="num">${formatQty(pending.tiraM, 'm')} m de tira</td>
-          <td class="status-cell"><span class="flag warning">rendimento pendente</span></td>
-        </tr>`).join('')}
-      </tbody>
-    </table>` : '';
 
   return `
     <section class="report-section priority-section">
@@ -143,11 +134,10 @@ const renderBaseNeed = (rows: ConsumptionRow[], totalMode: boolean): string => {
         <span class="section-number">01</span>
         <div><p class="section-kicker">Material base</p><h2>Necessidade de napa</h2></div>
         <p class="section-note">${totalMode
-          ? 'Estoque ignorado. Cabedal, Forração, Fachete e napa convertida de tiras — total por família e cor.'
-          : 'Cabedal, Forração, Fachete e napa convertida de tiras — total por família e cor. Falta já desconta estoque.'}</p>
+          ? `Estoque ignorado. Cabedal, Forração e Fachete — total por família e cor.${STRAP_SECTOR_NOTE(hasStrapSector)}`
+          : `Cabedal, Forração e Fachete — total por família e cor; a falta por item está no §02.${STRAP_SECTOR_NOTE(hasStrapSector)}`}</p>
       </div>
       ${familyBlocks}
-      ${pendingBlock}
     </section>`;
 };
 
@@ -192,8 +182,10 @@ const reportRowAvailable = (row: ConsumptionRow): number => {
 
 /**
  * Soma o "Valor a gastar" exatamente como a seção 02 renderiza: itens
- * agregados (SKU compartilhado uma vez) + solados linha a linha. Tira Fazer
- * fica de fora — não se compra tira pronta; o gasto é a napa (D8/D9).
+ * agregados (SKU compartilhado uma vez) + solados linha a linha. Tira
+ * Comprar pronto / strass entra uma vez por balde do SKU — é o mesmo balde que
+ * o bloco Tiras soma por tipo × cor. Tira de Prestador fica de fora — não se
+ * compra tira pronta (D8/D9).
  */
 export function computeMaterialsSpendTotal(rows: ConsumptionRow[]): number | null {
   let total = 0;
@@ -223,22 +215,179 @@ const costCellsHtml = (unitPrice: number | null, totalCost: number | null, unit?
       <td class="num cost-unit">${unitPrice != null ? escapeHtml(formatPricePerUnit(unitPrice, unit || 'un', formatCurrency)) : '—'}</td>
       <td class="num cost-spend">${totalCost != null ? escapeHtml(formatMoney(totalCost)) : '—'}</td>`;
 
+// ── §02 · bloco TIRAS (redesenho de 11/10/2026) ───────────────────────────
+// Decisão do dono: no §02 a tira é só o TOTAL por tipo × cor — sem metros por
+// numeração, sem pares e sem a nota "enviar ao prestador ≈ x m napa" (a napa
+// das tiras mora só no §03 Setor de Tiras). Todas as linhas da ficha
+// (TIRA 1..4, TRASEIRA) e de todas as referências do escopo viram UMA linha
+// por tipo × cor; o strass (comprado pronto) entra no mesmo bloco, com a
+// coluna Origem. Tabela própria: as colunas Aplicação, Un. e Preço/un. da
+// tabela de materiais seriam espaço morto aqui (densidade vem de tirar espaço
+// morto, nunca de reduzir fonte — Preferências de impressão do CLAUDE.md).
+
+type StrapLineOrigin = 'fazer' | 'comprar' | null;
+
+/** Uma linha do bloco Tiras do §02: total por tipo de tira × cor. */
+export type StrapTypeColorLine = {
+  /** Tipo sem a cor (ex.: "TIRA OVERLOCK 5 mm · GLOW METALIC"). */
+  typeName: string;
+  color: string;
+  /** Prestador (`fazer`), Comprar pronto, ou null = origem ainda não resolvida. */
+  origin: StrapLineOrigin;
+  unit: string;
+  /** Metros de TIRA — necessidade bruta somada de todas as linhas da ficha. */
+  total: number;
+  /** Metragem só prevista pela ficha (tira sem identidade canônica). */
+  preview: number;
+  /** Tira pronta em estoque — cada balde de SKU contado uma vez. */
+  available: number;
+  /** Estoque comparável (nenhuma linha com cadastro incompleto). */
+  known: boolean;
+  /** Comprar pronto: falta pelo balde do SKU. Prestador: sempre 0. */
+  shortfall: number;
+  /** Prestador: metros a fazer pelo prestador depois da tira pronta em estoque. */
+  toMake: number;
+  /** Σ necessidade × preço nos baldes com preço; null sem preço (Prestador: null). */
+  spend: number | null;
+  /** Alguma linha com pendência (rendimento/receita ou cadastro incompleto). */
+  pending: boolean;
+  warnings: string[];
+  rows: ConsumptionRow[];
+};
+
+const strapLineOrigin = (row: ConsumptionRow): StrapLineOrigin => {
+  if (isFazerStrapRow(row)) return 'fazer';
+  if (row.strap?.origin === 'comprar' || row.strapSourceMode === 'buy_ready') return 'comprar';
+  return null;
+};
+
+const STRAP_LINE_ORIGIN_TEXT = (origin: StrapLineOrigin): string =>
+  origin ? STRAP_ORIGIN_LABEL[origin] : 'Origem pendente';
+
+/** Tipo da tira sem o sufixo de cor do SKU ("… · CHAMPAGNE", "… - CHAMPAGNE"). */
+const strapTypeName = (row: ConsumptionRow): string => {
+  const name = (row.groupName || '').trim();
+  if (!name) return 'Tira';
+  return normalizeBaseFamilyName(name, row.color) || name;
+};
+
+const strapKeyPart = (value: string): string => (value || '')
+  .toLocaleLowerCase('pt-BR')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const isMeterUnit = (unit: string | null | undefined): boolean =>
+  ['m', 'metro', 'metros'].includes((unit || '').toLowerCase().trim());
+
+const firstFinitePrice = (rows: ConsumptionRow[]): number | null =>
+  rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
+
 /**
- * Notas da linha de tira (pares, metros por numeração, estoque × a fazer,
- * napa ou “—” + motivo). Mesmos textos da tela (`strapConsumptionDisplay`).
+ * Agrega TODAS as linhas de tira do escopo por tipo × cor. Origem e unidade
+ * também vão na chave: Prestador e Comprar pronto do mesmo tipo × cor seguem
+ * fluxos diferentes (prestador × compra) e metro nunca soma com outra unidade —
+ * no caso normal tipo × cor tem uma origem só e a linha é uma.
  */
-const strapDetailHtml = (rows: ConsumptionRow[]): string => rows.map((row) => {
-  const parts = [
-    strapPairsText(row),
-    strapSizeMetersText(row),
-    strapStockSplitText(row),
-  ].filter(Boolean) as string[];
-  const napa = strapNapaDisplay(row);
-  const napaHtml = napa
-    ? `<div class="qty-preview${napa.kind === 'blocked' ? ' strap-napa-blocked' : ''}">${escapeHtml(napa.text)}</div>`
-    : '';
-  return `${parts.map((part) => `<div class="qty-preview">${escapeHtml(part)}</div>`).join('')}${napaHtml}`;
-}).join('');
+export function aggregateStrapTypeColorLines(rows: ConsumptionRow[]): StrapTypeColorLine[] {
+  const groups = new Map<string, { typeName: string; color: string; origin: StrapLineOrigin; unit: string; rows: ConsumptionRow[] }>();
+  for (const row of rows) {
+    if (row.componentType !== 'Tiras') continue;
+    const typeName = strapTypeName(row);
+    const color = (row.color || '').trim() || '—';
+    const origin = strapLineOrigin(row);
+    const unit = row.productUnit || 'm';
+    const key = [
+      strapKeyPart(typeName),
+      strapKeyPart(color),
+      origin || 'pendente',
+      isMeterUnit(unit) ? 'm' : strapKeyPart(unit),
+    ].join('\u0000');
+    const group = groups.get(key);
+    if (group) group.rows.push(row);
+    else groups.set(key, { typeName, color, origin, unit, rows: [row] });
+  }
+
+  return Array.from(groups.values())
+    .map((group) => {
+      const fazer = group.origin === 'fazer';
+      // Balde de estoque = SKU da tira pronta: as 4 linhas da ficha (TIRA 1..4)
+      // apontam para o MESMO SKU — o estoque entra uma vez, não quatro.
+      const items = aggregateItems(group.rows);
+      let spend: number | null = null;
+      if (!fazer) {
+        for (const item of items) {
+          const price = firstFinitePrice(item.rows);
+          if (price == null) continue;
+          spend = (spend ?? 0) + item.total * price;
+        }
+      }
+      const warnings = Array.from(new Set(group.rows.flatMap((row) => [
+        ...(row.warning ? row.warning.split(' · ') : []),
+        ...(row.artisanal?.pending && row.artisanal.blockedReason ? [row.artisanal.blockedReason] : []),
+      ].map((text) => text.trim()).filter(Boolean))));
+      return {
+        typeName: group.typeName,
+        color: group.color,
+        origin: group.origin,
+        unit: group.unit,
+        total: group.rows.reduce((sum, row) => sum + (Number(row.totalQuantity) || 0), 0),
+        preview: group.rows.reduce((sum, row) => sum + Math.max(0, Number(row.previewQuantity) || 0), 0),
+        available: items.reduce((sum, item) => sum + item.available, 0),
+        known: items.every((item) => item.known),
+        shortfall: fazer ? 0 : items.reduce((sum, item) => sum + itemShortfall(item), 0),
+        toMake: fazer
+          ? group.rows.reduce((sum, row) => sum + (row.strap ? row.strap.toMakeM : (Number(row.totalQuantity) || 0)), 0)
+          : 0,
+        spend,
+        pending: group.rows.some((row) => !!row.artisanal?.pending || !rowKnown(row)),
+        warnings,
+        rows: group.rows,
+      };
+    })
+    .sort((a, b) => a.typeName.localeCompare(b.typeName, 'pt-BR')
+      || a.color.localeCompare(b.color, 'pt-BR')
+      || STRAP_LINE_ORIGIN_TEXT(a.origin).localeCompare(STRAP_LINE_ORIGIN_TEXT(b.origin), 'pt-BR'));
+}
+
+const renderStrapBlock = (rows: ConsumptionRow[], totalMode: boolean): string => {
+  const lines = aggregateStrapTypeColorLines(rows);
+  if (!lines.length) return '';
+  const body = lines.map((line) => {
+    const unitSuffix = isMeterUnit(line.unit) ? '' : ` ${escapeHtml(formatUnit(line.unit))}`;
+    const totalHtml = line.preview > 0 && !(line.total > 0)
+      ? `≈ ${formatQty(line.preview, line.unit)}${unitSuffix}<small class="qty-preview">prévia da ficha</small>`
+      : `${formatQty(line.total, line.unit)}${unitSuffix}`;
+    const short = totalMode ? 0 : line.shortfall;
+    const coverageCells = totalMode ? '' : `
+      <td class="num">${line.known ? formatQty(line.available, line.unit) : '—'}</td>
+      ${line.origin === 'fazer'
+        ? `<td class="num muted">${line.toMake > 0
+          ? `${formatQty(line.toMake, line.unit)}<small class="qty-preview">prestador</small>`
+          : 'coberta'}</td>`
+        : `<td class="num${short > 0 ? ' shortage' : ''}">${line.known && short > 0 ? formatQty(short, line.unit) : '—'}</td>`}`;
+    return `<tr class="material-row strap-row${short > 0 ? ' is-short' : ''}${line.pending ? ' is-pending' : ''}">
+      <td><strong>${escapeHtml(line.typeName)}</strong>${line.warnings.length ? `<div class="row-warning">▲ ${escapeHtml(line.warnings.join(' · '))}</div>` : ''}</td>
+      <td>${escapeHtml(line.color)}</td>
+      <td>${escapeHtml(STRAP_LINE_ORIGIN_TEXT(line.origin))}</td>
+      <td class="num strong">${totalHtml}</td>
+      ${coverageCells}
+      <td class="num cost-spend">${line.spend != null ? escapeHtml(formatMoney(line.spend)) : '—'}</td>
+    </tr>`;
+  }).join('');
+  const head = totalMode
+    ? '<tr><th>Tipo de tira</th><th>Cor</th><th>Origem</th><th class="num">Total<span class="unit-suffix"> (m)</span></th><th class="num col-spend">A gastar</th></tr>'
+    : '<tr><th>Tipo de tira</th><th>Cor</th><th>Origem</th><th class="num">Total<span class="unit-suffix"> (m)</span></th><th class="num">Estoque</th><th class="num">Falta</th><th class="num col-spend">A gastar</th></tr>';
+  return `
+      <div class="component-block">
+        <div class="component-heading"><span>Tiras</span><span>${lines.length} linha(s)</span></div>
+        <table class="report-table straps-table${totalMode ? ' total-mode' : ''}">
+          <thead>${head}</thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
+};
 
 const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): string => {
   const sectionMap = new Map<string, string[]>();
@@ -251,29 +400,13 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
   };
   const colCount = totalMode ? 7 : 9;
 
-  // Tira Fazer: UMA linha por linha da ficha × cor, com metros de TIRA (total,
-  // por numeração), pares e a napa como nota — nunca some (D8) e nunca soma
-  // com a napa. A napa a cortar mora em §03 (Setor de Tiras). Bloqueada:
-  // napa “—” + motivo (D9). Tira Comprar segue o balde do SKU pronto (falta =
-  // só o que o estoque não cobre). STRASS vai em seção própria.
-  const fazerStraps = rows
-    .filter((row) => isFazerStrapRow(row) && !isStrassStrapRow(row))
-    .sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR')
-      || a.color.localeCompare(b.color, 'pt-BR')
-      || a.materialName.localeCompare(b.materialName, 'pt-BR'));
+  // Tira (Prestador, Comprar pronto, strass, prévia) vai inteira para o bloco
+  // Tiras — tabela própria, total por tipo × cor (`renderStrapBlock`).
   const nonSole = aggregateItems(
-    rows.filter((row) => (
-      row.componentType !== 'Solado'
-      && !isFazerStrapRow(row)
-      && !isStrassStrapRow(row)
-    )),
+    rows.filter((row) => row.componentType !== 'Solado' && row.componentType !== 'Tiras'),
   )
     .sort((a, b) => componentIndex(a.componentType) - componentIndex(b.componentType)
       || a.groupName.localeCompare(b.groupName, 'pt-BR')
-      || a.color.localeCompare(b.color, 'pt-BR'));
-
-  const strassItems = aggregateItems(rows.filter(isStrassStrapRow))
-    .sort((a, b) => a.groupName.localeCompare(b.groupName, 'pt-BR')
       || a.color.localeCompare(b.color, 'pt-BR'));
 
   for (const item of nonSole) {
@@ -297,16 +430,15 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       ? `≈ ${formatQty(previewQuantity, item.productUnit)}<small class="qty-preview">prévia da ficha</small>`
       : formatQty(item.total, item.productUnit);
     const warnings = Array.from(new Set(item.rows.flatMap((row) => row.warning ? [row.warning] : [])));
-    const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
+    const unitPrice = firstFinitePrice(item.rows);
     const totalCost = unitPrice != null ? item.total * unitPrice : null;
     const coverageCells = totalMode ? '' : `
       <td class="num">${!item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
       <td class="num${short > 0 ? ' shortage' : ''}">${item.known && short > 0
         ? formatQty(short, item.productUnit)
         : '—'}</td>`;
-    const strapNotes = item.componentType === 'Tiras' ? strapDetailHtml(item.rows) : '';
     append(section, `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
-      <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}${strapNotes}</td>
+      <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}</td>
       <td>${escapeHtml(applications.join(' + ') || item.groupName)}${sectorApplications.length ? `<small>${escapeHtml(sectorApplications.join(' · '))}</small>` : ''}</td>
       <td>${escapeHtml(item.color || '—')}</td>
       <td class="num strong">${needHtml}</td>
@@ -314,52 +446,6 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
       <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
       ${costCellsHtml(unitPrice, totalCost, item.productUnit)}
     </tr>`, componentIndex(componentTypes[0] || item.componentType));
-  }
-
-  for (const row of fazerStraps) {
-    const blocked = !!row.artisanal?.pending;
-    const toMake = row.strap ? row.strap.toMakeM : row.totalQuantity;
-    const coverageCells = totalMode ? '' : `
-      <td class="num">${formatQty(rowAvailable(row), row.productUnit)}</td>
-      <td class="num"><span class="muted">${toMake > 0 ? `prestador ${formatQty(toMake, 'm')}` : 'coberta'}</span></td>`;
-    append('Tiras', `<tr class="material-row strap-row${blocked ? ' is-pending' : ''}">
-      <td><strong>${escapeHtml(row.groupName)}</strong>${row.warning ? `<div class="row-warning">▲ ${escapeHtml(row.warning)}</div>` : ''}${strapDetailHtml([row])}</td>
-      <td>${escapeHtml(row.materialName || 'Prestador')}</td>
-      <td>${escapeHtml(row.color || '—')}</td>
-      <td class="num strong">${formatQty(row.totalQuantity, row.productUnit)}<small class="qty-preview">m de tira</small></td>
-      ${coverageCells}
-      <td class="unit">${escapeHtml(formatUnit(row.productUnit))}</td>
-      ${costCellsHtml(null, null, row.productUnit)}
-    </tr>`, componentIndex('Tiras'));
-  }
-
-  for (const item of strassItems) {
-    const applications = Array.from(new Set(item.rows.map((row) => row.materialName).filter(Boolean)));
-    const short = totalMode ? 0 : itemShortfall(item);
-    const previewQuantity = item.rows.reduce(
-      (total, row) => total + Math.max(0, Number(row.previewQuantity) || 0),
-      0,
-    );
-    const needHtml = previewQuantity > 0 && !(item.total > 0)
-      ? `≈ ${formatQty(previewQuantity, item.productUnit)}<small class="qty-preview">prévia da ficha</small>`
-      : formatQty(item.total, item.productUnit);
-    const warnings = Array.from(new Set(item.rows.flatMap((row) => row.warning ? [row.warning] : [])));
-    const unitPrice = item.rows.map((row) => row.unitPrice).find((price) => price != null && Number.isFinite(price)) ?? null;
-    const totalCost = unitPrice != null ? item.total * unitPrice : null;
-    const coverageCells = totalMode ? '' : `
-      <td class="num">${!item.known ? '—' : formatQty(item.available, item.productUnit)}</td>
-      <td class="num${short > 0 ? ' shortage' : ''}">${item.known && short > 0
-        ? formatQty(short, item.productUnit)
-        : '—'}</td>`;
-    append('Tira Strass', `<tr class="material-row${short > 0 ? ' is-short' : ''}${!item.known ? ' is-pending' : ''}">
-      <td><strong>${escapeHtml(item.groupName)}</strong>${warnings.length ? `<div class="row-warning">▲ ${escapeHtml(warnings.join(' · '))}</div>` : ''}</td>
-      <td>${escapeHtml(applications.join(' + ') || item.groupName)}</td>
-      <td>${escapeHtml(item.color || '—')}</td>
-      <td class="num strong">${needHtml}</td>
-      ${coverageCells}
-      <td class="unit">${escapeHtml(formatUnit(item.productUnit))}</td>
-      ${costCellsHtml(unitPrice, totalCost, item.productUnit)}
-    </tr>`, componentIndex('Tira Strass'));
   }
 
   const soles = rows.filter((row) => row.componentType === 'Solado')
@@ -390,16 +476,23 @@ const renderMaterialSections = (rows: ConsumptionRow[], totalMode: boolean): str
     ? '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th>Un.</th><th class="num col-unit">Preço/un. consumo</th><th class="num col-spend">A gastar</th></tr>'
     : '<tr><th>Grupo</th><th>Aplicação</th><th>Cor</th><th class="num">Necessidade</th><th class="num">Estoque</th><th class="num">Falta</th><th>Un.</th><th class="num col-unit">Preço/un. consumo</th><th class="num col-spend">A gastar</th></tr>';
 
-  return Array.from(sectionMap.entries())
-    .sort(([a], [b]) => (sectionOrder.get(a) ?? componentIndex(a)) - (sectionOrder.get(b) ?? componentIndex(b)))
-    .map(([componentType, materialRows]) => `
+  const blocks = Array.from(sectionMap.entries()).map(([componentType, materialRows]) => ({
+    order: sectionOrder.get(componentType) ?? componentIndex(componentType),
+    html: `
       <div class="component-block">
         <div class="component-heading"><span>${escapeHtml(componentType)}</span><span>${materialRows.filter((row) => row.includes('class="material-row')).length} linha(s)</span></div>
         <table class="report-table materials-table${totalMode ? ' total-mode' : ''}">
           <thead>${head}</thead>
           <tbody>${materialRows.join('')}</tbody>
         </table>
-      </div>`)
+      </div>`,
+  }));
+  const strapBlock = renderStrapBlock(rows, totalMode);
+  if (strapBlock) blocks.push({ order: componentIndex('Tiras'), html: strapBlock });
+
+  return blocks
+    .sort((a, b) => a.order - b.order)
+    .map((block) => block.html)
     .join('');
 };
 
@@ -455,6 +548,9 @@ export function buildMaterialConsumptionReportHtml({
   partitionMode = 'none',
 }: MaterialConsumptionReportInput): string {
   const totalMode = mode === 'total';
+  // O §03 só é impresso quando há tira de Prestador — sem ele, nenhum texto
+  // pode apontar para a seção (ver STRAP_SECTOR_NOTE).
+  const hasStrapSector = artisanalStrapRows.length > 0;
   const baseTotal = computeBaseMaterialTotal(rows);
   const shortCount = countShort(rows);
   const pendingCount = countPending(rows);
@@ -470,7 +566,7 @@ export function buildMaterialConsumptionReportHtml({
     <span><strong>${formatQty(total, unit)}</strong> ${escapeHtml(formatUnit(unit))}</span>
   `).join('');
   const pendingStrip = pendingTiraM > 0
-    ? `<div class="pending-strip"><span class="flag warning">Tira com cadastro pendente</span><strong>${formatQty(pendingTiraM, 'm')} m de tira</strong><small>não entra na necessidade em metros de napa — corrija no Hub de Tiras / regrave o PV</small></div>`
+    ? `<div class="pending-strip"><span class="flag warning">Tira com cadastro pendente</span><strong>${formatQty(pendingTiraM, 'm')} m de tira</strong><small>napa “—” no Setor de Tiras até cadastrar o rendimento — corrija no Hub de Tiras / regrave o PV</small></div>`
     : '';
   const shortfallList = majorShortfalls.length ? `<ol class="shortfall-list">${majorShortfalls.map((shortfall) => `
     <li><span>${escapeHtml(shortfall.label)}${shortfall.color && shortfall.color !== '—' ? ` · ${escapeHtml(shortfall.color)}` : ''}</span><strong>${formatQty(shortfall.qty, shortfall.unit)} ${escapeHtml(formatUnit(shortfall.unit))}</strong></li>
@@ -482,18 +578,21 @@ export function buildMaterialConsumptionReportHtml({
   const partitionBanner = partitionMode === 'order_reference'
     ? '<p class="mode-banner" style="margin-top:4px;background:transparent;color:var(--ink);border-color:var(--ink)">Visão estendida · por PV e modelo</p>'
     : '';
+  // Decisão do dono (11/10/2026): napa das tiras fora de todo total — só §03.
+  const napaOrigin = `Necessidade de napa (§01) soma cabedal (+ fachete) e forração${hasStrapSector ? '; a napa das tiras está no §03 Setor de Tiras' : ''}.`;
+  const strapsIn02 = 'Tiras em §02: total em metros por tipo e cor, separando Prestador de Comprar pronto.';
   const reading = totalMode
-    ? 'Este documento ignora o estoque. Os números são o consumo bruto da ficha. Necessidade de napa (§01) soma cabedal, forração e tiras convertidas. Tira comprada pronta (STRASS) em §02.'
-    : '“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. Necessidade de napa (§01) soma cabedal, forração e tiras convertidas. Tira comprada pronta (STRASS) em §02.';
+    ? `Este documento ignora o estoque. Os números são o consumo bruto da ficha. ${napaOrigin} ${strapsIn02}`
+    : `“Necessidade” é consumo bruto. “Falta” já desconta o estoque líquido. ${napaOrigin} ${strapsIn02}`;
   const manifest = totalMode
     ? `<div class="manifest manifest-total" aria-label="Resumo do consumo total">
-    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração + tiras convertidas</small></div>
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração${hasStrapSector ? ' · napa das tiras no §03' : ''}</small></div>
     <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço cadastrado</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
     <div><dl><dt>Escopo calculado</dt><dd>${rows.length} linha${rows.length === 1 ? '' : 's'}</dd></dl><small>ficha técnica + grade + variante do PV</small></div>
   </div>`
     : `<div class="manifest" aria-label="Resumo da decisão">
-    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração + tiras convertidas</small></div>
+    <div><dl><dt>Necessidade de material base</dt><dd>${baseTotal ? `${formatQty(baseTotal.total, 'm')} m` : '—'}</dd></dl><small>cabedal + forração${hasStrapSector ? ' · napa das tiras no §03' : ''}</small></div>
     <div><dl><dt>Itens em falta</dt><dd class="shortage">${shortCount}</dd></dl><small>estoque líquido</small></div>
     <div><dl><dt>Total a gastar</dt><dd class="spend">${spendTotal != null ? escapeHtml(formatMoney(spendTotal)) : '—'}</dd></dl><small>necessidade × preço</small></div>
     <div><dl><dt>Pendências</dt><dd>${pendingCount}</dd></dl><small>cadastro a revisar</small></div>
@@ -578,24 +677,27 @@ export function buildMaterialConsumptionReportHtml({
     .cost-unit { color:var(--muted); font-weight:500; font-size:8.4pt; }
     .cost-spend { font-weight:700; font-size:9.4pt; background:var(--spend); }
     .report-table th.col-spend { background:var(--spend); color:var(--ink); }
-    .strap-napa-blocked { color:var(--warn); }
     .strap-subtotal td { background:var(--soft); border-top:1.5px solid var(--ink); border-bottom:2px solid var(--ink); font-weight:700; padding-top:6px; padding-bottom:6px; }
     .strap-subtotal .cost-unit { font-weight:500; }
     .strap-subtotal .muted { font-weight:500; }
-    .status-cell { width:112px; }
     .flag { display:inline-block; max-width:100%; border:1px solid currentColor; padding:1px 5px; border-radius:99px; font-size:6.7pt; font-weight:700; line-height:1.25; }
     .flag.warning { color:var(--warn); background:#fff8e9; }
     .flag.ok { color:var(--ok); background:#edf8f1; }
     .muted { color:var(--muted); }
-    .pending-row, .is-pending { background:#fffaf0; }
+    .is-pending { background:#fffaf0; }
     .material-row.is-short td:first-child { border-left:3px solid var(--accent); }
     .shortage { color:var(--accent); font-weight:700; }
     .shortage small { display:block; color:var(--muted); font-size:6.5pt; font-weight:500; }
     .row-warning { margin-top:2px; color:var(--warn); font-size:6.7pt; line-height:1.25; }
     .qty-preview { display:block; margin-top:1px; color:var(--muted); font-family:'Fira Sans',sans-serif; font-size:6.5pt; font-weight:500; }
     .component-block { margin-top:9px; border:1px solid var(--line); break-inside:auto; overflow:hidden; }
-    .component-heading { display:flex; justify-content:space-between; gap:10px; padding:4px 7px; border-left:4px solid var(--accent); background:var(--ink); color:white; font-size:7.6pt; font-weight:700; letter-spacing:.09em; text-transform:uppercase; }
+    /* break-after:avoid mantém o cabeçalho colado na tabela. Sem ele o
+       browser quebra entre os dois quando o thead + a 1ª linha não cabem, e
+       sobra uma caixa vazia no pé da folha (medido no bloco Tiras). */
+    .component-heading { display:flex; justify-content:space-between; gap:10px; padding:4px 7px; border-left:4px solid var(--accent); background:var(--ink); color:white; font-size:7.6pt; font-weight:700; letter-spacing:.09em; text-transform:uppercase; break-after:avoid; }
     .component-heading span:last-child { color:#ccc8c1; font-family:'Fira Code',monospace; font-size:6.8pt; }
+    /* O thead é uppercase; sem isto "Total (m)" sairia "TOTAL (M)" — M é mega. */
+    .report-table th .unit-suffix { text-transform:none; }
     /* Cobertura: 9 cols — Grupo · Aplicação · Cor · Necessidade · Estoque · Falta · Un. · Preço · A gastar */
     .materials-table th:nth-child(1) { width:14%; }
     .materials-table th:nth-child(2) { width:14%; }
@@ -615,6 +717,32 @@ export function buildMaterialConsumptionReportHtml({
     .materials-table.total-mode th:nth-child(6) { width:14%; }
     .materials-table.total-mode th:nth-child(7) { width:20%; text-align:right; }
     .materials-table td.cost-spend { padding-right:7px; }
+    /* Tiras (§02, 11/10/2026): tabela própria, total por tipo × cor — sem as
+       colunas Aplicação/Un./Preço, que seriam espaço morto para tira.
+       Como cada linha soma TODAS as fichas do tipo × cor, total de 4–5 dígitos
+       é o caso normal (PV-00193 já tinha 1.402,80 m numa linha só). Medido no
+       Chromium com Fira Sans/Fira Code reais, tabela de 731 px (A4) e 713 px
+       (modo por modelo): "12.852,00" cabe em Total, Estoque e Falta a 10–11%;
+       um gasto de 81.585,00 reais cabe em A gastar a 14%; "TIRA OVERLOCK 5 mm ·
+       GLOW METALIC" fica numa linha a 31%. Com Falta a 8% todo valor de 4
+       dígitos invadia a coluna do gasto (regra de print 4: número de tabela
+       fixa tem de caber na coluna). Só gasto de 6 dígitos (100 mil reais ou
+       mais) numa linha de tira passaria 1 px — irreal.
+       Cobertura: 7 cols — Tipo · Cor · Origem · Total · Estoque · Falta · A gastar */
+    .straps-table th:nth-child(1) { width:31%; }
+    .straps-table th:nth-child(2) { width:13%; }
+    .straps-table th:nth-child(3) { width:11%; }
+    .straps-table th:nth-child(4) { width:11%; }
+    .straps-table th:nth-child(5) { width:10%; }
+    .straps-table th:nth-child(6) { width:10%; }
+    .straps-table th:nth-child(7) { width:14%; }
+    /* Total: 5 cols — Tipo · Cor · Origem · Total · A gastar */
+    .straps-table.total-mode th:nth-child(1) { width:36%; }
+    .straps-table.total-mode th:nth-child(2) { width:22%; }
+    .straps-table.total-mode th:nth-child(3) { width:14%; }
+    .straps-table.total-mode th:nth-child(4) { width:12%; }
+    .straps-table.total-mode th:nth-child(5) { width:16%; }
+    .straps-table td.cost-spend { padding-right:7px; }
     .grade-row td { padding:0 5px 6px 5px; border-bottom:1px solid var(--ink); background:white; }
     .sole-grade { padding:4px 0 0 12px; overflow:visible; }
     .sole-grade table { width:100%; border-collapse:collapse; font-size:7.2pt; table-layout:auto; }
@@ -647,14 +775,14 @@ export function buildMaterialConsumptionReportHtml({
     <div class="decision-box"><h3>Leitura correta</h3><p>${reading}</p></div>
     <div class="decision-box"><h3>Maiores faltas</h3>${shortfallList}</div>
   </div>`}
-  ${partitioned.length > 0 ? '' : renderBaseNeed(rows, totalMode)}
+  ${partitioned.length > 0 ? '' : renderBaseNeed(rows, totalMode, hasStrapSector)}
   <section class="report-section">
     <div class="section-heading">
       <span class="section-number">02</span>
       <div><p class="section-kicker">Conferência completa</p><h2>${partitioned.length > 0 ? 'Materiais por PV e modelo' : 'Materiais por aplicação'}</h2></div>
       <p class="section-note">${totalMode
-        ? 'Somente a necessidade do pedido. Tira convertida: §01 (napa) e §03 (metros × rendimento). Tira com cadastro pendente aparece abaixo como ▲.'
-        : 'A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade. Tira convertida: §01/§03; tira pendente fica com ▲.'}</p>
+        ? `Somente a necessidade do pedido. Tiras: total em metros por tipo e cor${hasStrapSector ? '; a napa delas está no §03' : ''}. Tira com cadastro pendente fica com ▲.`
+        : `A falta de solado é calculada por numeração; os demais itens usam o balde grupo + cor + unidade. Tiras: total por tipo e cor (prestador × compra)${hasStrapSector ? '; napa delas no §03' : ''}. Tira pendente fica com ▲.`}</p>
     </div>
     ${materialsBody}
   </section>

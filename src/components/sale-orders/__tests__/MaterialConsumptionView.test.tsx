@@ -10,6 +10,7 @@ import {
   parseCanonicalStrapDemandPreview,
   replaceWithCanonicalStrapRows,
 } from '@/lib/canonicalStrapDemandPreview';
+import { PV00195_ROWS, PV00195_STRAP_CUT_ROWS } from '@/lib/__tests__/fixtures/pv00195Consumption';
 
 const printTab = {
   document: { write: vi.fn(), close: vi.fn() },
@@ -404,7 +405,13 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.queryByText(/faltam 1\.402,80/)).not.toBeInTheDocument();
     const faltaCard = screen.getByRole('button', { name: 'Ver itens em falta' });
     expect(within(faltaCard).getByText('1')).toBeInTheDocument();
-    expect(screen.getAllByText(/40,25/).length).toBeGreaterThan(0);
+    // Decisão do dono (11/10/2026): a napa da tira (20,04) não soma em total
+    // nenhum da tela — herói, painel e falta ficam só com a forração (20,21).
+    const hero = screen.getAllByText('Necessidade de napa')[0].closest('dl')!;
+    expect(hero).toHaveTextContent('20,21 m');
+    expect(hero).toHaveTextContent('cabedal + forração');
+    expect(hero).not.toHaveTextContent('tiras');
+    expect(screen.queryByText(/40,25/)).not.toBeInTheDocument();
   });
 
   it('tira com cadastro pendente permanece na tabela como cadastro incompleto (PV-00169)', () => {
@@ -494,7 +501,7 @@ describe('MaterialConsumptionView — tela buy-first', () => {
     expect(screen.getAllByText('Necessidade de napa').length).toBeGreaterThan(0);
   });
 
-  it('filtra por material base e agrupa a cor em cabedal/forração/tira', async () => {
+  it('filtra por material base e agrupa a cor em cabedal/forração — napa da tira só no Setor de Tiras', async () => {
     const user = userEvent.setup();
     renderView({
       rows: [
@@ -559,18 +566,42 @@ describe('MaterialConsumptionView — tela buy-first', () => {
       }],
     });
 
-    await user.click(within(screen.getByRole('group', { name: 'Filtrar por material base' })).getByRole('button', { name: /NAPA SOFT/i }));
+    // O chip da família já mostra só cabedal + forração (10,00 + 20,21).
+    const familyChip = within(screen.getByRole('group', { name: 'Filtrar por material base' }))
+      .getByRole('button', { name: /NAPA SOFT/i });
+    expect(familyChip).toHaveTextContent('30,21 m');
+    await user.click(familyChip);
     const breakdown = screen.getByLabelText(/Consumo por aplicação em NEW WHISKY/i);
     expect(within(breakdown).getByText('Cabedal')).toBeInTheDocument();
     expect(within(breakdown).getByText('Forração')).toBeInTheDocument();
-    expect(within(breakdown).getByText('Tira')).toBeInTheDocument();
+    expect(within(breakdown).queryByText('Tira')).not.toBeInTheDocument();
     expect(within(breakdown).getByText('10,00 m')).toBeInTheDocument();
     expect(within(breakdown).getByText('20,21 m')).toBeInTheDocument();
-    expect(within(breakdown).getByText('20,04 m')).toBeInTheDocument();
-    expect(within(breakdown).getByText('50,25 m')).toBeInTheDocument();
+    // O total da cor fecha com as duas parcelas visíveis (antes: 50,25 com a tira).
+    expect(within(breakdown).getByText('30,21 m')).toBeInTheDocument();
+    expect(within(breakdown).queryByText('20,04 m')).not.toBeInTheDocument();
+    expect(screen.queryByText('50,25 m')).not.toBeInTheDocument();
+    // A tira não pertence à família de napa: some do recorte da família…
+    const materials = screen.getByRole('table', { name: 'Materiais gerais' });
+    expect(within(materials).queryByText('TIRA OVERLOCK 5 mm · NAPA SOFT · NEW WHISKY')).not.toBeInTheDocument();
+    // …e a napa dela continua no Setor de Tiras.
     expect(screen.getByText('Setor de Tiras')).toBeInTheDocument();
     expect(screen.getAllByText(/20[,.]04/).length).toBeGreaterThan(0);
     expect(screen.queryByText('EVA 3MM')).not.toBeInTheDocument();
+  });
+
+  it('PV-00195: herói e painel de napa mostram 55,57 m (era 78,09) — tiras seguem na tabela', () => {
+    renderView({ rows: PV00195_ROWS, artisanalStrapRows: PV00195_STRAP_CUT_ROWS });
+    const hero = screen.getAllByText('Necessidade de napa')[0].closest('dl')!;
+    expect(hero).toHaveTextContent('55,57 m');
+    expect(screen.queryByText(/78,09/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/cabedal · forração · soma por família e cor — napa das tiras no Setor de Tiras/).length)
+      .toBeGreaterThan(0);
+    // As linhas de tira continuam na tabela (D8) e o Setor de Tiras traz a napa.
+    const materials = screen.getByRole('table', { name: 'Materiais gerais' });
+    expect(within(materials).getAllByText('TIRA OVERLOCK 5 mm · GLOW METALIC · CHAMPAGNE')).toHaveLength(4);
+    expect(screen.getByText('Setor de Tiras')).toBeInTheDocument();
+    expect(screen.getAllByText(/22[,.]52/).length).toBeGreaterThan(0);
   });
 
   it('Consumo total esconde estoque e falta e mantém a necessidade do pedido', async () => {

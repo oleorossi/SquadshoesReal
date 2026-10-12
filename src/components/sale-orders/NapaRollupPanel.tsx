@@ -12,8 +12,11 @@ interface Props {
 }
 
 /**
- * Rollup canônico de napa: família → cor → destinos (cabedal / forração / tira)
- * → total. Usado na tela de consumo, no modal de OC e espelhado nos PDFs internos.
+ * Rollup canônico de napa: família → cor → destinos (cabedal / forração) →
+ * total. Usado na tela de consumo, no modal de OC e espelhado nos PDFs internos.
+ * Na tela de consumo a napa das tiras fica de fora (só no Setor de Tiras,
+ * 11/10/2026); no modal de OC o rollup vem com `includesStrapNapa` e mostra
+ * também o destino "Tira" — a OC ainda compra essa napa até a virada.
  */
 export default function NapaRollupPanel({
   rollup,
@@ -64,7 +67,9 @@ export default function NapaRollupPanel({
         </div>
       )}
       <p className="mt-1 text-[11px] text-muted-foreground">
-        cabedal · forração · tiras convertidas · soma por família e cor
+        {rollup.includesStrapNapa
+          ? 'cabedal · forração · tiras convertidas · soma por família e cor'
+          : 'cabedal · forração · soma por família e cor — napa das tiras no Setor de Tiras'}
       </p>
       {rollup.pendingCount > 0 && (
         <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">

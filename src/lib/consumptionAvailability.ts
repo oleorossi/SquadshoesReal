@@ -23,7 +23,6 @@
  */
 import { buildColAvailability } from '@/lib/soleMatrixHtml';
 import type { ConsumptionRow } from '@/lib/consumptionRows';
-import { BASE_LINEAR_UNITS } from '@/lib/baseMaterialTotal';
 
 /** Disponível efetivo da linha (solado soma o `stock_grade`; demais usam `available`). */
 export const rowAvailable = (r: ConsumptionRow): number =>
@@ -34,7 +33,8 @@ export const rowAvailable = (r: ConsumptionRow): number =>
 /**
  * Tira artesanal com receita conferida: o motor reserva/baixa NAPA, nunca os
  * metros de tira. Tratar 1.402 m de overlock como "falta" faz o PDF e o
- * trilho mentirem — a compra real são ~20 m de napa.
+ * trilho mentirem. Essa napa (~20 m) é a enviada ao prestador e, desde
+ * 11/10/2026, aparece só no Setor de Tiras — fora de todo total/falta de napa.
  *
  * ⚠ Isto decide só a MÉTRICA DE COMPRA. A linha da tira continua visível na
  * tabela e no PDF com seus metros de tira (D8, spec tiras-redesenho) — nunca
@@ -46,8 +46,10 @@ export const isConvertedInternalStrap = (r: ConsumptionRow): boolean =>
   && Number(r.artisanal.baseQty) > 0;
 
 /**
- * Tira de STRASS (acabada / buy_ready). Vai em aba/seção própria no Consumo —
- * não mistura com overlock/chata de produção interna (pedido do dono).
+ * Tira de STRASS (acabada / buy_ready). Na TELA vai em aba própria — não
+ * mistura com overlock/chata de produção interna (pedido do dono). No PDF,
+ * desde 11/10/2026, entra no bloco único "Tiras" do §02 (total por tipo × cor,
+ * coluna Origem = Comprar pronto).
  */
 export const isStrassStrapRow = (
   r: Pick<ConsumptionRow, 'componentType' | 'groupName' | 'materialName'>,
@@ -71,78 +73,45 @@ export const isFazerStrapRow = (r: ConsumptionRow): boolean =>
 export const STRAP_METER_TOTAL_UNIT = 'm de tira';
 
 /**
- * Tira interna (convertida OU pendente). Convertida some da tabela de compra
- * (vira napa); pending aparece como cadastro incompleto mas NÃO soma no strip
- * de metros compráveis — ver `unitTotals` / `pendingStrapMeters`.
+ * Tira interna (convertida OU pendente). Nenhuma das duas entra na métrica de
+ * compra nem no strip de metros (`toPurchaseDecisionRows` / `unitTotals`); a
+ * pendente vira alerta (`pendingStrapMeters`) e a napa da convertida fica só
+ * no Setor de Tiras (11/10/2026).
  */
 export const isInternalStrapRow = (r: ConsumptionRow): boolean =>
   isConvertedInternalStrap(r) || isPendingInternalStrap(r);
 
 /**
- * Linhas na métrica de COMPRA do motor: tira interna some e o equivalente em
- * napa entra no balde da família/cor (ou vira linha nova se a napa ainda não
- * aparecia). Solado, palmilha, químicos e tira comprada-pronta ficam iguais.
+ * Linhas na métrica de COMPRA da tela/PDF de consumo: a tira interna
+ * (Prestador — convertida ou pendente) sai. Não se compra tira de Prestador e,
+ * desde a decisão do dono de 11/10/2026, a napa dela também não entra no
+ * balde da napa: ela mora só no Setor de Tiras (§03 / bloco da tela). Antes
+ * esta função somava a napa da tira no balde da família/cor — e a "falta" de
+ * napa contradizia o total de napa do §01, que já não a inclui.
+ *
+ * Solado, palmilha, químicos e tira comprada-pronta ficam iguais.
+ * ⚠ A geração de OC NÃO passa por aqui (usa `compute_materials_per_pv`) e
+ * ainda compra a napa das tiras até a virada "tira = material de estoque".
  */
 export function toPurchaseDecisionRows(rows: ConsumptionRow[]): ConsumptionRow[] {
   const rest: ConsumptionRow[] = [];
-  const converted: ConsumptionRow[] = [];
   for (const row of rows) {
-    if (isConvertedInternalStrap(row)) converted.push(row);
-    // D9: tira Fazer sem receita/rendimento nunca entra na compra — nem como
-    // metros de tira (não se compra), nem como napa (não há conversão).
-    else if (isPendingInternalStrap(row)) continue;
-    else rest.push({ ...row, productIds: row.productIds ? [...row.productIds] : row.productIds });
+    // D9 + 11/10/2026: tira Fazer nunca entra na compra daqui — nem como
+    // metros de tira (não se compra), nem como napa (Setor de Tiras).
+    if (isInternalStrapRow(row)) continue;
+    rest.push({ ...row, productIds: row.productIds ? [...row.productIds] : row.productIds });
   }
-
-  for (const tira of converted) {
-    const qty = Number(tira.artisanal?.baseQty) || 0;
-    if (!(qty > 0)) continue;
-    const name = (tira.artisanal?.baseName || '').trim();
-    const color = tira.color;
-    const baseId = tira.baseProductId || null;
-
-    const matchIdx = rest.findIndex((candidate) => {
-      if (candidate.componentType === 'Solado') return false;
-      if (baseId && (candidate.productIds || []).includes(baseId)) return true;
-      return (
-        !!name
-        && candidate.groupName === name
-        && candidate.color === color
-        && BASE_LINEAR_UNITS.has((candidate.productUnit || '').toLowerCase())
-      );
-    });
-
-    if (matchIdx >= 0) {
-      const match = rest[matchIdx];
-      rest[matchIdx] = { ...match, totalQuantity: match.totalQuantity + qty };
-      continue;
-    }
-
-    rest.push({
-      ...tira,
-      componentType: 'Cabedal',
-      groupName: name || tira.groupName,
-      materialName: 'Conversão de tira',
-      totalQuantity: qty,
-      productUnit: 'm',
-      productIds: baseId ? [baseId] : [],
-      available: 0,
-      artisanal: undefined,
-      warning: undefined,
-      previewQuantity: undefined,
-    });
-  }
-
   return rest;
 }
 
 /**
- * Totais por unidade na métrica do motor: tira interna conta o metro de napa,
- * nunca o metro de tira. Sem isso o PDF soma 6.044 m (tira+napa) e o herói
- * mostra 247 m — os dois números não batem.
+ * Totais por unidade ("Necessidade total"): metro de tira nunca soma com metro
+ * de napa (D8), e a napa convertida da tira também não entra — desde
+ * 11/10/2026 ela fica só no Setor de Tiras. Antes o `m` do strip somava a
+ * napa da tira e não batia com o total de napa do §01.
  *
- * Tira `pending` também fica de fora: ainda não há napa equivalente confiável,
- * e somar os metros brutos de tira infla o strip (1.173 m vs 129 m no PV-00193).
+ * Tira `pending` também fica de fora: somar os metros brutos de tira infla o
+ * strip (1.173 m vs 129 m no PV-00193).
  */
 const normalizedMeter = (unit: string | null | undefined): boolean =>
   ['m', 'metro', 'metros'].includes((unit || '').toLowerCase().trim());
@@ -165,12 +134,11 @@ export function unitTotals(rows: ConsumptionRow[]): Map<string, number> {
     map.set(key, (map.get(key) || 0) + qty);
   };
   for (const row of rows) {
-    if (isPendingInternalStrap(row)) continue;
-    if (isConvertedInternalStrap(row)) add('m', Number(row.artisanal?.baseQty) || 0);
-    // Fazer coberta pelo estoque de tira pronta: nada a cortar nem comprar.
-    else if (isFazerStrapRow(row)) continue;
+    // Tira de Prestador (convertida, pendente ou coberta pelo estoque de tira
+    // pronta): nem os metros de tira nem a napa dela entram no strip.
+    if (isInternalStrapRow(row) || isFazerStrapRow(row)) continue;
     // Comprar: metro de TIRA pronta — chave própria, nunca soma com napa (D8).
-    else if (row.componentType === 'Tiras' && normalizedMeter(row.productUnit)) {
+    if (row.componentType === 'Tiras' && normalizedMeter(row.productUnit)) {
       add(STRAP_METER_TOTAL_UNIT, row.totalQuantity);
     } else add(row.productUnit, row.totalQuantity);
   }
@@ -226,8 +194,8 @@ export const soleRowShort = (r: ConsumptionRow): boolean => {
 };
 
 export const rowIsShort = (r: ConsumptionRow): boolean => {
-  // Tira Fazer não se compra: a falta mora na napa (convertida) ou é pendência
-  // de cadastro (D9) — nunca “falta de tira”.
+  // Tira Fazer não se compra. Desde 11/10/2026 a napa dela também não entra
+  // na falta: ela mora só no Setor de Tiras (§03 / bloco da tela).
   if (isConvertedInternalStrap(r) || isFazerStrapRow(r)) return false;
   if (!rowKnown(r)) return false;
   if (r.componentType === 'Solado') return soleRowShort(r);
@@ -236,8 +204,8 @@ export const rowIsShort = (r: ConsumptionRow): boolean => {
 
 /**
  * QUANTO falta da linha, na unidade dela. `0` quando cobre, quando o cadastro
- * está incompleto, ou quando a linha é tira interna já convertida em napa
- * (a falta de compra mora no balde da napa, não nos metros de tira).
+ * está incompleto, ou quando a linha é tira interna (nem os metros de tira nem
+ * a napa dela contam: a napa da tira é assunto do Setor de Tiras).
  */
 export const rowShortfall = (r: ConsumptionRow): number => {
   if (isConvertedInternalStrap(r) || isFazerStrapRow(r)) return 0;
@@ -306,7 +274,8 @@ export const itemShortfall = (it: ItemGroup): number =>
   it.known ? Math.max(0, it.total - it.available) : 0;
 
 /** Contagem "em falta" ITEM-a-item (não linha-a-linha). Solado por numeração.
- *  Tira interna entra pelo equivalente em napa — o motor não compra tira. */
+ *  Tira interna fica de fora: não se compra tira, e a napa dela não entra na
+ *  falta desde 11/10/2026 (mora no Setor de Tiras). */
 export const countShort = (rows: ConsumptionRow[]): number => {
   const purchase = toPurchaseDecisionRows(rows);
   const sole = purchase.filter((r) => r.componentType === 'Solado' && rowIsShort(r)).length;

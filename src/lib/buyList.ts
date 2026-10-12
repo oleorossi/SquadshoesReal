@@ -1,25 +1,32 @@
 /**
  * LISTA DE COMPRA do consumo — napa por família → cor, com destinos
- * Cabedal / Forração / Tira. Decisão do dono (27/09/2026): napa convertida
- * de tiras artesanais ENTRA no total da família (revoga exclusão de 24/09).
+ * Cabedal / Forração.
  *
- * Continua listando `pendingStraps` (tira sem rendimento) e `otherRows`.
+ * Decisão do dono (11/10/2026, revoga a de 27/09/2026): a napa convertida de
+ * tiras artesanais NÃO entra mais na lista nem no total da família. Antes o
+ * Total da cor somava cabedal + forração + tira enquanto a tabela do §01 só
+ * mostrava as colunas Cabedal e Forração — o total não fechava. A napa das
+ * tiras fica só no Setor de Tiras (§03 do PDF / `ArtisanalStrapRollCutBlock`
+ * na tela), e a tira com rendimento pendente também saiu daqui: o §03 já a
+ * mostra como "cadastro incompleto".
+ *
+ * Toda linha que não é napa cortada direto do rolo — tira inclusive — vai em
+ * `otherRows`.
  */
 import { BASE_MATERIAL_COMPONENTS, BASE_LINEAR_UNITS, normalizeBaseFamilyName } from '@/lib/baseMaterialTotal';
-import { normTxt, type ConsumptionRow } from '@/lib/consumptionRows';
+import type { ConsumptionRow } from '@/lib/consumptionRows';
 
 /** Aplicação da napa na ficha. */
-export type BaseApplicationKind = 'cabedal' | 'forracao' | 'tira';
+export type BaseApplicationKind = 'cabedal' | 'forracao';
 
 export type BuyListColor = {
   color: string;
+  /** cabedal + forração (fecha com as duas colunas). */
   qty: number;
+  /** Cabedal + Fachete. */
   cabedal: number;
+  /** Forração + Forração Palmilha. */
   forracao: number;
-  /** Napa convertida de tiras artesanais nesta cor. */
-  tira: number;
-  /** Tiras desta napa+cor que ficaram FORA do total por falta de rendimento. */
-  pending: number;
 };
 
 export type BuyListFamily = {
@@ -29,21 +36,11 @@ export type BuyListFamily = {
   total: number;
 };
 
-/** Tira cuja napa-base é conhecida mas não tem rendimento cadastrado. */
-export type PendingStrap = {
-  tira: string;
-  color: string;
-  napa: string;
-  /** Metros de TIRA (não de napa — a conversão é justamente o que falta). */
-  tiraM: number;
-};
-
 export type BuyList = {
   families: BuyListFamily[];
   /** Soma de todas as famílias, em metros. */
   grandTotal: number;
-  pendingStraps: PendingStrap[];
-  /** Linhas que não são material base (solado, químicos, embalagem, tira pronta…). */
+  /** Linhas que não são material base (solado, químicos, embalagem, tiras…). */
   otherRows: ConsumptionRow[];
 };
 
@@ -51,12 +48,11 @@ type ColorAgg = {
   qty: number;
   cabedal: number;
   forracao: number;
-  tira: number;
 };
 
-const emptyAgg = (): ColorAgg => ({ qty: 0, cabedal: 0, forracao: 0, tira: 0 });
+const emptyAgg = (): ColorAgg => ({ qty: 0, cabedal: 0, forracao: 0 });
 
-/** A linha é napa cortada DIRETO do rolo (não tira convertida)? */
+/** A linha é napa cortada DIRETO do rolo? (tira nunca é — `Tiras` não é componente base) */
 export const isDirectNapaRow = (row: ConsumptionRow): boolean =>
   BASE_MATERIAL_COMPONENTS.has(row.componentType)
   && BASE_LINEAR_UNITS.has((row.productUnit || '').toLowerCase())
@@ -64,43 +60,25 @@ export const isDirectNapaRow = (row: ConsumptionRow): boolean =>
   && !row.warning
   && row.totalQuantity > 0;
 
-/** A linha entra na lista de compra de napa (direto ou tira convertida)? */
-export const isBuyListRow = (row: ConsumptionRow): boolean => {
-  if (row.artisanal?.pending) return false;
-  if (row.artisanal && Number(row.artisanal.baseQty) > 0) return true;
-  return isDirectNapaRow(row);
-};
+/** A linha entra na lista de compra de napa? Só napa direta (11/10/2026). */
+export const isBuyListRow = (row: ConsumptionRow): boolean => isDirectNapaRow(row);
 
 /**
- * Família de material base da linha. Tira artesanal cai na napa da receita
- * (`artisanal.baseName`), nunca no nome do grupo da tira. Se o baseName ainda
- * carregar a cor do SKU, normaliza pra casar com o grupo do cabedal.
+ * Família de material base da linha (napa direta), sem a cor do SKU. Tira
+ * artesanal devolve null: a napa dela não pertence ao total da família — mora
+ * no Setor de Tiras.
  */
 export function baseMaterialName(row: ConsumptionRow): string | null {
-  if (row.artisanal?.pending) {
-    const raw = (row.artisanal.baseName || '').trim();
-    return raw ? normalizeBaseFamilyName(raw, row.color) : null;
-  }
-  if (row.artisanal && Number(row.artisanal.baseQty) > 0) {
-    return normalizeBaseFamilyName(row.artisanal.baseName, row.color);
-  }
-  if (isDirectNapaRow(row)) {
-    return normalizeBaseFamilyName(row.groupName, row.color) || null;
-  }
-  return null;
+  if (!isDirectNapaRow(row)) return null;
+  return normalizeBaseFamilyName(row.groupName, row.color) || null;
 }
 
-/** Metro de napa que esta linha contribui (0 se não é material base). */
+/** Metro de napa que esta linha contribui (0 se não é napa direta). */
 export function rowBaseQty(row: ConsumptionRow): number {
-  if (row.artisanal?.pending) return 0;
-  if (row.artisanal && Number(row.artisanal.baseQty) > 0) return Number(row.artisanal.baseQty) || 0;
-  if (isDirectNapaRow(row)) return Number(row.totalQuantity) || 0;
-  return 0;
+  return isDirectNapaRow(row) ? Number(row.totalQuantity) || 0 : 0;
 }
 
 export function baseApplicationKind(row: ConsumptionRow): BaseApplicationKind | null {
-  if (row.artisanal?.pending) return null;
-  if (row.artisanal && Number(row.artisanal.baseQty) > 0) return 'tira';
   if (!isDirectNapaRow(row)) return null;
   if (row.componentType === 'Forração' || row.componentType === 'Forração Palmilha') return 'forracao';
   return 'cabedal';
@@ -113,44 +91,23 @@ export function rowBelongsToBaseFamily(row: ConsumptionRow, family: string): boo
 
 export function buildBuyList(rows: ConsumptionRow[]): BuyList {
   const napaBuy = new Map<string, Map<string, ColorAgg>>();
-  const pendingStraps: PendingStrap[] = [];
-  const pendCountByKey = new Map<string, number>();
   const otherRows: ConsumptionRow[] = [];
 
-  const addNapa = (napa: string, color: string, qty: number, kind: BaseApplicationKind) => {
-    if (!(qty > 0)) return;
+  for (const row of rows) {
+    const kind = baseApplicationKind(row);
+    if (!kind) {
+      otherRows.push(row);
+      continue;
+    }
+    const napa = normalizeBaseFamilyName(row.groupName, row.color);
     if (!napaBuy.has(napa)) napaBuy.set(napa, new Map());
     const cm = napaBuy.get(napa)!;
     // Mantém precisão integral durante a agregação. Duas casas pertencem apenas
     // à renderização; arredondar cada contribuição perde metragens pequenas.
-    const cur = cm.get(color) || emptyAgg();
-    cur.qty += qty;
-    cur[kind] += qty;
-    cm.set(color, cur);
-  };
-
-  for (const row of rows) {
-    // Tira com napa-base conhecida e SEM rendimento: não converte às cegas —
-    // sai em bloco próprio, pedindo o cadastro que falta.
-    if (row.artisanal?.pending) {
-      const napa = normalizeBaseFamilyName(row.artisanal.baseName, row.color);
-      pendingStraps.push({ tira: row.groupName, color: row.color, napa, tiraM: row.totalQuantity });
-      const k = `${normTxt(napa)}||${normTxt(row.color)}`;
-      pendCountByKey.set(k, (pendCountByKey.get(k) || 0) + 1);
-      continue;
-    }
-    // Tira convertida: entra na família da napa-base, destino "tira".
-    if (row.artisanal && row.artisanal.baseQty > 0) {
-      const napa = normalizeBaseFamilyName(row.artisanal.baseName, row.color);
-      addNapa(napa, row.color, row.artisanal.baseQty, 'tira');
-      continue;
-    }
-    if (isDirectNapaRow(row)) {
-      const napa = normalizeBaseFamilyName(row.groupName, row.color);
-      addNapa(napa, row.color, row.totalQuantity, baseApplicationKind(row) || 'cabedal');
-      continue;
-    }
-    otherRows.push(row);
+    const cur = cm.get(row.color) || emptyAgg();
+    cur.qty += row.totalQuantity;
+    cur[kind] += row.totalQuantity;
+    cm.set(row.color, cur);
   }
 
   const families: BuyListFamily[] = Array.from(napaBuy.entries())
@@ -161,8 +118,6 @@ export function buildBuyList(rows: ConsumptionRow[]): BuyList {
           qty: agg.qty,
           cabedal: agg.cabedal,
           forracao: agg.forracao,
-          tira: agg.tira,
-          pending: pendCountByKey.get(`${normTxt(napa)}||${normTxt(color)}`) || 0,
         }))
         .sort((a, b) => b.qty - a.qty);
       return { napa, colors, total: colors.reduce((s, c) => s + c.qty, 0) };
@@ -172,7 +127,6 @@ export function buildBuyList(rows: ConsumptionRow[]): BuyList {
   return {
     families,
     grandTotal: families.reduce((s, f) => s + f.total, 0),
-    pendingStraps,
     otherRows,
   };
 }

@@ -9,6 +9,7 @@ import {
 } from '../buyList';
 import { computeBaseMaterialTotal } from '../baseMaterialTotal';
 import type { ConsumptionRow } from '../consumptionRows';
+import { PV00195_ROWS } from './fixtures/pv00195Consumption';
 
 /** Atalho pra montar linha do motor sem repetir os campos obrigatórios. */
 const row = (o: Partial<ConsumptionRow>): ConsumptionRow => ({
@@ -35,30 +36,28 @@ describe('buildBuyList', () => {
     // PRETO soma as duas aplicações (1 + 2 = 3) e ainda fica atrás de OFF WHITE (4).
     expect(soft.colors.map((c) => [c.color, c.qty])).toEqual([['OFF WHITE', 4], ['PRETO', 3]]);
     expect(soft.colors.find((c) => c.color === 'PRETO')).toEqual({
-      color: 'PRETO', qty: 3, cabedal: 0, forracao: 3, tira: 0, pending: 0,
+      color: 'PRETO', qty: 3, cabedal: 0, forracao: 3,
     });
     expect(soft.total).toBe(7);
     expect(bl.grandTotal).toBeCloseTo(27.27, 2);
   });
 
-  it('tira artesanal convertida entra na família da napa-base', () => {
-    const bl = buildBuyList([
-      row({
-        componentType: 'Tiras', groupName: 'TIRA OVERLOCK 5MM', color: 'PRETO',
-        totalQuantity: 169.2,
-        artisanal: { baseName: 'NAPA SOFT', baseQty: 169.2 / 60, yieldPerMeter: 60 },
-      }),
-    ]);
-    expect(bl.families).toHaveLength(1);
-    expect(bl.grandTotal).toBeCloseTo(169.2 / 60, 2);
-    expect(bl.families[0].colors[0].tira).toBeCloseTo(169.2 / 60, 2);
-    expect(isBuyListRow(row({
-      componentType: 'Tiras', groupName: 'TIRA OVERLOCK 5MM',
-      artisanal: { baseName: 'NAPA SOFT', baseQty: 2.82, yieldPerMeter: 60 },
-    }))).toBe(true);
+  // Decisão do dono (11/10/2026): napa de tira NÃO entra na lista de napa —
+  // só no §03 Setor de Tiras. Revoga a de 27/09/2026.
+  it('tira artesanal convertida NÃO entra na família da napa-base', () => {
+    const tira = row({
+      componentType: 'Tiras', groupName: 'TIRA OVERLOCK 5MM', color: 'PRETO',
+      totalQuantity: 169.2,
+      artisanal: { baseName: 'NAPA SOFT', baseQty: 169.2 / 60, yieldPerMeter: 60 },
+    });
+    const bl = buildBuyList([tira]);
+    expect(bl.families).toEqual([]);
+    expect(bl.grandTotal).toBe(0);
+    expect(bl.otherRows).toEqual([tira]);
+    expect(isBuyListRow(tira)).toBe(false);
   });
 
-  it('soma cabedal + tira interna no total da família', () => {
+  it('total da família = só cabedal; a tira interna fica fora e as colunas fecham', () => {
     const bl = buildBuyList([
       row({
         componentType: 'Cabedal', groupName: 'NAPA SOFT', materialName: 'Cabedal',
@@ -74,14 +73,15 @@ describe('buildBuyList', () => {
     const soft = bl.families.find((family) => family.napa === 'NAPA SOFT')!;
     const preto = soft.colors.find((color) => color.color === 'PRETO')!;
     expect(preto.cabedal).toBeCloseTo(12.5, 10);
-    expect(preto.tira).toBeCloseTo(5, 10);
     expect(preto.forracao).toBe(0);
-    expect(preto.qty).toBeCloseTo(17.5, 10);
-    expect(soft.total).toBeCloseTo(17.5, 10);
-    expect(bl.grandTotal).toBeCloseTo(17.5, 10);
+    // Total = Cabedal + Forração — o que a tabela do §01 mostra.
+    expect(preto.qty).toBeCloseTo(preto.cabedal + preto.forracao, 10);
+    expect(preto.qty).toBeCloseTo(12.5, 10);
+    expect(soft.total).toBeCloseTo(12.5, 10);
+    expect(bl.grandTotal).toBeCloseTo(12.5, 10);
   });
 
-  it('não abre família fantasma quando a tira traz SKU com cor (Massabox + Cobre)', () => {
+  it('não abre família fantasma com a tira de SKU com cor (Massabox + Cobre)', () => {
     const bl = buildBuyList([
       row({
         componentType: 'Cabedal',
@@ -113,29 +113,24 @@ describe('buildBuyList', () => {
 
     expect(bl.families.map((f) => f.napa)).toEqual(['GLOW METALIC + MASSABOX']);
     const family = bl.families[0];
-    expect(family.total).toBeCloseTo(26.43, 2);
+    // Cabedal 15,39 + 8,40 — os 2,64 m de napa da tira ficam no §03.
+    expect(family.total).toBeCloseTo(23.79, 2);
     const cobre = family.colors.find((c) => c.color === 'COBRE')!;
     expect(cobre.cabedal).toBeCloseTo(8.4, 10);
-    expect(cobre.tira).toBeCloseTo(2.64, 10);
-    expect(cobre.qty).toBeCloseTo(11.04, 10);
+    expect(cobre.qty).toBeCloseTo(8.4, 10);
   });
 
-  it('tira sem rendimento sai em pendingStraps, fora do total, e marca a cor', () => {
-    const bl = buildBuyList([
-      row({ color: 'ROSADO', totalQuantity: 5 }),
-      row({
-        componentType: 'Tiras', groupName: 'TIRA CHATA 8MM', color: 'ROSADO',
-        totalQuantity: 120,
-        artisanal: { baseName: 'NAPA SOFT', baseQty: 0, yieldPerMeter: 0, pending: true },
-      }),
-    ]);
-    expect(bl.pendingStraps).toEqual([
-      { tira: 'TIRA CHATA 8MM', color: 'ROSADO', napa: 'NAPA SOFT', tiraM: 120 },
-    ]);
+  it('tira sem rendimento não aparece no §01 (o §03 mostra o cadastro incompleto)', () => {
+    const pendente = row({
+      componentType: 'Tiras', groupName: 'TIRA CHATA 8MM', color: 'ROSADO',
+      totalQuantity: 120,
+      artisanal: { baseName: 'NAPA SOFT', baseQty: 0, yieldPerMeter: 0, pending: true },
+    });
+    const bl = buildBuyList([row({ color: 'ROSADO', totalQuantity: 5 }), pendente]);
     expect(bl.grandTotal).toBe(5); // os 120 m de tira NÃO entram
-    expect(bl.families[0].colors[0].pending).toBe(1);
-    // e não vaza pra otherRows (senão aparecia duas vezes na tela)
-    expect(bl.otherRows).toHaveLength(0);
+    expect(bl.families[0].colors[0]).toEqual({ color: 'ROSADO', qty: 5, cabedal: 0, forracao: 5 });
+    expect(bl).not.toHaveProperty('pendingStraps');
+    expect(bl.otherRows).toEqual([pendente]);
   });
 
   it('manda pra otherRows o que não se soma em metros com napa', () => {
@@ -162,15 +157,36 @@ describe('buildBuyList', () => {
     expect(bl.families).toHaveLength(0);
   });
 
-  it('tira convertida soma no grandTotal da napa-base', () => {
+  it('tira convertida não soma no grandTotal da napa-base', () => {
     const bl = buildBuyList([1, 2, 3].map(() => row({
       componentType: 'Tiras',
       groupName: 'TIRA TESTE',
       totalQuantity: 0.294,
       artisanal: { baseName: 'NAPA SOFT', baseQty: 0.0049, yieldPerMeter: 60 },
     })));
-    expect(bl.grandTotal).toBeCloseTo(0.0147, 4);
-    expect(bl.families[0].napa).toBe('NAPA SOFT');
+    expect(bl.grandTotal).toBe(0);
+    expect(bl.families).toEqual([]);
+  });
+
+  it('PV-00195: necessidade de napa cai de 78,09 m para 55,57 m (napa de tira só no §03)', () => {
+    const bl = buildBuyList(PV00195_ROWS);
+    expect(bl.grandTotal).toBeCloseTo(55.57, 2);
+    const color = (napa: string, cor: string) => bl.families
+      .find((family) => family.napa === napa)!.colors
+      .find((entry) => entry.color === cor)!;
+    // Antes: 32,74 / 16,70 / 15,26 (cabedal/forração + napa de tira).
+    expect(color('GLOW METALIC', 'CHAMPAGNE').qty).toBeCloseTo(14.06, 2);
+    expect(color('GLOW METALIC', 'COBRE').qty).toBeCloseTo(14.06, 2);
+    expect(color('NAPA SOFT', 'OFF WHITE').qty).toBeCloseTo(14.06, 2);
+    // Toda cor fecha: Total = Cabedal + Forração.
+    for (const family of bl.families) {
+      for (const entry of family.colors) {
+        expect(entry.qty).toBeCloseTo(entry.cabedal + entry.forracao, 10);
+      }
+    }
+    // A napa que saiu é exatamente a das tiras de prestador (22,52 m).
+    const strapNapa = PV00195_ROWS.reduce((sum, r) => sum + (Number(r.artisanal?.baseQty) || 0), 0);
+    expect(bl.grandTotal + strapNapa).toBeCloseTo(78.09, 2);
   });
 });
 
@@ -221,9 +237,18 @@ describe('paridade buildBuyList × computeBaseMaterialTotal', () => {
       .toEqual(byName(base.parts));
   });
 
-  it('contam a mesma pendência (tira sem rendimento fica fora dos dois)', () => {
-    expect(buildBuyList(MIXED).pendingStraps).toHaveLength(1);
-    expect(computeBaseMaterialTotal(MIXED)!.skipped).toBeGreaterThanOrEqual(1);
+  it('nenhum dos dois soma tira — convertida ou pendente (11/10/2026)', () => {
+    // 20,27 + 1 + 1 + 1: só napa direta. A tira convertida (3,85 m) e a
+    // pendente ficam no §03; a largura faltando segue como skipped.
+    expect(buildBuyList(MIXED).grandTotal).toBeCloseTo(23.27, 2);
+    const base = computeBaseMaterialTotal(MIXED)!;
+    expect(base.total).toBeCloseTo(23.27, 2);
+    expect(base.skipped).toBe(1);
+  });
+
+  it('PV-00195: os dois chegam a 55,57 m', () => {
+    expect(buildBuyList(PV00195_ROWS).grandTotal).toBeCloseTo(55.57, 2);
+    expect(computeBaseMaterialTotal(PV00195_ROWS)!.total).toBeCloseTo(55.57, 2);
   });
 });
 
@@ -251,16 +276,16 @@ describe('material base → cor → aplicação', () => {
     artisanal: { baseName: 'NAPA SOFT', baseQty: 20.04, yieldPerMeter: 70 },
   });
 
-  it('classifica tira interna como aplicação tira', () => {
-    expect(baseMaterialName(tira)).toBe('NAPA SOFT');
-    expect(baseApplicationKind(tira)).toBe('tira');
+  it('tira interna não pertence a família de napa (napa dela: Setor de Tiras)', () => {
+    expect(baseMaterialName(tira)).toBeNull();
+    expect(baseApplicationKind(tira)).toBeNull();
     expect(baseApplicationKind(napa)).toBe('forracao');
     expect(baseApplicationKind(cabedal)).toBe('cabedal');
-    expect(rowBelongsToBaseFamily(tira, 'NAPA SOFT')).toBe(true);
-    expect(rowBelongsToBaseFamily(tira, 'GLOW METALIC')).toBe(false);
+    expect(rowBelongsToBaseFamily(tira, 'NAPA SOFT')).toBe(false);
+    expect(rowBelongsToBaseFamily(napa, 'NAPA SOFT')).toBe(true);
   });
 
-  it('quebra cada cor em cabedal + forração + tira no total da família', () => {
+  it('quebra cada cor em cabedal + forração; o total fecha com as duas colunas', () => {
     const bl = buildBuyList([napa, cabedal, tira]);
     const soft = bl.families.find((f) => f.napa === 'NAPA SOFT')!;
     const whisky = soft.colors.find((c) => c.color === 'NEW WHISKY')!;
@@ -268,14 +293,13 @@ describe('material base → cor → aplicação', () => {
 
     expect(whisky.cabedal).toBe(0);
     expect(whisky.forracao).toBeCloseTo(20.21, 2);
-    expect(whisky.tira).toBeCloseTo(20.04, 2);
-    expect(whisky.qty).toBeCloseTo(40.25, 2);
+    expect(whisky.qty).toBeCloseTo(20.21, 2);
 
     expect(white.cabedal).toBeCloseTo(59.05, 2);
     expect(white.forracao).toBe(0);
-    expect(white.tira).toBe(0);
     expect(white.qty).toBeCloseTo(59.05, 2);
 
-    expect(soft.total).toBeCloseTo(99.3, 2);
+    expect(soft.total).toBeCloseTo(79.26, 2);
+    expect(bl.otherRows).toEqual([tira]);
   });
 });

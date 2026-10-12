@@ -235,32 +235,44 @@ describe('tira artesanal — o motor consome napa, não metro de tira', () => {
     })).toBe(false);
   });
 
-  it('soma o equivalente em napa no balde que o motor realmente baixa', () => {
+  // Decisão do dono (11/10/2026): a napa da tira mora só no Setor de Tiras —
+  // não soma no balde da napa, nem na falta, nem no strip "Necessidade total".
+  it('a napa da tira NÃO entra no balde da napa (falta = só a napa direta)', () => {
     const purchase = toPurchaseDecisionRows([napa, tira]);
     expect(purchase.some((r) => r.componentType === 'Tiras')).toBe(false);
-    const [item] = aggregateItems(purchase);
+    const [item, ...rest] = aggregateItems(purchase);
+    expect(rest).toEqual([]);
     expect(item.groupName).toBe('NAPA SOFT');
-    expect(item.total).toBeCloseTo(40.25, 2);
-    expect(itemShortfall(item)).toBeCloseTo(40.25, 2);
+    expect(item.total).toBeCloseTo(20.21, 6);
+    expect(itemShortfall(item)).toBeCloseTo(20.21, 6);
   });
 
-  it('some da lista de maiores faltas como 1.402 m de tira', () => {
+  it('some da lista de maiores faltas como 1.402 m de tira e como napa de tira', () => {
     const top = topShortfalls([napa, tira], 5);
     expect(top.some((entry) => entry.qty > 1000)).toBe(false);
+    expect(top).toHaveLength(1);
     expect(top[0].label).toBe('NAPA SOFT');
-    expect(top[0].qty).toBeCloseTo(40.25, 2);
+    expect(top[0].qty).toBeCloseTo(20.21, 6);
     expect(top[0].unit).toBe('m');
   });
 
-  it('o total em metros do PDF/tela casa com o material base, não com a tira', () => {
+  it('o total em metros do PDF/tela é só o material base direto', () => {
     const totals = unitTotals([napa, tira]);
-    expect(totals.get('m')).toBeCloseTo(40.25, 2);
+    expect(totals.get('m')).toBeCloseTo(20.21, 6);
     expect(countShort([napa, tira])).toBe(1);
   });
 
+  it('tira convertida sozinha: nada de falta nem de metro no strip', () => {
+    expect(toPurchaseDecisionRows([tira])).toEqual([]);
+    expect(unitTotals([tira]).size).toBe(0);
+    expect(countShort([tira])).toBe(0);
+    expect(topShortfalls([tira])).toEqual([]);
+  });
+
   it('PV-00193: tira pending NÃO infla o strip de metros com 1.044 m de tira', () => {
-    // 3 cores × (28,15 forração + 14,91 tira convertida) = 129,21 m de napa.
-    // 1 linha órfã pending com 1.044 m de tira — antes virava 1.173,21 m no strip.
+    // 3 cores × 28,15 forração = 84,45 m de napa. A napa convertida das tiras
+    // (3 × 14,91) fica no Setor de Tiras; a linha órfã pending com 1.044 m de
+    // tira — que antes virava 1.173,21 m no strip — também fica fora.
     const forracao = (color: string) => row({
       componentType: 'Forração Palmilha',
       groupName: 'NAPA MADRID',
@@ -306,9 +318,10 @@ describe('tira artesanal — o motor consome napa, não metro de tira', () => {
     expect(isPendingInternalStrap(tiraPending)).toBe(true);
     expect(isInternalStrapRow(tiraPending)).toBe(true);
     expect(pendingStrapMeters(rows)).toBeCloseTo(1044, 2);
-    // 3 × (28,15 + 14,91) = 129,18 — o PDF vivo arredonda 129,21 por precisão
-    // intermediária do motor; o strip não pode incluir os 1.044 m de tira.
-    expect(totals.get('m')).toBeCloseTo(129.18, 2);
+    // Só a forração: 3 × 28,15 = 84,45 — nem os 1.044 m de tira pendente nem
+    // os 44,73 m de napa das tiras convertidas.
+    expect(totals.get('m')).toBeCloseTo(84.45, 2);
+    expect(totals.get('m')).not.toBeCloseTo(129.18, 2);
     expect(totals.get('m')).not.toBeCloseTo(1173.21, 2);
   });
 });

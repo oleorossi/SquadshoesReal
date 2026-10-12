@@ -44,26 +44,28 @@ describe('normalizeBaseFamilyName', () => {
   });
 });
 
+// Decisão do dono (11/10/2026, revoga a de 27/09/2026): a napa convertida de
+// tiras NÃO entra no total de material base — só no Setor de Tiras (§03).
 describe('computeBaseMaterialTotal', () => {
-  it('soma napa direta + tiras convertidas', () => {
+  it('soma só a napa direta — tiras convertidas ficam fora', () => {
     const r = computeBaseMaterialTotal(COGUMELO)!;
-    const soft = 169.20 / 60 + 126.00 / 60 + 3 * (234.72 / 61);
-    expect(r.total).toBeCloseTo(20.27 + soft, 2);
+    expect(r.total).toBeCloseTo(20.27, 6);
     expect(r.skipped).toBe(0);
   });
 
-  it('quebra por material, maior primeiro', () => {
-    const r = computeBaseMaterialTotal(COGUMELO)!;
-    // Forração SUDANI 20,27 > tiras→SOFT ~16,46
+  it('quebra por material, maior primeiro — sem a família que só vinha das tiras', () => {
+    const r = computeBaseMaterialTotal([
+      ...COGUMELO,
+      { componentType: 'Cabedal', groupName: 'NAPA SOFT', productUnit: 'm', totalQuantity: 4.5 },
+    ])!;
     expect(r.parts.map(p => p.name)).toEqual(['NAPA SUDANI', 'NAPA SOFT']);
     expect(r.parts[0].qty).toBeCloseTo(20.27, 2);
-    expect(r.parts[1].qty).toBeCloseTo(169.20 / 60 + 126.00 / 60 + 3 * (234.72 / 61), 2);
+    // Só o cabedal: os ~16,46 m de napa das tiras não entram.
+    expect(r.parts[1].qty).toBeCloseTo(4.5, 6);
   });
 
-  it('tira convertida sozinha cria total de material base', () => {
-    const r = computeBaseMaterialTotal([COGUMELO[1]])!;
-    expect(r.total).toBeCloseTo(169.20 / 60, 2);
-    expect(r.parts[0].name).toBe('NAPA SOFT');
+  it('tira convertida sozinha não cria total de material base', () => {
+    expect(computeBaseMaterialTotal([COGUMELO[1]])).toBeNull();
   });
 
   it('ignora o que não é napa (solado em par, linha em kg, rebite em un)', () => {
@@ -84,19 +86,19 @@ describe('computeBaseMaterialTotal', () => {
     expect(r.skipped).toBe(1);
   });
 
-  it('contribuições só de tira convertida entram no total', () => {
+  it('contribuições só de tira convertida não entram no total', () => {
     const r = computeBaseMaterialTotal([
       ...[1, 2, 3].map(() => ({
         componentType: 'Tiras', groupName: 'TIRA TESTE', productUnit: 'm',
         totalQuantity: 0.294,
         artisanal: { baseName: 'NAPA SOFT', baseQty: 0.0049, yieldPerMeter: 60 },
       })),
-    ])!;
-    expect(r.total).toBeCloseTo(0.0147, 4);
-    expect(r.parts[0].name).toBe('NAPA SOFT');
+    ]);
+    expect(r).toBeNull();
   });
 
-  it('tira pendente sem receita exata fica fora do total e contada em skipped', () => {
+  it('tira pendente sem receita exata fica fora do total e NÃO conta como skipped', () => {
+    // O "cadastro incompleto" da tira mora no §03; `skipped` é só da napa direta.
     const r = computeBaseMaterialTotal([
       { componentType: 'Forração Palmilha', groupName: 'NAPA SUDANI', productUnit: 'm', totalQuantity: 13.51 },
       {
@@ -106,7 +108,7 @@ describe('computeBaseMaterialTotal', () => {
       },
     ])!;
     expect(r.total).toBeCloseTo(13.51, 2);
-    expect(r.skipped).toBe(1);
+    expect(r.skipped).toBe(0);
   });
 
   it('deixa de fora consumo não calculado (fachete sem specs)', () => {

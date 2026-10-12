@@ -11,8 +11,10 @@ import type { NapaRollup } from '@/lib/napaRollup';
  * Monta HTML, abre window.open e dispara print (mesmo padrão do PDF de
  * "Consumo de Materiais"). Agrupa por fornecedor + bloco "Sem Fornecedor".
  *
- * Inclui o rollup de napa (cabedal / forração / tiras → total) quando passado
- * — mesmo contrato da tela de consumo (dono, 27/09/2026).
+ * Inclui o rollup de napa (cabedal / forração / tiras → total) quando passado.
+ * ⚠ A OC monta esse rollup com `includeStrapNapa: true` — ainda soma a napa
+ * das tiras até a virada "tira = material de estoque"; a tela/PDF de consumo
+ * deixou de somar em 11/10/2026 (napa da tira só no Setor de Tiras).
  */
 
 export interface PerPvPrintInput {
