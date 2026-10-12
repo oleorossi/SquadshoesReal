@@ -220,7 +220,11 @@ export function strapStockLinesItemKey(input: {
 
 export function useStrapStockLines(input: StrapStockLinesInput, enabled = true) {
   const straps = Array.isArray(input.strapColors) ? input.strapColors as StrapColorEntry[] : [];
-  const hasStraps = straps.some((strap) => !!technicalStrapLineId(strap));
+  // Linha legada sem UUID também consulta: o motor devolve
+  // `technical_line_missing` e a tela mostra o motivo. Exigir UUID aqui
+  // deixava o item inteiro SEM preview, e a tela lia esse silêncio como
+  // "a ficha não identifica o material-base" (dono, 12/10/2026).
+  const hasStraps = straps.length > 0;
   const debounced = useDebouncedGradeQuantity(input.grade, input.quantity, 400);
   const queryInput: StrapStockLinesInput = {
     ...input,
@@ -318,7 +322,7 @@ export function useStrapStockLinesBatch(
       const straps = Array.isArray(input.strapColors)
         ? input.strapColors as StrapColorEntry[]
         : [];
-      if (!straps.some((strap) => !!technicalStrapLineId(strap))) continue;
+      if (straps.length === 0) continue;
       seen.add(key);
       const row = buildPreviewPayload({ ...input, itemKey: key }, straps);
       items.push({ ...row, item_key: key });
