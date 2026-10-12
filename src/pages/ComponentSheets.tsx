@@ -23,6 +23,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useUpdateGroup } from '@/hooks/useGroups';
 import { supabase } from '@/integrations/supabase/client';
 import { cn, getSoleModelName } from "@/lib/utils";
+import { resolveYieldUnit } from '@/lib/materialUnit';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { SolesComponentSheetTab } from "@/components/technical-sheets/SolesComponentSheetTab";
@@ -908,6 +909,10 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
   const [currentSheet, setCurrentSheet] = useState(sheet);
   const [allColorsSelected, setAllColorsSelected] = useState(true);
   const prod = currentSheet.products;
+  // Unidade do campo yield_per_size = a do ITEM selecionado quando ele é linear
+  // (decisão do dono, 12/10/2026). Fixar "dm²" aqui fazia o operador digitar área
+  // num campo que o motor lê como metro — 137× na ficha EC111. Ver resolveYieldUnit.
+  const yieldUnit = resolveYieldUnit(prod?.unit);
   const hasGrade = needsShoeType(prod);
   const colors = useMemo(() => [...new Set(groupItems.map(s => s.products?.color).filter(Boolean))], [groupItems]);
 
@@ -1176,7 +1181,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
           {(hasPlateDimensions || hasGrade) && (
             <TabsTrigger value="yield" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm">
               <BarChart3 className="h-4 w-4 mr-1.5" />
-              Consumo/Par (dm²)
+              Consumo/Par ({yieldUnit})
             </TabsTrigger>
           )}
           {!hasPlateDimensions && !hasGrade && (isConsumptionCategory(prod?.category) || isUnitCategory(prod?.category)) && (
@@ -1265,7 +1270,8 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
           <DefaultSoleSection sheet={currentSheet} />
         </TabsContent>
 
-        {/* Yield Tab — dm² consumption per size with plate yield calc */}
+        {/* Yield Tab — consumo por numeração na unidade do ITEM (ver resolveYieldUnit)
+            + cálculo de pares/placa quando há dimensões de placa. */}
         {(hasPlateDimensions || hasGrade) && (
           <TabsContent value="yield" className="p-6 space-y-5 mt-0">
             {isLiningOrInsoleCategory(prod) ? (
@@ -1295,9 +1301,9 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
               <>
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">Consumo por Par (dm²)</h3>
+                    <h3 className="text-sm font-semibold text-foreground">Consumo por Par ({yieldUnit})</h3>
                     <p className="text-xs text-muted-foreground">
-                      {`Quantidade em dm² consumida por par para cada numeração. O valor salvo é replicado automaticamente para todas as ${Math.max(groupItems.length, 1)} cores do grupo.`}
+                      {`Quantidade em ${yieldUnit} consumida por par para cada numeração. O valor salvo é replicado automaticamente para todas as ${Math.max(groupItems.length, 1)} cores do grupo.`}
                     </p>
                   </div>
                 </div>
@@ -1391,7 +1397,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                 ))}
 
                 <p className="text-xs text-muted-foreground">
-                  * Consumo em dm²/par. Pares/placa calculado com base nas dimensões informadas.
+                  * Consumo em {yieldUnit}/par. Pares/placa calculado com base nas dimensões informadas.
                 </p>
                 {/* Cost row */}
                 <div className="rounded-lg border border-border/40 overflow-hidden mt-4">
@@ -1411,13 +1417,13 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  * Custo/par = preço unitário × consumo dm²
+                  * Custo/par = preço unitário × consumo {yieldUnit}
                   {form.dimensions_length > 0 && form.dimensions_width > 0 && ' | Pares/placa = área da placa ÷ consumo dm²'}
                 </p>
 
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" className="text-xs" onClick={() => {
-                    const val = prompt('Preencher todos os tamanhos com qual consumo por par (dm²)?');
+                    const val = prompt(`Preencher todos os tamanhos com qual consumo por par (${yieldUnit})?`);
                     if (val && Number(val) > 0) {
                       const newYield: Record<string, number> = {};
                       sizes.forEach(s => { newYield[String(s)] = Number(val); });
@@ -1470,7 +1476,7 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                   : `Ex: 0,005 ${getConsumptionUnit(prod?.category)} por par. Use vírgula como separador decimal.`}
               </p>
               <p className="text-xs text-primary">
-                💡 Preencha as dimensões da placa na aba Especificações para habilitar o consumo por numeração em dm².
+                💡 Preencha as dimensões da placa na aba Especificações para habilitar o consumo por numeração em {yieldUnit}.
               </p>
             </div>
 
