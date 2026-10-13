@@ -261,6 +261,66 @@ export function partitionPerPvStrapPurchaseItems<T extends PerPvPurchasableIdent
   return { common, straps };
 }
 
+/**
+ * Chave da seleção efêmera de uma linha do rascunho. É a MESMA identidade que
+ * a tela usa como `key` da linha e que o PDF usa pra marcar o que saiu —
+ * trocar por outra coisa (nome, índice) faria a marca do operador pular de
+ * linha quando o rascunho fosse remontado (muda com `netOfStock`, refetch de
+ * preço, cadastro de cor).
+ */
+export function perPvItemSelectionKey(item: {
+  material_id?: string | null;
+  box_type_id?: string | null;
+  color?: string | null;
+}): string {
+  return `${perPvStockIdentityKey(item)}::${(item.color ?? '').trim().toLowerCase()}`;
+}
+
+export interface PerPvSelectionResult {
+  /** Rascunhos sem as linhas que o operador tirou. Fornecedor que ficou sem
+   *  nenhuma linha SAI — senão a RPC receberia uma OC vazia. */
+  drafts: DraftPurchaseOrder[];
+  /** O que saiu, pra tela e PDF prestarem contas em vez de sumir em silêncio. */
+  removed: DraftPurchaseOrderItem[];
+}
+
+/**
+ * Aplica a escolha do operador feita no diálogo, ANTES de gerar.
+ *
+ * É efêmera de propósito (decisão do dono, 13/10/2026): vale só para esta
+ * geração e não persiste no PV. Persistir criaria uma entidade nova ("item
+ * recusado") que precisaria de tela, de reversão e de alguém pra mantê-la —
+ * e o custo a evitar é comprar errado hoje, não reconfigurar o pedido.
+ *
+ * ⚠ Linha do balde "Sem Fornecedor" NUNCA sai por aqui. Ela já não vira OC
+ *   (a RPC exige fornecedor) e some do total se for filtrada — eram 27% do
+ *   PV-00232. Na tela ela aparece travada marcada, com o aviso de atribuir
+ *   fornecedor; este guard é a segunda camada, pra uma chave vazada não
+ *   conseguir escondê-la.
+ */
+export function applyPerPvItemSelection(
+  drafts: DraftPurchaseOrder[],
+  deselected: ReadonlySet<string>,
+): PerPvSelectionResult {
+  if (!deselected || deselected.size === 0) return { drafts, removed: [] };
+  const removed: DraftPurchaseOrderItem[] = [];
+  const kept = drafts.flatMap((draft) => {
+    const items = draft.items.filter((item) => {
+      if (draft.supplier_id === null) return true;
+      if (!deselected.has(perPvItemSelectionKey(item))) return true;
+      removed.push(item);
+      return false;
+    });
+    if (items.length === 0) return [];
+    return [{
+      ...draft,
+      items,
+      total: round3(items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)),
+    }];
+  });
+  return { drafts: kept, removed };
+}
+
 /** Defesa final para qualquer caller do hook, inclusive fora do diálogo. */
 export function excludeStrapsFromPerPvDrafts(
   drafts: DraftPurchaseOrder[],

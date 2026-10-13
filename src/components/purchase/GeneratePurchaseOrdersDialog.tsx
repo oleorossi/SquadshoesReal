@@ -38,6 +38,8 @@ import {
   perPvStockIdentityKey,
   partitionPerPvStrapPurchaseItems,
   summarizePerPvDrafts,
+  applyPerPvItemSelection,
+  perPvItemSelectionKey,
   type DraftPurchaseOrderItem,
   type PvMaterialNeed,
 } from '@/lib/perPvPurchasing';
@@ -118,6 +120,23 @@ export default function GeneratePurchaseOrdersDialog({
   // sairia comprando A MENOS. Override consciente pelo mesmo padrão da cor.
   const [overrideNeedWarnings, setOverrideNeedWarnings] = useState(false);
   const [overrideOpenPurchases, setOverrideOpenPurchases] = useState(false);
+  // Seleção EFÊMERA do operador (decisão do dono, 13/10/2026): tudo marcado por
+  // padrão, vale só para esta geração e não persiste no PV. Guardamos o que foi
+  // DESMARCADO (e não o que ficou marcado) de propósito: material novo que
+  // aparecer no recálculo nasce comprável, nunca escondido por omissão.
+  const [deselectedKeys, setDeselectedKeys] = useState<ReadonlySet<string>>(() => new Set());
+  // Reabrir o diálogo é uma compra nova — a escolha anterior não sobrevive.
+  useEffect(() => {
+    if (open) setDeselectedKeys(new Set());
+  }, [open]);
+  const toggleItemSelected = (key: string, selected: boolean) => {
+    setDeselectedKeys((prev) => {
+      const next = new Set(prev);
+      if (selected) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
   const needsQuery = useMaterialsPerPv(open ? pvIds : null);
   const consumptionQuery = useQuery({
     queryKey: ['pv-consumption-for-po', ...(open ? pvIds : [])],
@@ -294,9 +313,17 @@ export default function GeneratePurchaseOrdersDialog({
     [purchasableNeeds, multipleByProduct, conversionByProduct, identityByProduct, strapIdentityGuard.productGroupByProductId],
   );
 
-  const drafts = useMemo(
+  // `allDrafts` é o que a TELA lista (inclusive o que o operador tirou, senão
+  // não dá pra marcar de volta). `drafts` é o que de fato vai ser comprado —
+  // todo cálculo, validação, geração e impressão daqui pra baixo usa ele, pra
+  // não existir caminho que ignore a escolha.
+  const allDrafts = useMemo(
     () => buildPerPvPurchaseOrders(enrichedNeeds, { netOfStock }),
     [enrichedNeeds, netOfStock],
+  );
+  const { drafts, removed: removedItems } = useMemo(
+    () => applyPerPvItemSelection(allDrafts, deselectedKeys),
+    [allDrafts, deselectedKeys],
   );
   const summary = useMemo(() => summarizePerPvDrafts(drafts), [drafts]);
   const invalidPriceItems = useMemo(
@@ -424,6 +451,7 @@ export default function GeneratePurchaseOrdersDialog({
         netOfStock,
         summary,
         napaRollup,
+        removedItems,
       });
       if (!ok) toast.error('Não foi possível abrir a janela de impressão. Permita pop-ups para este site.');
     });
@@ -585,7 +613,7 @@ export default function GeneratePurchaseOrdersDialog({
           <NapaRollupPanel rollup={napaRollup} />
         )}
 
-        {!isLoading && !isError && drafts.length === 0 && (
+        {!isLoading && !isError && allDrafts.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
             <Package className="h-8 w-8" />
             <p className="text-sm text-center max-w-md">
@@ -616,8 +644,31 @@ export default function GeneratePurchaseOrdersDialog({
           </div>
         )}
 
-        {!isLoading && !isError && drafts.length > 0 && (
+        {!isLoading && !isError && allDrafts.length > 0 && (
           <div className="space-y-4">
+            {/* O que o operador tirou desta compra. Fica à vista e some com um
+                clique: escolha silenciosa vira "sumiu material da OC" duas
+                semanas depois, que foi exatamente o que originou esta tela. */}
+            {removedItems.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <strong>{removedItems.length} item(ns) fora desta compra.</strong>{' '}
+                  <span className="text-muted-foreground">
+                    Vale só para esta geração — nada é gravado no pedido, e o PDF
+                    sai marcando o que ficou de fora.
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => setDeselectedKeys(new Set())}
+                >
+                  Marcar todos de volta
+                </Button>
+              </div>
+            )}
+
             {/* Resumo (KPIs) — total, OCs, itens e o que precisa de atenção */}
             <div className={`grid grid-cols-2 gap-px rounded-lg border border-border bg-border overflow-hidden ${baseTotal ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
               <div className="bg-card p-2.5">
@@ -767,17 +818,35 @@ export default function GeneratePurchaseOrdersDialog({
             )}
 
             {/* Grupos por fornecedor */}
-            {drafts.map((d) => (
-              <Collapsible key={d.supplier_id ?? '__none__'} defaultOpen className="rounded-lg border">
+            {allDrafts.map((d) => {
+              // O cabeçalho mostra o que SOBROU da escolha, não o rascunho cheio:
+              // somar o que não vai ser comprado faria o total do fornecedor
+              // desmentir o total do rodapé.
+              const kept = d.supplier_id === null
+                ? d.items
+                : d.items.filter((it) => !deselectedKeys.has(perPvItemSelectionKey(it)));
+              const keptTotal = kept.reduce((sum, it) => sum + it.quantity * it.unit_price, 0);
+              const allRemoved = kept.length === 0;
+              return (
+              <Collapsible key={d.supplier_id ?? '__none__'} defaultOpen className={`rounded-lg border${allRemoved ? ' border-dashed opacity-70' : ''}`}>
                 <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 p-3 hover:bg-muted/40 [&[data-state=open]>svg]:rotate-180">
                   <div className="flex items-center gap-2 min-w-0">
                     <span aria-hidden="true" className={`inline-block h-3.5 w-[3px] shrink-0 rounded-sm ${d.supplier_id === null ? 'bg-amber-500' : 'bg-primary'}`} />
                     <span className={`font-semibold truncate ${d.supplier_id === null ? 'text-amber-700' : ''}`}>
                       {d.supplier_name}
                     </span>
-                    <Badge variant="outline" className="shrink-0">{d.items.length} item(ns)</Badge>
+                    <Badge variant="outline" className="shrink-0">
+                      {kept.length === d.items.length
+                        ? `${d.items.length} item(ns)`
+                        : `${kept.length} de ${d.items.length} item(ns)`}
+                    </Badge>
+                    {allRemoved && (
+                      <Badge variant="outline" className="shrink-0 border-muted-foreground/40 text-muted-foreground">
+                        não gera OC
+                      </Badge>
+                    )}
                     {(() => {
-                      const b = computePurchaseBaseTotal(baseInputsFor(d.items));
+                      const b = computePurchaseBaseTotal(baseInputsFor(kept));
                       if (!b) return null;
                       return (
                         <Badge
@@ -791,7 +860,9 @@ export default function GeneratePurchaseOrdersDialog({
                     })()}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-sm font-medium tabular-nums">{formatMoney(d.total)}</span>
+                    <span className={`text-sm font-medium tabular-nums${allRemoved ? ' line-through text-muted-foreground' : ''}`}>
+                      {formatMoney(keptTotal)}
+                    </span>
                     <ChevronDown className="h-4 w-4 transition-transform text-muted-foreground" />
                   </div>
                 </CollapsibleTrigger>
@@ -799,6 +870,7 @@ export default function GeneratePurchaseOrdersDialog({
                   <Table className="[&_td]:py-1.5 [&_th]:py-1.5">
                     <TableHeader>
                       <TableRow className="[&_th]:text-xs [&_th]:text-muted-foreground">
+                        <TableHead className="w-8" aria-label="Entra nesta compra" />
                         <TableHead>Código</TableHead>
                         <TableHead>Material</TableHead>
                         <TableHead>Cor</TableHead>
@@ -813,9 +885,29 @@ export default function GeneratePurchaseOrdersDialog({
                     <TableBody>
                       {d.items.map((it) => {
                         const gradeSizes = it.grade ? Object.keys(it.grade).filter((k) => (it.grade![k] ?? 0) > 0) : [];
+                        const itemKey = perPvItemSelectionKey(it);
+                        const lockedSelected = d.supplier_id === null;
+                        const itemSelected = lockedSelected || !deselectedKeys.has(itemKey);
                         return (
                         <Fragment key={`${perPvStockIdentityKey(it)}::${it.color ?? ''}`}>
-                        <TableRow className={gradeSizes.length > 0 ? '[&>td]:border-b-0' : ''}>
+                        <TableRow
+                          className={`${gradeSizes.length > 0 ? '[&>td]:border-b-0' : ''}${itemSelected ? '' : ' opacity-45'}`}
+                        >
+                          <TableCell className="pr-0">
+                            {/* Sem Fornecedor fica TRAVADO marcado: a linha não
+                                vira OC (a RPC exige fornecedor) e some do total
+                                se for filtrada — eram 27% do PV-00232. Checkbox
+                                clicável que não muda o resultado seria mentira. */}
+                            <Checkbox
+                              checked={itemSelected}
+                              disabled={lockedSelected}
+                              aria-label={`Incluir ${it.product_name}${it.color ? ` ${it.color}` : ''} nesta compra`}
+                              title={lockedSelected
+                                ? 'Sem fornecedor: atribua um fornecedor para esta linha virar Ordem de Compra.'
+                                : undefined}
+                              onCheckedChange={(v) => toggleItemSelected(itemKey, !!v)}
+                            />
+                          </TableCell>
                           <TableCell className="font-mono text-xs text-muted-foreground">{it.sku || '—'}</TableCell>
                           <TableCell className={`font-medium ${it.color_mismatch ? 'text-destructive' : ''}`}>
                             {it.product_name}
@@ -860,7 +952,7 @@ export default function GeneratePurchaseOrdersDialog({
                         </TableRow>
                         {gradeSizes.length > 0 && (
                           <TableRow className="hover:bg-transparent">
-                            <TableCell colSpan={9} className="pt-0">
+                            <TableCell colSpan={10} className="pt-0">
                               <div className="flex flex-wrap items-center gap-1 pl-1">
                                 <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Grade · numeração</span>
                                 {gradeSizes.sort((a, b) => parseFloat(a) - parseFloat(b)).map((sz) => (
@@ -880,7 +972,8 @@ export default function GeneratePurchaseOrdersDialog({
                   </Table>
                 </CollapsibleContent>
               </Collapsible>
-            ))}
+              );
+            })}
           </div>
         )}
 
