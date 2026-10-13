@@ -64,6 +64,7 @@ import {
 } from '@/lib/saleOrderStateMachine';
 import { applyClientCommercialDefaultsToForm } from '@/lib/saleOrderCommercialDefaults';
 import { strapColorMode, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import { strapLinesForStockPreview } from '@/lib/reconcileStrapSnapshots';
 import {
   applyStrapPvOrigemChangesToItems,
   collectStrapPvOrigemChanges,
@@ -1094,7 +1095,12 @@ export default function SaleOrderFormPanel({
         clientKey: item.clientKey,
       });
       if (!itemKey || !item.reference_id) return [];
-      const straps = Array.isArray(item.strap_colors) ? item.strap_colors : [];
+      const ref = references.find((entry) => entry.id === item.reference_id);
+      const straps = strapLinesForStockPreview(
+        item.strap_colors,
+        ref?.strap_colors,
+        isCommittedSaleOrderStrapSnapshotStatus(form.status),
+      );
       if (!straps.some((strap) => !!technicalStrapLineId(strap))) return [];
       return [{
         itemKey,
@@ -1114,6 +1120,8 @@ export default function SaleOrderFormPanel({
     });
   }, [
     items,
+    references,
+    form.status,
     saleOrderId,
     billingWeekForStraps,
     mainProductionStartForStraps,

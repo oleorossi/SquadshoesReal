@@ -53,6 +53,32 @@ export function strapChoosesReferenceNapa(line: StrapMaterialPolicyLike | null |
     && strapMaterialMode(line) === 'follow_reference';
 }
 
+/**
+ * Numa linha `follow_reference` quem sabe a napa é o SERVIDOR
+ * (`resolve_strap_base_group_id`), nunca a tela. Medido em 13/10/2026: a coluna
+ * `technical_sheets.strap_base_group_id` DIVERGE do resolvedor em 8 das 45
+ * fichas com tira — a SP302 grava NAPA SOFT onde o servidor debita NAPA ROOTS,
+ * e outras 7 têm a coluna nula com napa perfeitamente resolvível pelo cabedal
+ * (a coluna é o ÚLTIMO degrau da cascata, e variante de material vence antes
+ * dela). Espelhar a coluna no cliente recriaria a divergência TS×SQL — e em
+ * material errado, que é pior que mensagem errada.
+ *
+ * Consequência: sem a linha da prévia, "sem napa" é DESCONHECIDO, não ausente.
+ * A tela não pode mandar "Revise o cadastro técnico" nesse estado; só o veredito
+ * do servidor (linha presente com `baseGroupId` nulo) acusa cadastro.
+ */
+export function strapBaseAwaitsServer(
+  line: StrapMaterialPolicyLike | null | undefined,
+  resolvedLine: { baseGroupId?: string | null } | null | undefined,
+): boolean {
+  if (!line) return false;
+  if (strapIdentityBasis(line) === 'finished_product_group') return false;
+  // `fixed_group`/`select_on_order` guardam o grupo na própria ficha: aí a tela
+  // responde sozinha e continua acusando na hora.
+  if (strapMaterialMode(line) !== 'follow_reference') return false;
+  return !resolvedLine;
+}
+
 /** Hidrata defaults sem apagar corrupção nem reinterpretar snapshot histórico. */
 export function normalizeStrapMaterialPolicy<T extends StrapMaterialPolicyLike>(line: T): T & {
   material_mode: string;
