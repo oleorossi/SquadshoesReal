@@ -6,10 +6,13 @@ const ROOT = resolve(__dirname, '../..');
 const read = (file: string) =>
   readFileSync(resolve(ROOT, 'supabase/migrations', file), 'utf8');
 
-/** O contrato vivo do drain é esta migration — ela faz CREATE OR REPLACE por
- *  cima da 25800. Teste que lê o arquivo antigo passa verde enquanto a função
- *  viva perde a guarda (mesma armadilha documentada no CLAUDE.md). */
+/** ⚠ O contrato VIVO do drain é a 040100 — ela faz CREATE OR REPLACE por cima
+ *  da 040000, que por sua vez veio por cima da 25800. Teste que lê só o arquivo
+ *  antigo passa verde enquanto a função viva perde a guarda (armadilha
+ *  documentada no CLAUDE.md). A 040000 continua coberta porque o watchdog dela
+ *  foi PRESERVADO na 040100 como rede para falha que escapa do EXCEPTION. */
 const WATCHDOG = read('20270101040000_watchdog-fila-de-tiras-destrava-job-venenoso.sql');
+const STRIKE = read('20270101040100_strike-no-job-que-nao-cabe-no-orcamento.sql');
 
 describe('Watchdog da fila de tiras — incidente 13/10/2026', () => {
   it('lê a evidência que sobrevive ao rollback, não a tabela de jobs', () => {
@@ -63,5 +66,46 @@ describe('Watchdog da fila de tiras — incidente 13/10/2026', () => {
     expect(WATCHDOG).toContain('CREATE OR REPLACE FUNCTION public.drain_strap_demand_jobs(');
     expect(WATCHDOG).not.toMatch(/CREATE OR REPLACE PROCEDURE public\.drain_strap_demand_jobs/);
     expect(WATCHDOG).not.toMatch(/^\s*COMMIT\s*;/m);
+  });
+});
+
+/**
+ * ERRATA medida no mesmo dia: capturar `query_canceled` fez a execução do cron
+ * reportar `succeeded` mesmo sem completar nada, cegando o watchdog que conta
+ * falhas. O strike resolve lendo o que o escopo EXTERNO consegue gravar.
+ */
+describe('Strike no job que não cabe no orçamento — errata da 040000', () => {
+  it('a 040100 é o CREATE OR REPLACE vivo e preserva o watchdog da 040000', () => {
+    expect(STRIKE).toContain('CREATE OR REPLACE FUNCTION public.drain_strap_demand_jobs(');
+    expect(STRIKE).toContain('strike_job_sem_orcamento_20270101040100');
+    // Os dois mecanismos cobrem sinais diferentes: o watchdog vê execução
+    // `failed`, o strike vê cancelamento capturado. Remover um não é simplificar.
+    expect(STRIKE).toContain('cron.job_run_details');
+  });
+
+  it('espia a cabeça ANTES do laço — depois do rollback não dá pra saber quem era', () => {
+    const peek = STRIKE.indexOf('INTO v_cabeca');
+    const loop = STRIKE.indexOf('LOOP\n    EXIT WHEN v_processed');
+    expect(peek).toBeGreaterThan(-1);
+    expect(peek).toBeLessThan(loop);
+  });
+
+  it('só credita strike quando NADA foi completado na passada', () => {
+    // Com algum job completo, o cancelado não é mais a cabeça espiada —
+    // creditar ali puniria um job inocente.
+    expect(STRIKE).toContain('IF v_blocked > 0 AND v_processed = 0 AND v_cabeca IS NOT NULL THEN');
+  });
+
+  it('empurra next_attempt_at — é isso que tira o job pesado da CABEÇA', () => {
+    expect(STRIKE).toMatch(/next_attempt_at = now\(\) \+ make_interval/);
+    expect(STRIKE).toContain("THEN 'dead_letter' ELSE 'retry' END");
+  });
+
+  it('o strike fica FORA do bloco protegido, no escopo que sobrevive ao rollback', () => {
+    const excecao = STRIKE.indexOf('OR query_canceled THEN');
+    const fimLaco = STRIKE.indexOf('END LOOP;');
+    const strike = STRIKE.indexOf('IF v_blocked > 0 AND v_processed = 0');
+    expect(excecao).toBeLessThan(fimLaco);
+    expect(strike).toBeGreaterThan(fimLaco);
   });
 });
