@@ -91,6 +91,7 @@ import SaleOrderStrapColorCreateDialog, {
 import {
   resolveStrapMaterialBaseGroupId,
   strapChoosesReferenceNapa,
+  strapBaseAwaitsServer,
   strapMaterialMode,
 } from '@/lib/strapMaterialPolicy';
 import { useReferenceStrapNapas } from '@/hooks/useReferenceStrapNapas';
@@ -899,7 +900,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       // a pendência; isso evita piscar o CTA em fichas canônicas.
       if (canonicalIdsMissing
           || (!strapCatalogLoading && !measureResolved)
-          || (!strapLinesLoading && !identityGroupResolved)) issueCount += 1;
+          || (!strapLinesLoading && !identityGroupResolved
+              && !strapBaseAwaitsServer(strap, resolvedLine))) issueCount += 1;
     });
     return {
       hasIssue: issueCount > 0,
@@ -2954,6 +2956,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const measureResolved = isUuid(strap.strap_type_id)
                     && !!canonicalMeasure
                     && canonicalMeasure.strap_type_id === strap.strap_type_id;
+                  // Sem veredito do servidor a napa é desconhecida, não ausente.
+                  const awaitsServerBase = strapBaseAwaitsServer(strap, resolvedLine);
+                  const structuralIssue = !measureResolved
+                    || (!identityGroupResolved && !awaitsServerBase);
                   const wantsPurchasedReady = strapLineWantsBuyReady(strap);
                   const buyReadyGroupResolved = usesFinishedGroup
                     ? identityGroupResolved
@@ -3210,7 +3216,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           A cor {referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.
                         </p>
                       )}
-                      {!strapLinesLoading && (!identityGroupResolved || !measureResolved) && (
+                      {!strapLinesLoading && structuralIssue && (
                         <p className="truncate text-[11px] leading-tight text-destructive" title={!measureResolved
                             ? 'A linha técnica não identifica uma família e medida canônicas coerentes por UUID.'
                             : usesFinishedGroup
