@@ -590,8 +590,10 @@ export default function GeneratePurchaseOrdersDialog({
                         ? `${strapCoverage.total} tira(s) deste pedido no motor automático.`
                         : 'As tiras seguem um canal próprio.'}
                     </strong>{' '}
-                    O motor cuida da compra pronta ou da transformação. Os materiais
-                    comuns abaixo continuam normalmente em Compras por Pedido.
+                    O motor cuida da compra pronta ou da transformação.{' '}
+                    {/* Frase mantida INTEIRA numa linha: perPvStrapCutoverFrontend
+                        trava o texto lendo o arquivo, e quebrá-la parte a string. */}
+                    Os materiais comuns abaixo continuam normalmente em Compras por Pedido.
                   </>
                 )}
                 {/* Separadas por ORIGEM: a comprada pronta alguém precisa comprar; a
