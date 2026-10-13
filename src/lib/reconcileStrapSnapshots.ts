@@ -383,3 +383,30 @@ export function strapPresentationLines<T extends ReconcileStrapLineLike>(
   if (preserveCommittedSnapshot || technicalLines == null) return snapshots;
   return reconcileEditableStrapSnapshots({ snapshotLines: snapshots, technicalLines }).lines;
 }
+
+/**
+ * Linhas de tira que a prévia de estoque deve considerar num item: as MESMAS
+ * que a tela renderiza (ficha ∪ snapshot).
+ *
+ * Ler só `item.strap_colors` pulava o item inteiro enquanto o snapshot não
+ * reconciliava — e o `.get(key) || []` do batch entrega array VAZIO, não
+ * `undefined`, então a tela não ficava "carregando": concluía que a ficha não
+ * tinha napa-base e mandava "Revise o cadastro técnico" com o cadastro
+ * completo (PV novo / SP301, 13/10/2026). `strapReadinessInputs` já tratava
+ * esse mesmo estado; a prévia de estoque não.
+ *
+ * PV comprometido não muda: `strapPresentationLines` devolve o snapshot intacto.
+ */
+export function strapLinesForStockPreview(
+  itemStrapColors: unknown,
+  referenceStrapColors: unknown,
+  committedSnapshot: boolean,
+): ReconcileStrapLineLike[] {
+  return strapPresentationLines(
+    (Array.isArray(itemStrapColors) ? itemStrapColors : []) as ReconcileStrapLineLike[],
+    Array.isArray(referenceStrapColors)
+      ? referenceStrapColors as ReconcileStrapLineLike[]
+      : undefined,
+    committedSnapshot,
+  );
+}
