@@ -14,7 +14,9 @@ import {
 import { useComponentSheets } from '@/hooks/useComponentSheets';
 import { useBomOperations } from '@/hooks/useBomOperations';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
+import { useProducts } from '@/hooks/useProducts';
 import { COMPONENT_CATEGORIES, matchCategory } from '@/lib/componentCategories';
+import { directComponentDisplayName } from '@/lib/directComponentLabel';
 import { formatCurrency as globalFormatCurrency, safeToFixed } from '@/lib/utils';
 import { SectionTitle } from '@/components/technical-sheets/sheetFormFields';
 
@@ -25,6 +27,15 @@ export function CostsAnalysisTab({ sheetId, form, groups }: {
 }) {
   const { data: materials = [] } = useSheetMaterials(sheetId);
   const { data: componentSheets = [] } = useComponentSheets();
+  // Mesma query key da página da ficha (productsKeys.all), então aqui é cache quente.
+  const { data: allProducts = [] } = useProducts();
+  const productById = useMemo(() => {
+    const byId = new Map<string, { id: string; name?: string | null }>();
+    (allProducts as Array<{ id: string; name?: string | null }>).forEach((product) => {
+      if (product?.id) byId.set(product.id, product);
+    });
+    return byId;
+  }, [allProducts]);
   const { data: operations = [] } = useBomOperations(sheetId);
   const { data: costPolicy } = useCostPolicies();
 
@@ -198,11 +209,18 @@ export function CostsAnalysisTab({ sheetId, form, groups }: {
     // Direct components (unit-based)
     (form.direct_components || []).forEach((comp: any, idx: number) => {
       if (comp.product_id && comp.quantity > 0 && comp.unit_price > 0) {
-        items.push({ label: comp.product_name || `Componente ${idx + 1}`, material: (comp.unit || 'un').toString().trim() || 'un', consumption: comp.quantity, pricePerUnit: comp.unit_price, cost: comp.quantity * comp.unit_price });
+        // Nome pelo produto VIVO, não pelo snapshot do JSONB: o rótulo gravado só
+        // é reescrito quando o componente é re-selecionado no dropdown, então
+        // produto renomeado no estoque deixava esta aba exibindo o nome antigo
+        // enquanto o consumo e o custeio reais já usavam products.name
+        // (ver src/lib/directComponentLabel.ts). Snapshot vira fallback pra
+        // componente cujo produto saiu do estoque.
+        const label = directComponentDisplayName(comp, productById.get(comp.product_id), idx);
+        items.push({ label, material: (comp.unit || 'un').toString().trim() || 'un', consumption: comp.quantity, pricePerUnit: comp.unit_price, cost: comp.quantity * comp.unit_price });
       }
     });
     return items;
-  }, [form, groupsWithPricing]);
+  }, [form, groupsWithPricing, productById]);
 
   const strapsCosts = useMemo(() => {
     if (!form.has_straps || !form.strap_colors?.length) return [];

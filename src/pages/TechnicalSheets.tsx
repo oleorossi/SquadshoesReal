@@ -117,6 +117,7 @@ import TechnicalStrapMaterialPolicyEditor from '@/components/technical-sheets/Te
 import TechnicalStrapSourceEditor from '@/components/technical-sheets/TechnicalStrapSourceEditor';
 import { referenceStrapBaseGroups } from '@/lib/referenceStrapBaseGroups';
 import { CONSUMPTION_SECTORS, normalizeDirectComponentSectors } from '@/lib/consumptionSector';
+import { refreshDirectComponentLabels, type DirectComponentLabelLike } from '@/lib/directComponentLabel';
 
 import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
@@ -1946,7 +1947,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // Cinto-e-suspensório: garante que production_sectors/aviamento_steps
       // jamais saem pelo save geral (escrita exclusiva do ProductionSectorsTab).
       const { production_sectors: _ps, aviamento_steps: _as, ...payload } = form as any;
-      payload.direct_components = normalizeDirectComponentSectors(payload.direct_components);
+      // O rótulo gravado é snapshot e envelhece quando o produto é renomeado no
+      // estoque (ver src/lib/directComponentLabel.ts). Realinhar no save deixa a
+      // classe de bug auto-curável: a ficha para de exibir um nome que o consumo
+      // não usa. Só o texto muda — product_id, quantidade e preço ficam.
+      payload.direct_components = refreshDirectComponentLabels(
+        normalizeDirectComponentSectors(
+          (payload.direct_components || []) as DirectComponentLabelLike[],
+        ),
+        products,
+      );
       const hasUpperMaterial = String(payload.upper_material || '').trim().length > 0;
       if (hasUpperMaterial && !upperMaterialGroup) {
         toast.error(
