@@ -33,6 +33,17 @@ export interface PerPvPrintInput {
   summary: PerPvDraftSummary;
   /** Rollup canônico de napa (mesmo da tela de consumo). */
   napaRollup?: NapaRollup | null;
+  /** Tiras do pedido no motor automático. Elas NÃO entram nesta OC (canal
+   *  próprio), mas precisam aparecer: foi a ausência silenciosa delas que fez o
+   *  PV-00232 ir pra produção sem tira em 10/2026. `gap` = tem tira na ficha e
+   *  nenhuma demanda no motor, ou seja, não está sendo providenciada. */
+  straps?: {
+    buyReadyCount: number;
+    buyReadyMeters: number;
+    internalCount: number;
+    internalMeters: number;
+    gap: boolean;
+  } | null;
   /** Linhas que o operador tirou desta compra no diálogo (seleção efêmera).
    *  Impressas em bloco próprio: compra com item removido em silêncio vira
    *  "sumiu material da OC" semanas depois — foi o que originou esta tela. */
@@ -71,7 +82,7 @@ const BODY = `system-ui, -apple-system, 'Segoe UI', sans-serif`;
  * renderizável fora do browser (conferência do layout sem abrir impressão).
  */
 export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
-  const { scopeLabel, pvNumbers, drafts, netOfStock, summary, napaRollup, removedItems } = input;
+  const { scopeLabel, pvNumbers, drafts, netOfStock, summary, napaRollup, removedItems, straps } = input;
 
   const tables = drafts
     .map((d) => {
@@ -202,6 +213,32 @@ export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
        </div>`
     : '';
 
+  // Bloco das tiras. Separado por ORIGEM de propósito: a comprada pronta alguém
+  // precisa comprar, a interna alguém precisa ter napa — decisões diferentes, e
+  // um bloco único esconderia justamente a comprada pronta, que foi a que sumiu.
+  const strapsBlock = (() => {
+    if (!straps) return '';
+    if (straps.gap) {
+      return `<div class="keep" style="margin-top:10px;padding:7px 10px;border:1.5px solid ${OXIDE};border-left-width:4px;background:#FBEDEC">
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span style="font-family:${MONO};font-size:7.5pt;letter-spacing:.12em;text-transform:uppercase;color:${OXIDE};font-weight:700;white-space:nowrap">Tiras &mdash; aten&ccedil;&atilde;o</span>
+            <span style="font-size:8.5pt;color:#4A4038">Este pedido tem tira na ficha e <strong>nenhuma demanda no motor autom&aacute;tico</strong>. Ela n&atilde;o entra nesta ordem de compra (canal pr&oacute;prio) e tamb&eacute;m n&atilde;o est&aacute; no motor &mdash; conferir antes de mandar produzir.</span>
+          </div>
+        </div>`;
+    }
+    if (straps.buyReadyCount + straps.internalCount === 0) return '';
+    return `<div class="keep" style="margin-top:10px;padding:7px 10px;border:1.2px solid ${HAIR};border-left:4px solid ${INK};background:#FAFAF8">
+        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+          <span style="font-family:${MONO};font-size:7.5pt;letter-spacing:.12em;text-transform:uppercase;color:${MUTED};font-weight:700;white-space:nowrap">Tiras deste pedido</span>
+          <span style="font-size:8.5pt;color:#4A4038">V&atilde;o pelo <strong>Setor de Tiras</strong>, n&atilde;o por esta ordem de compra.</span>
+        </div>
+        <div style="margin-top:4px;font-family:${MONO};font-size:8pt;color:#5E5850;display:flex;gap:18px;flex-wrap:wrap">
+          <span><strong style="color:${INK}">${straps.buyReadyCount}</strong> comprada(s) pronta(s)${straps.buyReadyMeters > 0 ? ` &middot; ${num(straps.buyReadyMeters)} m` : ''}</span>
+          <span><strong style="color:${INK}">${straps.internalCount}</strong> transformada(s) de napa${straps.internalMeters > 0 ? ` &middot; ${num(straps.internalMeters)} m` : ''}</span>
+        </div>
+      </div>`;
+  })();
+
   const modeNote = netOfStock
     ? 'Quantidade = falta líquida (estoque descontado)'
     : 'Quantidade = necessidade bruta (estoque não descontado)';
@@ -294,6 +331,7 @@ export function buildPerPvMaterialsHtml(input: PerPvPrintInput): string {
           </div>`).join('')}
       </div>` : ''}
 
+      ${strapsBlock}
       ${noSupplierNote}
       ${tables}
 

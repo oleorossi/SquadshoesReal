@@ -44,6 +44,7 @@ import {
   type PvMaterialNeed,
 } from '@/lib/perPvPurchasing';
 import { printPerPvMaterials } from '@/lib/printPerPvMaterials';
+import { usePvStrapCoverage } from '@/hooks/usePerPvPurchasing';
 import { printPerPvOcPdf } from '@/lib/printPerPvOcPdf';
 import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
 import StrapMeasureYieldDialog from '@/components/sale-orders/StrapMeasureYieldDialog';
@@ -200,8 +201,30 @@ export default function GeneratePurchaseOrdersDialog({
     () => partitionPerPvStrapPurchaseItems(needs, strapIdentityGuard),
     [needs, strapIdentityGuard],
   );
+  const strapCoverageQuery = usePvStrapCoverage(open ? pvIds : null);
+  const strapCoverage = strapCoverageQuery.data
+    ?? { rows: [], byMode: { buyReady: [], internal: [] }, pvIdsWithoutDemand: [], total: 0 };
+  const strapBuyReadyMeters = strapCoverage.byMode.buyReady
+    .reduce((sum, r) => sum + r.required_m, 0);
+  const strapInternalMeters = strapCoverage.byMode.internal
+    .reduce((sum, r) => sum + r.required_m, 0);
+
   const purchasableNeeds = needsPartition.common;
   const excludedStrapNeeds = needsPartition.straps;
+  // "Tem tira na ficha" vem de duas fontes já carregadas: a napa que o rollup
+  // manda pra destino Tira e as linhas de tira que a RPC devolveu e o canal
+  // per_pv separou. Qualquer uma basta.
+  const pvHasStraps = useMemo(
+    () => excludedStrapNeeds.length > 0
+      || (napaRollup?.byFamilyColor || []).some((b) => b.destinations.some((d) => d.kind === 'Tira')),
+    [excludedStrapNeeds.length, napaRollup],
+  );
+  // Só acusa quando a leitura do motor VOLTOU: erro de rede não pode virar
+  // "não está sendo providenciada", que é acusação séria.
+  const strapGapOnThisPv = pvHasStraps
+    && strapCoverageQuery.isSuccess
+    && strapCoverage.total === 0;
+
 
   // Enriquece cada necessidade com o múltiplo de compra efetivo (item→grupo),
   // pra buildPerPvPurchaseOrders arredondar a quantidade pra cima (187 → 200).
@@ -452,6 +475,13 @@ export default function GeneratePurchaseOrdersDialog({
         summary,
         napaRollup,
         removedItems,
+        straps: {
+          buyReadyCount: strapCoverage.byMode.buyReady.length,
+          buyReadyMeters: strapBuyReadyMeters,
+          internalCount: strapCoverage.byMode.internal.length,
+          internalMeters: strapInternalMeters,
+          gap: strapGapOnThisPv,
+        },
       });
       if (!ok) toast.error('Não foi possível abrir a janela de impressão. Permita pop-ups para este site.');
     });
@@ -528,20 +558,60 @@ export default function GeneratePurchaseOrdersDialog({
         )}
 
         {!isLoading && !isError && (
-          <div className="flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm sm:flex-row sm:items-start sm:justify-between">
+          <div className={`flex flex-col gap-3 rounded-lg border p-3 text-sm sm:flex-row sm:items-start sm:justify-between ${
+            strapGapOnThisPv
+              ? 'border-destructive/50 bg-destructive/10'
+              : 'border-primary/30 bg-primary/5'
+          }`}>
             <div className="flex min-w-0 items-start gap-2">
-              <Package className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <div>
-                <strong>
-                  {excludedStrapNeeds.length > 0
-                    ? `${excludedStrapNeeds.length} demanda(s) de tira separada(s) deste canal.`
-                    : 'As tiras seguem um canal próprio.'}
-                </strong>{' '}
-                O motor automático de tiras cuida da compra pronta ou da transformação.
-                Os materiais comuns abaixo continuam normalmente em Compras por Pedido.
+              {strapGapOnThisPv
+                ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                : <Package className="mt-0.5 h-4 w-4 shrink-0 text-primary" />}
+              <div className="min-w-0">
+                {strapGapOnThisPv ? (
+                  <>
+                    {/* A tira sai desta OC de propósito e vai pro motor. Se o motor
+                        também não tem demanda, ela não está em lugar NENHUM — foi o
+                        que deixou o PV-00232 ir pra produção sem tira em 10/2026.
+                        AVISA e não bloqueia: travar aqui deixaria de comprar cola,
+                        solado e caixa, que nada têm a ver com a fila de tiras. */}
+                    <strong className="text-destructive">
+                      Este pedido tem tira na ficha e NENHUMA demanda no motor automático.
+                    </strong>{' '}
+                    A tira não entra nesta OC (ela segue o canal próprio) e também não
+                    está no motor — ou seja, não está sendo providenciada em lugar nenhum.
+                    Dá para gerar a compra dos materiais comuns normalmente, mas confira
+                    as tiras antes de mandar produzir.
+                  </>
+                ) : (
+                  <>
+                    <strong>
+                      {strapCoverage.total > 0
+                        ? `${strapCoverage.total} tira(s) deste pedido no motor automático.`
+                        : 'As tiras seguem um canal próprio.'}
+                    </strong>{' '}
+                    O motor cuida da compra pronta ou da transformação. Os materiais
+                    comuns abaixo continuam normalmente em Compras por Pedido.
+                  </>
+                )}
+                {/* Separadas por ORIGEM: a comprada pronta alguém precisa comprar; a
+                    interna alguém precisa ter napa. Decisões diferentes, e um bloco
+                    único esconderia justamente a comprada pronta. */}
+                {strapCoverage.total > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-muted-foreground">
+                    <span>
+                      <strong className="text-foreground">{strapCoverage.byMode.buyReady.length}</strong> comprada(s) pronta(s)
+                      {strapBuyReadyMeters > 0 && ` · ${formatBaseQty(strapBuyReadyMeters)} m`}
+                    </span>
+                    <span>
+                      <strong className="text-foreground">{strapCoverage.byMode.internal.length}</strong> transformada(s) de napa
+                      {strapInternalMeters > 0 && ` · ${formatBaseQty(strapInternalMeters)} m`}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
-            <Button asChild size="sm" variant="outline" className="shrink-0">
+            <Button asChild size="sm" variant={strapGapOnThisPv ? 'default' : 'outline'} className="shrink-0">
               <Link to="/tiras-artesanais?tab=demandas">Acompanhar tiras</Link>
             </Button>
           </div>
