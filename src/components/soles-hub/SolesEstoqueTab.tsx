@@ -1,18 +1,15 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Stack as Boxes, PencilSimple as Edit3, Warning as AlertTriangle, WarningCircle as AlertCircle, Link as Link2 } from '@phosphor-icons/react';
+import { Stack as Boxes, PencilSimple as Edit3, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { SoladoGradeDialog } from '@/components/inventory/SoladoGradeDialog';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import type { Product } from '@/types/inventory';
 import type { SoleProduct } from './types';
-import { getGradeQuantityForKey, getGradeTotal } from '@/lib/gradeDistribution';
-import { useProductSupplySummary } from '@/hooks/useProductSupplySummary';
-
-const fmtPares = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+import { getGradeQuantityForKey } from '@/lib/gradeDistribution';
+import SoleStockMatrix from './SoleStockMatrix';
 
 interface Props {
   sole: SoleProduct;
@@ -47,6 +44,11 @@ export default function SolesEstoqueTab({ sole }: Props) {
   // Calcula keys efetivas aplicando conjugações sobre o range. Pra cada
   // tamanho dentro do range, substitui pelo key conjugado quando existe;
   // senão usa o número individual.
+  //
+  // ⚠ Isto NÃO é mais a fonte dos números — a matriz vem da RPC
+  //   `sole_stock_matrix`. Serve de FALLBACK: solado com range cadastrado e
+  //   nada lançado não tem chave nenhuma no banco, e sem isto a tabela sumiria
+  //   em vez de mostrar a grade vazia.
   const effectiveSizeKeys = useMemo<string[]>(() => {
     const result: string[] = [];
     const added = new Set<string>();
@@ -62,60 +64,9 @@ export default function SolesEstoqueTab({ sole }: Props) {
     return result;
   }, [conjugations, sizeFrom, sizeTo]);
 
-  // Soma quantidade pra cada key: se for conjugado (ex: "33/34"), soma
-  // qty_33 + qty_34 do grade existente (caso o stock_grade ainda esteja em
-  // formato individual) OU usa a key conjugada se já estiver no grade.
-  const qtyByKey = useMemo<Record<string, number>>(() => {
-    const out: Record<string, number> = {};
-    for (const k of effectiveSizeKeys) out[k] = getGradeQuantityForKey(grade, k);
-    return out;
-  }, [effectiveSizeKeys, grade]);
-
-  const isUninitialized = effectiveSizeKeys.every(k => (qtyByKey[k] || 0) === 0);
-  const sizeKeys = effectiveSizeKeys;
-
-  // Total a partir das keys efetivas — evita dupla contagem quando o
-  // stock_grade tem AMBOS individuais (33, 34) e conjugado (33/34) em
-  // estado transicional. qtyByKey já resolve a soma correta por key.
-  const total = useMemo(() => Object.values(qtyByKey).reduce((s, v) => s + v, 0), [qtyByKey]);
-  const isZero = total === 0;
-
-  // Falta dos PVs por numeração (spec integracao-estoque-pv-compras): o físico
-  // nunca fica negativo; o que o PV pediu e não havia vive à parte e aparece
-  // aqui em vermelho, sob a quantidade de cada número. RPC ausente/erro → Map
-  // vazio → a grade fica exatamente como era.
-  const supplyIds = useMemo(() => [sole.id], [sole.id]);
-  const supply = useProductSupplySummary(supplyIds).get(sole.id);
-  const faltaTotal = supply?.falta ?? 0;
-  const emCompra = supply?.emCompra ?? 0;
-
-  // Casa a chave da falta com a célula exibida: mesma chave, ou número
-  // individual dentro de um balde conjugado exibido ("35" → "35/36"). O que não
-  // casa (balde conjugado sobre células individuais, número fora do range) NÃO
-  // some: vai para a linha "fora da grade exibida".
-  const { faltaByKey, faltaForaDaGrade } = useMemo(() => {
-    const byKey: Record<string, number> = {};
-    const fora: Array<[string, number]> = [];
-    for (const [fk, qty] of Object.entries(supply?.faltaGrade ?? {})) {
-      const dk = effectiveSizeKeys.find(k => k === fk)
-        ?? (!fk.includes('/') ? effectiveSizeKeys.find(k => k.includes('/') && k.split('/').includes(fk)) : undefined);
-      if (dk) byKey[dk] = (byKey[dk] || 0) + qty;
-      else fora.push([fk, qty]);
-    }
-    return { faltaByKey: byKey, faltaForaDaGrade: fora };
-  }, [supply?.faltaGrade, effectiveSizeKeys]);
-
-  // Projetado = físico − reservado − falta + em compra. `reserved_stock` só vem
-  // no registro completo; sem ele o número sairia otimista, então espera.
-  // ⚠ Físico = soma da grade INTEIRA (`getGradeTotal`), não `total`: este só
-  // soma as células exibidas (faixa `_size_from`–`_size_to`) e perde balde fora
-  // da faixa e conjugado não cadastrado — enquanto a falta desses mesmos
-  // números (linha "fora da grade exibida") entra inteira. Físico e reserva vêm
-  // do mesmo registro fresco (`fullProduct`).
-  const projetado = fullProduct
-    ? getGradeTotal((fullProduct.stock_grade ?? sole.stock_grade ?? {}) as Record<string, unknown>)
-      - (Number(fullProduct.reserved_stock) || 0) - faltaTotal + emCompra
-    : null;
+  const isUninitialized = effectiveSizeKeys.every(
+    k => (getGradeQuantityForKey(grade, k) || 0) === 0,
+  );
 
   return (
     <div className="space-y-4">
@@ -123,8 +74,8 @@ export default function SolesEstoqueTab({ sole }: Props) {
         <CardContent className="py-3 px-4 flex items-start gap-2">
           <Boxes className="h-4 w-4 text-primary mt-0.5 shrink-0" />
           <p className="text-xs text-muted-foreground">
-            Esta aba mostra <strong>apenas a quantidade</strong> de pares por numeração — pra usar nos pedidos
-            de venda. Tudo mais (conjugação, consumos, silk) está nas outras abas.
+            Esta aba mostra <strong>quanto você tem, quanto está empenhado e quanto sobra</strong> por
+            numeração, e quais pedidos consomem este solado. Conjugação, consumos e silk estão nas outras abas.
           </p>
         </CardContent>
       </Card>
@@ -157,117 +108,24 @@ export default function SolesEstoqueTab({ sole }: Props) {
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Boxes className="h-4 w-4 text-primary" />
-              Estoque por numeração
-            </CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
-              Total: <span className="font-mono font-bold">{total}</span> pares
-              {isZero && <Badge variant="destructive" className="ml-2 text-xs">Zerado</Badge>}
-            </p>
-            {(faltaTotal > 0 || emCompra > 0) && (
-              <p className="text-xs mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                {faltaTotal > 0 && (
-                  <span className="font-semibold text-red-600 dark:text-red-400" title="Falta aberta dos pedidos de venda">
-                    Falta p/ pedidos: <span className="font-mono">{fmtPares(faltaTotal)}</span> pares
-                  </span>
-                )}
-                {emCompra > 0 && (
-                  <span className="text-muted-foreground" title="Saldo ainda não recebido das ordens de compra abertas">
-                    Em compra: <span className="font-mono">{fmtPares(emCompra)}</span> pares
-                  </span>
-                )}
-                {projetado !== null && (
-                  <span
-                    className={projetado < 0 ? 'font-semibold text-red-600 dark:text-red-400' : 'text-foreground'}
-                    title="Projetado = físico − reservado − falta + em compra"
-                  >
-                    Projetado: <span className="font-mono">{fmtPares(projetado)}</span> pares
-                  </span>
-                )}
-              </p>
-            )}
-          </div>
-          <Button size="sm" onClick={() => setEditOpen(true)} disabled={!fullProduct} className="gap-1.5">
+      {isUninitialized && (
+        <div className="px-3 py-2 rounded-md bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-200">
+          Range cadastrado ({sizeFrom}–{sizeTo}), mas o estoque inicial não foi lançado.
+          Use <strong>Editar estoque</strong> pra adicionar quantidades por numeração.
+        </div>
+      )}
+
+      <SoleStockMatrix
+        productId={sole.id}
+        fallbackSizeKeys={effectiveSizeKeys}
+        actions={
+          <Button size="sm" onClick={() => setEditOpen(true)} disabled={!fullProduct} className="h-7 gap-1.5">
             <Edit3 className="h-3 w-3" /> Editar estoque
           </Button>
-        </CardHeader>
-        <CardContent>
-          {isUninitialized && (
-            <div className="mb-3 px-3 py-2 rounded-md bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-200">
-              Range cadastrado ({sizeFrom}–{sizeTo}), mas o estoque inicial não foi lançado.
-              Use <strong>Editar estoque</strong> pra adicionar quantidades por numeração.
-            </div>
-          )}
-          {sizeKeys.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Boxes className="h-8 w-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Nenhuma numeração cadastrada</p>
-              <p className="text-xs mt-1">Configure o range na aba <strong>Cadastro</strong> primeiro.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-              {sizeKeys.map(k => {
-                const qty = qtyByKey[k] || 0;
-                const isConjugated = k.includes('/');
-                const isZeroCell = qty === 0;
-                return (
-                  <div
-                    key={k}
-                    className={`rounded-lg border-l-4 border-t border-r border-b p-2.5 text-center transition-colors relative ${
-                      isZeroCell
-                        ? 'bg-rose-50/40 dark:bg-rose-950/10 border-t-rose-200/60 border-r-rose-200/60 border-b-rose-200/60 border-l-rose-500 dark:border-l-rose-400'
-                        : 'bg-card border-l-emerald-500/50 hover:bg-muted/40'
-                    }`}
-                    title={
-                      (isZeroCell ? `Tamanho ${k}: sem estoque` : `Tamanho ${k}: ${qty} pares`)
-                      + (faltaByKey[k] ? ` · falta p/ pedidos: ${fmtPares(faltaByKey[k])}` : '')
-                    }
-                  >
-                    {isZeroCell && (
-                      <AlertCircle
-                        className="absolute top-1 right-1 h-3 w-3 text-rose-500"
-                        aria-label="Sem estoque"
-                      />
-                    )}
-                    <div className="flex items-center justify-center gap-1">
-                      <p className={`text-sm font-mono ${isConjugated ? 'text-primary font-bold' : 'text-muted-foreground'}`}>{k}</p>
-                      {isConjugated && (
-                        <Link2 className="h-2.5 w-2.5 text-primary" aria-label="Tamanho conjugado" />
-                      )}
-                    </div>
-                    <p className={`text-xl font-bold font-mono mt-1 leading-none ${isZeroCell ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
-                      {qty}
-                    </p>
-                    {faltaByKey[k] > 0 && (
-                      <p
-                        className="text-xs font-bold font-mono mt-1 leading-none text-red-600 dark:text-red-400"
-                        aria-label={`Falta ${fmtPares(faltaByKey[k])} pares para pedidos`}
-                      >
-                        −{fmtPares(faltaByKey[k])}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {faltaForaDaGrade.length > 0 && (
-            <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-              Falta p/ pedidos fora da grade exibida:{' '}
-              <span className="font-mono font-semibold">
-                {faltaForaDaGrade.map(([k, v]) => `${k}: −${fmtPares(v)}`).join(' · ')}
-              </span>
-            </p>
-          )}
-        </CardContent>
-      </Card>
+        }
+      />
 
-      {/* Alertas */}
-      {isZero && (
+      {isUninitialized && (
         <Card className="border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/10">
           <CardContent className="py-3 flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
