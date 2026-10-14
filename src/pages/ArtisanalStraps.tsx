@@ -40,6 +40,10 @@ import {
   StrapSuspendDialog,
 } from '@/components/artisanal-straps/ArtisanalStrapExternalOperations';
 import { MeasureLaborCostControl } from '@/components/artisanal-straps/MeasureLaborCostControl';
+import {
+  MeasureYieldControl,
+  type MeasureYieldRecipeRow,
+} from '@/components/artisanal-straps/MeasureYieldControl';
 import { StrapIdentityTrail } from '@/components/artisanal-straps/StrapIdentityTrail';
 import { StrapStatusBadge } from '@/components/artisanal-straps/StrapStatusBadge';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -1230,6 +1234,18 @@ function CatalogTab({
                     'pt-BR',
                   )
                 ));
+              // Achata o que o controle de lote precisa. A largura vem do
+              // SNAPSHOT da receita vigente — a mesma que a linha acima mostra.
+              // O servidor reconfere contra a Ficha de Componente na hora de
+              // gravar e recusa o lote inteiro se ela tiver mudado.
+              const yieldRows: MeasureYieldRecipeRow[] = materialRecipes.map((recipe) => ({
+                recipeId: recipe.id,
+                baseGroupId: recipe.base_group_id,
+                baseGroupName: maps.groups.get(recipe.base_group_id)?.name || 'Material-base',
+                usableWidthMm: Number(recipe.usable_base_width_mm_snapshot) || 0,
+                cutBandWidthMm: Number(recipe.cut_band_width_mm) || 0,
+                confirmedYieldMPerM: Number(recipe.confirmed_yield_m_per_m) || 0,
+              }));
               return (
                 <article key={measure.id} className="rounded-lg border border-border bg-card p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -1289,6 +1305,13 @@ function CatalogTab({
                       </button>
                     ))}
                   </div>
+                  <MeasureYieldControl
+                    measureId={measure.id}
+                    measureLabel={`${type?.name || 'Tipo'} · ${measure.display_name}`}
+                    recipes={yieldRows}
+                    canEdit={catalog.capabilities.manage_strap_catalog === true
+                      && catalog.capabilities.approve_strap_recipe === true}
+                  />
                   {catalog.capabilities.can_see_financial_values && (
                     <MeasureLaborCostControl
                       measureId={measure.id}
