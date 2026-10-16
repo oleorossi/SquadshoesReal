@@ -743,6 +743,47 @@ describe('orderConsumption — motor canônico', () => {
     expect(rows2.find(r => r.componentType === 'Fachete')).toBeUndefined();
   });
 
+  it('fachete com grupo SEM produto ativo mantém a quantidade mas avisa que não será debitado', () => {
+    // Caso medido na S33 (12/10/2026): a ficha escolhe `NAPA SOFT COM PU 600`,
+    // grupo que existe e tem ZERO itens. O SQL devolve `required = 0` +
+    // `source = 'unresolved'`, então nada é reservado nem debitado — e a UI
+    // mostrava só a quantidade, sem dizer isso. Espelha `insoleNoProductWarning`.
+    const ctx = buildContext();
+    ctx.productGroups.push({
+      id: 'g-pu600', name: 'NAPA DUBLADA PU 600',
+      dimensions_length: null, dimensions_width: null, dimensions_unit: null,
+    } as any);
+    ctx.allProducts.push({
+      id: 'p-sole-fach', name: 'SOLADO FACH', color: 'PRETO', group_id: 'g-sole',
+      quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null,
+      is_fachetado: true, fachete_material_group_id: null,
+    } as any);
+    ctx.soleColorMap.set('sheet-1::PRETO', 'p-sole-fach');
+    ctx.facheteSpecBySole.set('p-sole-fach', { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 });
+
+    const sheet = buildSheet({ fachete_material: 'NAPA DUBLADA PU 600' });
+    const rows = computeConsumptionForItems([buildItem({ technical_sheets: sheet })], ctx);
+    const fachete = rows.find(r => r.componentType === 'Fachete')!;
+    expect(fachete).toBeDefined();
+    expect(fachete.groupName).toBe('NAPA DUBLADA PU 600');
+    // A quantidade NÃO é zerada: a ficha do operador precisa do que cortar.
+    expect(fachete.totalQuantity).toBeGreaterThan(0);
+    expect(fachete.warning).toContain('não resolve nenhum produto ativo');
+    expect(fachete.warning).toContain('NÃO será reservado nem debitado');
+
+    // Grupo COM produto ativo segue sem o aviso (não vazou para o caso bom).
+    const ok = buildContext();
+    ok.allProducts.push({
+      id: 'p-sole-fach', name: 'SOLADO FACH', color: 'PRETO', group_id: 'g-sole',
+      quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null,
+      is_fachetado: true, fachete_material_group_id: null,
+    } as any);
+    ok.soleColorMap.set('sheet-1::PRETO', 'p-sole-fach');
+    ok.facheteSpecBySole.set('p-sole-fach', { '34': 2, '35': 2, '36': 2, '37': 2, '38': 2, '39': 2 });
+    const okRows = computeConsumptionForItems([buildItem()], ok);
+    expect(okRows.find(r => r.componentType === 'Fachete')!.warning).toBeUndefined();
+  });
+
   it('solado listado no BOM não duplica o solado da ficha (sem bloco fantasma)', () => {
     // Repro PV-00141: o produto-solado ("01", categoria Solado) também aparece
     // no sheet_materials da ref. Antes virava um bloco de Solado fantasma somado
