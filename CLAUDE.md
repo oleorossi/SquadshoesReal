@@ -1085,6 +1085,79 @@ foram trocadas. Por isso a troca de material do item decide "acompanha" comparan
 da tira com a napa do material **antigo** (`strapNapaFollowsItemMaterial`), não por
 `base_group_id` nulo.
 
+### Save documental de PV: o CLIENTE muta o payload antes de salvar (CANÔNICO, 13/10/2026)
+
+> Sintoma (PV-00195): o dono mudou **só a NF-e e o CNPJ emitente** e o save foi
+> recusado com `O pedido NÃO foi salvo. Pedido ainda não está pronto: Existem OPs
+> avançadas fora de cancel_op_ids.` — o texto do **preflight** (`saleOrderCommand.ts:119`),
+> não do RAISE do execute: `useSaleOrders.ts` chama `preflightSaleOrderCommand`
+> **antes** do execute em todo update.
+
+A escapatória documental da `20270101024100` estava **viva e correta** — nunca era
+ALCANÇADA. Medido na função viva, com os dados do PV:
+
+| payload | `sale_order_update_is_production_neutral` |
+|---|---|
+| reconstruído **verbatim** do banco | **TRUE** |
+| o que o navegador realmente envia | **FALSE** |
+
+`recoverEmptyStrapSnapshotsForSubmit` (`src/lib/strapSnapshotGuard.ts`) roda no **topo
+de todo `handleSubmit`** — não só quando o snapshot está vazio — e injeta `pv_origem`
+em toda linha de tira que não tem a chave mas tem `source_mode` no `strap_sourcing`.
+Como a neutralidade comparava `strap_colors` por igualdade **jsonb profunda**, uma
+chave derivável a mais em UMA linha reprovava o payload inteiro como edição fabril.
+
+**Correção (mig `20270101041000`):** a comparação ficou **cega à chave derivável**.
+`private.strap_colors_neutrality_shape` preenche `pv_origem` ausente nos **DOIS** lados
+antes de comparar, com a mesma regra do cliente. Continua reprovando: `pv_origem`
+**explícito** diferente, troca de `source_mode`, e todo o resto da linha.
+
+⚠ **Conserte a COMPARAÇÃO, não o cliente.** Suprimir a hidratação em PV comprometido
+parece mais limpo e **não é**: `pv_origem` é lido pelo ramo
+`v_sheet_basis='reference_base' AND pv_origem='sku_acabado'` de
+`prepare_sale_order_item_internal_straps` (migs `031900`/`040200`), que roda no caminho
+NÃO-neutro. Cegar a comparação preserva o payload para o writer.
+
+⚠ **`internal → 'fabrica'` é CHUTE, e o cliente o faz.** Medido em 13/10/2026:
+`source_mode='internal'` aparece com `pv_origem='fabrica'` em **504** linhas e
+**`prestador` em 228** (31%). `buy_ready → sku_acabado` é 77/77, inequívoco. No
+normalizador o chute é inócuo (mesma regra nos dois lados, só para comparar); no
+**caminho não-neutro o cliente PERSISTE** esse palpite. As 29 linhas em risco estão em
+`list_strap_pv_origem_gaps()` — decisão de cadastro do dono, não foi feita.
+
+⚠ **NÃO faça backfill de `pv_origem` por migration.** Foi escrito e **abortado** em
+13/10/2026 depois de medir: um `UPDATE` em `sale_order_items` dispara, em AFTER UPDATE
+sobre TODAS as colunas, `trg_touch_sale_order_version_from_item` (**sobe o
+`order_version`** → o save do dono com o editor aberto falha por conflito),
+`trg_enqueue_strap_demands_on_item_change_on_update`,
+`trg_mark_reservations_outdated_from_item_on_update`,
+`trg_sync_orders_from_sale_order_item_on_update`, `trg_mark_so_costs_dirty_from_item…`
+e `trg_aa_sale_order_item_purchase_allocation_version`. E a fronteira de comando **não
+protege**: `tg_enforce_sale_order_command_boundary` começa com
+`IF public.is_service_role_request_128() ... RETURN NEW`, e migration roda como
+service_role — o backfill não seria recusado, seria aceito **em silêncio** com todos
+esses efeitos. Reparo de cadastro em PV comprometido passa pela TELA.
+
+⚠ **"OP avançada" no preflight é decidida SÓ por `o.status IN ('Em Produção',
+'Concluída','Finalizado')`** — sem fato físico. As 3 OPs do PV-00195 tinham **ZERO**
+apontamentos e mesmo assim exigiam cancelamento. O mesmo preflight **já** aplica teste
+de fato físico em `teardown`/`non_reversible`. Mudar isso é decisão de produto em
+aberto — muda o comportamento de todo PV, não só deste.
+
+⚠ **Teste que lê ARQUIVO não pega regressão da função VIVA.** O contrato que deveria
+ter coberto esta classe lia o `.sql` da `24100`; arquivo certo + função viva regredida
+= verde. Travado agora por `run_sale_order_neutrality_live_guards()` (12 casos,
+somente leitura, pode rodar em produção) + wrapper
+`src/__tests__/saleOrderNeutralityLiveGuards.db.test.ts`. O teste de arquivo
+(`neutralidadeIgnoraPvOrigemDerivavel.contract.test.ts`) continua, mas é o
+**complemento**, não a defesa.
+
+A mensagem do bloqueio agora nomeia o culpado (mig `20270101041200`,
+`explain_sale_order_update_non_neutrality`): *"…fora de cancel_op_ids. O que tornou a
+edição fabril: modo de embalagem; item COBRE (quantidade). OPs que precisam de decisão:
+OP-2026-04266 (Palmilha · Fibra), …"*. A explicação deriva dos **mesmos predicados** do
+portão — mensagem que discorda da guarda é pior que mensagem nenhuma.
+
 ## Regra de empacotamento em caixas (CANÔNICA, 05/08/2026)
 
 > Fonte: `src/lib/boxPacking.ts` (TS) e `packing_boxes_for_grade()` (SQL, migration
