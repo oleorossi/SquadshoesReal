@@ -28,11 +28,15 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
 // dropado em 25200. Em 21/09/2026 o MCP gravou
 // 20260921193727_promote_op_on_first_pointing (canônico 20270101027000) —
 // o carimbo de calendário permanece no legado até remap live; baseline
-// medido 22/09/2026 = 2295. Marcadores temporários podem ter qualquer nome
-// descritivo: o contrato do Supabase compara os timestamps.
+// medido 22/09/2026 = 2295. Em 16/10/2026 o workflow Apply Migrations
+// falhou com "esperado 2295, encontrado 2304": nove carimbos MCP com data
+// real (abaixo do corte) entraram em schema_migrations desde a última
+// calibração — baseline remediado medindo o banco vivo. Marcadores
+// temporários podem ter qualquer nome descritivo: o contrato do Supabase
+// compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
-  count: 2295,
-  sha256: 'd8339c14d496084356a322f20b826b47ee96997066d347f6ebdc7e6081db6467',
+  count: 2304,
+  sha256: 'a637ef4079fa213b0f1624a754575bd2e8ffd7dafd2a78690c7163c03cb6f56a',
 });
 
 const MIGRATION_FILE = /^(\d{14})_(.+)\.sql$/;
