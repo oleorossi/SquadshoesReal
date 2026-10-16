@@ -226,3 +226,69 @@ export function useGeneratePerPvPurchaseOrders() {
     onError: (e: Error) => toast.error(e.message),
   });
 }
+
+/** Uma demanda de tira do motor automático, do ponto de vista da compra. */
+export interface PvStrapDemandRow {
+  sale_order_id: string;
+  /** 'buy_ready' = tira comprada pronta · 'internal' = transformada de napa. */
+  source_mode: string | null;
+  status: string | null;
+  required_m: number;
+  replenishment_required_m: number;
+  base_shortage_m: number;
+}
+
+export interface PvStrapCoverage {
+  rows: PvStrapDemandRow[];
+  byMode: { buyReady: PvStrapDemandRow[]; internal: PvStrapDemandRow[] };
+  /** PVs do escopo que NÃO têm nenhuma demanda viva no motor. */
+  pvIdsWithoutDemand: string[];
+  total: number;
+}
+
+/**
+ * Cobertura de tiras do(s) PV(s) no motor automático.
+ *
+ * Existe porque a Ordem de Compra por Pedido exclui tira de propósito e manda
+ * pro motor: se o motor não tiver demanda nenhuma, a tira não está em lugar
+ * NENHUM e a OC sai silenciosamente sem ela. Foi exatamente o que aconteceu em
+ * 11–13/10/2026, quando a fila de jobs ficou parada 2 dias e o PV-00232 foi
+ * pra produção sem tira — o dono descobriu pela AUSÊNCIA na OC.
+ *
+ * ⚠ Leitura, nunca portão: a ausência AVISA e não bloqueia (decisão do dono,
+ *   13/10/2026). Travar a geração deixaria de comprar cola, solado e caixa, que
+ *   nada têm a ver com a fila de tiras.
+ */
+export function usePvStrapCoverage(pvIds: string[] | null) {
+  const ids = pvIds && pvIds.length > 0 ? pvIds : null;
+  return useQuery<PvStrapCoverage>({
+    queryKey: ['pv-strap-coverage', ...(ids || [])],
+    enabled: !!ids,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_strap_demands_operational')
+        .select('sale_order_id, source_mode, status, required_m, replenishment_required_m, base_shortage_m')
+        .in('sale_order_id', ids as string[]);
+      if (error) throw error;
+      const rows: PvStrapDemandRow[] = (data || []).map((r) => ({
+        sale_order_id: String((r as Record<string, unknown>).sale_order_id ?? ''),
+        source_mode: ((r as Record<string, unknown>).source_mode as string) ?? null,
+        status: ((r as Record<string, unknown>).status as string) ?? null,
+        required_m: Number((r as Record<string, unknown>).required_m) || 0,
+        replenishment_required_m: Number((r as Record<string, unknown>).replenishment_required_m) || 0,
+        base_shortage_m: Number((r as Record<string, unknown>).base_shortage_m) || 0,
+      }));
+      const comDemanda = new Set(rows.map((r) => r.sale_order_id));
+      return {
+        rows,
+        byMode: {
+          buyReady: rows.filter((r) => r.source_mode === 'buy_ready'),
+          internal: rows.filter((r) => r.source_mode === 'internal'),
+        },
+        pvIdsWithoutDemand: (ids as string[]).filter((id) => !comDemanda.has(id)),
+        total: rows.length,
+      };
+    },
+  });
+}
