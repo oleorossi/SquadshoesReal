@@ -45,6 +45,41 @@ function isBusyError(message: string): boolean {
     || /40P01|57014|55P03/i.test(message);
 }
 
+/**
+ * Erro de INFRA que merece nova tentativa mesmo não sendo contenção de lock:
+ * queda de conexão, desligamento do servidor, indisponibilidade momentânea do
+ * gateway. É uma lista CURTA e explícita de propósito — ver `isRetryable`.
+ */
+function isTransientInfraError(message: string): boolean {
+  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up/i.test(message)
+    || /fetch failed|network (error|timeout)|connection (closed|reset|terminated)/i.test(message)
+    || /terminating connection due to administrator command/i.test(message)
+    || /the database system is (starting up|shutting down)/i.test(message)
+    || /\b(?:08000|08003|08006|08001|08004|57P01|57P02|57P03|53300)\b/.test(message)
+    || /\b(?:502|503|504)\b.*(?:bad gateway|unavailable|timeout|gateway)/i.test(message);
+}
+
+/**
+ * Só erro de INFRA volta pra fila. Erro de NEGÓCIO é determinístico: tentar de
+ * novo dá exatamente a mesma resposta, 4 vezes, e o custo não é CPU — é o dono
+ * olhando "Processando…" por ~2,5 min antes de ver a mensagem (o worker roda 1
+ * job por invocação, com cron de 1 minuto).
+ *
+ * Foi o caso do PV-00236 em 13/10/2026: um "cadastro incompleto: material de
+ * corte" determinístico queimou as 4 tentativas de CADA um dos 4 cliques — 16
+ * execuções do mesmo erro. `isBusyError` já existia e separava transitório de
+ * determinístico, mas o resultado só escolhia o BACKOFF: `p_dead_letter` ia
+ * `false` sempre.
+ *
+ * ⚠ Desistir na 1ª tentativa é o certo SÓ porque a classificação erra para o
+ * lado seguro: dúvida → retentar. Alargar o determinístico (ex.: tratar todo
+ * `P0001` como final) transformaria um 503 momentâneo em "falhou, clique de
+ * novo" — e clicar de novo é exatamente o que custou os 16 jobs.
+ */
+function isRetryable(message: string): boolean {
+  return isBusyError(message) || isTransientInfraError(message);
+}
+
 /** Backoff alinhado ao client: 2s / 7s / 16s. */
 function retryAfterSeconds(attempts: number): number {
   if (attempts <= 1) return 2;
@@ -181,7 +216,7 @@ Deno.serve(async (req) => {
         });
       } catch (jobError) {
         const message = errorMessage(jobError);
-        const busy = isBusyError(message);
+        const retryable = isRetryable(message);
         const { data: nextStatus, error: failErr } = await admin.rpc(
           "fail_sale_order_materialization_job",
           {
@@ -189,8 +224,11 @@ Deno.serve(async (req) => {
             p_worker_id: workerId,
             p_lock_token: job.lock_token,
             p_error: message,
-            p_retry_after_seconds: busy ? retryAfterSeconds(job.attempts) : 5,
-            p_dead_letter: false,
+            p_retry_after_seconds: retryable ? retryAfterSeconds(job.attempts) : 0,
+            // Erro de negócio morre na 1ª tentativa: `fail_...` com dead_letter
+            // marca o job e põe o PV em command_phase='failed' + command_error,
+            // então o dono vê a mensagem agora em vez de 4 tentativas depois.
+            p_dead_letter: !retryable,
           },
         );
         if (failErr) {

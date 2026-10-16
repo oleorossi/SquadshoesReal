@@ -351,17 +351,49 @@ export function freeQtyExcludingOtherOrders(input: {
   return Math.max(0, (Number(input.quantity) || 0) - other);
 }
 
+/**
+ * Precedência de material de corte — ESPELHO de `resolve_upper_material_for_variant`
+ * / `resolve_lining_material_for_variant` / `resolve_insole_material_for_variant`.
+ *
+ * ⚠ A ORDEM é a regra, não um detalhe. Até 13/10/2026 esta função divergia do
+ * motor em dois pontos, e os dois faziam a Fila de Corte apontar a napa ERRADA:
+ *
+ *   1. Não conhecia `main_material_group_id`. Quando a ficha delega o componente
+ *      à variante (`variant_drives_upper` / `variant_drives_lining`) e a variante
+ *      declara só o material principal — o caso de 72 das 81 variantes ativas —
+ *      a Fila caía no NOME do material da ficha, que é o material antigo. Medido:
+ *      a S300 mostrava NAPA SOFT onde o motor resolve GLOW METALIC.
+ *   2. O pin da FICHA vencia o grupo da VARIANTE, porque o chamador tenta
+ *      `productId` antes de `groupId`. No motor o pin da ficha é fallback TARDIO.
+ *      Por isso a precedência inteira mora AQUI e a função devolve UMA decisão:
+ *      quem resolveu por grupo devolve `productId: null` de propósito.
+ *
+ * ⚠ PALMILHA NÃO TEM RAMO `main`, de propósito: `resolve_insole_material_for_variant`
+ * não tem, e a flag `variant_drives_insole` foi REMOVIDA do banco na migration
+ * `20261027120800_drop-variant-drives-insole`. Inventar o ramo aqui poria a tela
+ * à frente do motor — a divergência de volta, só com o sinal trocado.
+ *
+ * ⚠ A FICHA NÃO TEM `lining_material_group_id` NEM `insole_material_group_id`.
+ * Não é `select` esquecido: as colunas não existem em `technical_sheets` (ver
+ * `resolveGroupIdByMaterialName` abaixo). Por isso esses ramos terminam em `null`
+ * e o chamador cai no casamento por nome.
+ *
+ * ⚠ Diferença conhecida que sobra: quando o grupo resolve mas a COR não existe
+ * nele, o motor devolve um SKU com `matched_by = 'color_mismatch'` e a Fila
+ * devolve nada (`pickProductForColor` não tem esse ramo). A linha aparece sem
+ * material em vez de mostrar a cor errada — é tela, e mostrar nada é o lado
+ * seguro. Não replicar `color_mismatch` aqui sem decidir o que a tela faria com ele.
+ */
 export function resolveCorteMaterialPins(input: {
   sector: CorteLookaheadSector;
   sheet: {
     upper_material_product_id?: string | null;
     upper_material_group_id?: string | null;
     lining_material_product_id?: string | null;
-    lining_material_group_id?: string | null;
     insole_material?: string | null;
     insole_plate_product?: string | null;
-    insole_material_group_id?: string | null;
-    insole_material_product_id?: string | null;
+    variant_drives_upper?: boolean | null;
+    variant_drives_lining?: boolean | null;
   };
   variant?: {
     upper_material_product_id?: string | null;
@@ -370,32 +402,59 @@ export function resolveCorteMaterialPins(input: {
     lining_material_group_id?: string | null;
     insole_material_product_id?: string | null;
     insole_material_group_id?: string | null;
+    main_material_group_id?: string | null;
   } | null;
 }): { productId: string | null; groupId: string | null } {
   const kind = corteMaterialKind(input.sector);
   const v = input.variant;
   const s = input.sheet;
+
+  /** Pin da variante > grupo da variante > main (se a ficha delega) > pin da ficha > grupo da ficha. */
+  const resolve = (
+    variantPin: string | null | undefined,
+    variantGroup: string | null | undefined,
+    sheetDelegates: boolean,
+    sheetPin: string | null | undefined,
+    sheetGroup: string | null | undefined,
+  ): { productId: string | null; groupId: string | null } => {
+    if (variantPin) return { productId: variantPin, groupId: null };
+    if (variantGroup) return { productId: null, groupId: variantGroup };
+    if (sheetDelegates && v?.main_material_group_id) {
+      return { productId: null, groupId: v.main_material_group_id };
+    }
+    if (sheetPin) return { productId: sheetPin, groupId: null };
+    return { productId: null, groupId: sheetGroup || null };
+  };
+
   if (kind === 'upper') {
-    return {
-      productId: v?.upper_material_product_id || s.upper_material_product_id || null,
-      groupId: v?.upper_material_group_id || s.upper_material_group_id || null,
-    };
+    return resolve(
+      v?.upper_material_product_id,
+      v?.upper_material_group_id,
+      Boolean(s.variant_drives_upper),
+      s.upper_material_product_id,
+      s.upper_material_group_id,
+    );
   }
   if (kind === 'lining') {
-    return {
-      productId: v?.lining_material_product_id || s.lining_material_product_id || null,
-      groupId: v?.lining_material_group_id || s.lining_material_group_id || null,
-    };
+    // A ficha não tem grupo de forração — o chamador casa por nome.
+    return resolve(
+      v?.lining_material_product_id,
+      v?.lining_material_group_id,
+      Boolean(s.variant_drives_lining),
+      s.lining_material_product_id,
+      null,
+    );
   }
   if (kind === 'insole') {
-    return {
-      productId: v?.insole_material_product_id
-        || (s as { insole_material_product_id?: string | null }).insole_material_product_id
-        || null,
-      groupId: v?.insole_material_group_id
-        || (s as { insole_material_group_id?: string | null }).insole_material_group_id
-        || null,
-    };
+    // Sem ramo `main`: espelha `resolve_insole_material_for_variant`, e
+    // `variant_drives_insole` não existe mais (mig 20261027120800).
+    return resolve(
+      v?.insole_material_product_id,
+      v?.insole_material_group_id,
+      false,
+      null,
+      null,
+    );
   }
   // Fibra: na v1 não há pin dedicado na ficha — o hook tenta casar produto
   // ativo do grupo/placa por cor; sem pin fica gap de cadastro.

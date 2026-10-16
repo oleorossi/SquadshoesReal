@@ -87,12 +87,14 @@ interface SheetLite {
   lining_consumption: number | null;
   lining_material: string | null;
   lining_material_product_id: string | null;
-  lining_material_group_id?: string | null;
   insole_consumption: number | null;
   insole_material: string | null;
   insole_plate_product: string | null;
-  insole_material_product_id?: string | null;
-  insole_material_group_id?: string | null;
+  // `technical_sheets` NÃO tem lining/insole *_group_id nem insole_material_product_id
+  // (ver resolveGroupIdByMaterialName). Declarar esses campos aqui fazia
+  // `resolveCorteMaterialPins` ler `undefined` e parecer que havia fallback de ficha.
+  variant_drives_upper: boolean | null;
+  variant_drives_lining: boolean | null;
 }
 
 interface VariantLite {
@@ -103,6 +105,9 @@ interface VariantLite {
   lining_material_group_id: string | null;
   insole_material_product_id: string | null;
   insole_material_group_id: string | null;
+  /** Material principal da variante — preenchido em 81 de 81 variantes ativas e
+   *  o ÚNICO preenchido em 72 delas. É o ramo que faltava à Fila de Corte. */
+  main_material_group_id: string | null;
 }
 
 interface ProductLite {
@@ -133,6 +138,10 @@ const SHEET_SELECT = [
   'insole_consumption',
   'insole_material',
   'insole_plate_product',
+  // Sem estas duas o ramo `main_material_group_id` de resolveCorteMaterialPins
+  // nunca dispara e a Fila volta a apontar o material antigo da ficha.
+  'variant_drives_upper',
+  'variant_drives_lining',
 ].join(', ');
 
 async function fetchInChunks<T>(
@@ -296,7 +305,7 @@ async function loadCorteLookahead(sector: CorteLookaheadSector): Promise<CorteLo
         supabase
           .from('reference_material_variants')
           .select(
-            'id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id',
+            'id, upper_material_product_id, upper_material_group_id, lining_material_product_id, lining_material_group_id, insole_material_product_id, insole_material_group_id, main_material_group_id',
           )
           .in('id', chunk),
       )

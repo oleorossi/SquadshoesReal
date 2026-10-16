@@ -27,6 +27,12 @@ import {
   useSaleOrderMaterialShortages,
 } from '@/hooks/useSaleOrderMaterialShortages';
 import {
+  EMPTY_GATE_BLOCKS,
+  saleOrderShowsGateBlocks,
+  useSaleOrderGateBlocks,
+} from '@/hooks/useSaleOrderGateBlocks';
+import { SaleOrderGateBlockBadge } from '@/components/sale-orders/SaleOrderGateBlockBadge';
+import {
   useMinBillingMap,
   useRefreshMinBillingInBackground,
   EMPTY_MIN_BILLING_MAP,
@@ -748,6 +754,17 @@ export default function SaleOrders() {
   );
   const { data: materialShortageById = EMPTY_MATERIAL_SHORTAGES } =
     useSaleOrderMaterialShortages(materialShortageIds);
+
+  // Selo "Não aprova" — itens que o motor vai RECUSAR na aprovação. Só nos PVs
+  // em Rascunho/Pendente da página visível; RPC ausente/erro → mapa vazio.
+  const gateBlockIds = useMemo(
+    () => visibleOrders
+      .filter((o) => saleOrderShowsGateBlocks(o.status))
+      .map((o) => o.id),
+    [visibleOrders],
+  );
+  const { data: gateBlocksById = EMPTY_GATE_BLOCKS } =
+    useSaleOrderGateBlocks(gateBlockIds);
 
   // ⚠ A seleção é alimentada pelas linhas VISÍVEIS (página atual). Shift+clique
   // seleciona intervalo na tela; selectedIds persiste entre páginas.
@@ -2484,6 +2501,11 @@ export default function SaleOrders() {
                         <SaleOrderMaterialShortageBadge
                           status={order.status}
                           info={materialShortageById.get(order.id)}
+                        />
+                        {/* Bloqueio de cadastro: aqui a aprovação FALHA mesmo. */}
+                        <SaleOrderGateBlockBadge
+                          status={order.status}
+                          blocks={gateBlocksById.get(order.id)}
                         />
                         </div>
                       </TableCell>
