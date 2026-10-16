@@ -15,14 +15,32 @@ function migrationSql(): string {
   return readFileSync(resolve(MIGRATIONS, FILE), 'utf8');
 }
 
+/**
+ * Última migration que PATCHA o ramo — não a última que apenas CARREGA o
+ * carimbo.
+ *
+ * O carimbo viaja como comentário dentro do corpo de
+ * `resolve_committed_strap_identity`, então toda migration que recria essa
+ * função preservando o ramo (ex.: `20270101041800`, que só troca o texto do
+ * aviso de pré-demanda por origem) passa a mencioná-lo sem tocar no writer.
+ * Exigir que ela fosse a dona do carimbo pediria asserções sobre
+ * `finished_product_id` / `Cor Principal`, que vivem em
+ * `prepare_sale_order_item_internal_straps` e não existem lá.
+ *
+ * Por isso o alvo é a migration que mexe NO WRITER. Quem recria só a outra
+ * função é coberto pelo contrato dela, que prova a preservação do ramo
+ * (`strapPreDemandWarningByOrigin.contract.test.ts`).
+ */
+const WRITER = 'prepare_sale_order_item_internal_straps';
+
 function latestPatchMigration(needle: string): { file: string; sql: string } {
   const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort();
   let hit: { file: string; sql: string } | null = null;
   for (const file of files) {
     const sql = readFileSync(resolve(MIGRATIONS, file), 'utf8');
-    if (sql.includes(needle)) hit = { file, sql };
+    if (sql.includes(needle) && sql.includes(WRITER)) hit = { file, sql };
   }
-  if (!hit) throw new Error(`nenhuma migration menciona ${needle}`);
+  if (!hit) throw new Error(`nenhuma migration patcha ${needle} em ${WRITER}`);
   return hit;
 }
 
