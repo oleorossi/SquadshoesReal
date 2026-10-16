@@ -60,7 +60,7 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: 2.115.0
+          version: 2.121.0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

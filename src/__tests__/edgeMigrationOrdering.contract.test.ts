@@ -46,7 +46,9 @@ describe('ordem de deploy das Edge Functions', () => {
     expect(edgeWorkflow).toContain('github.event.workflow_run.head_sha || github.sha');
     expect(edgeWorkflow).toContain('cancel-in-progress: false');
     expect(edgeWorkflow).toContain("-type d ! -name '_shared'");
-    expect(edgeWorkflow).toContain('version: 2.115.0');
+    expect(edgeWorkflow).toContain('version: 2.121.0');
+    expect(migrationWorkflow).toContain('version: 2.121.0');
+
     expect(edgeWorkflow).toContain('Bundle preflight for all Edge Functions');
     expect(edgeWorkflow).toContain('esbuild@0.27.0');
     expect(edgeWorkflow).toContain('REQUESTED_FUNCTION: ${{ inputs.function_name }}');
