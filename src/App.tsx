@@ -90,6 +90,7 @@ const PackagingManagement = lazy(() => import("./pages/PackagingManagement"));
 const ExpedicaoHub = lazy(() => import("./pages/ExpedicaoHub"));
 const EngenhariaHub = lazy(() => import("./pages/EngenhariaHub"));
 const MateriaisBasePage = lazy(() => import("./pages/MateriaisBasePage"));
+const FichasEmRascunhoPage = lazy(() => import("./pages/FichasEmRascunhoPage"));
 const MateriaisHub = lazy(() => import("./pages/MateriaisHub"));
 const ComprasHub = lazy(() => import("./pages/ComprasHub"));
 const FiscalHub = lazy(() => import("./pages/FiscalHub"));
@@ -941,6 +942,11 @@ const router = createBrowserRouter([
        {
          path: "fichas-tecnicas",
          element: <TechnicalSheets />,
+       },
+       {
+         // Fichas ainda não publicadas (rascunho / em revisão / validada).
+         path: "engenharia/fichas-rascunho",
+         element: <FichasEmRascunhoPage />,
        },
        {
          // Kits de materiais / preços base por categoria (Precificação da ficha).

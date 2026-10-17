@@ -3826,7 +3826,13 @@ export function ReferenceSearch({
   onCreate: () => void;
 }) {
   const [search, setSearch] = useState('');
-  const selectableReferences = references.filter(ref => !ref.retired_at || ref.id === selectedId);
+  // Só ficha publicada no seletor operacional (Q8). Exceção: a já pinada no item
+  // (PV legado) continua listável pra não sumir do editor.
+  const selectableReferences = references.filter(ref => {
+    if (ref.id === selectedId) return true;
+    if (ref.retired_at) return false;
+    return String(ref.status_ficha || '').toLowerCase() === 'publicada';
+  });
   // Match com espaços/acentos/case ignorados — "SP 10"/"sp10"/"Sp-10"
   // devem todos casar com a referência cadastrada como "SP10". Material e SKU
   // também entram no índice: o vendedor pode lembrar "Santorine" sem lembrar a ref.

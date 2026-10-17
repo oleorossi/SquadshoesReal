@@ -1,4 +1,4 @@
-import { Footprints, ImageSquare as ImagePlus, Package, Stack as Layers, Trash, Warning } from '@phosphor-icons/react';
+import { CheckCircle, Footprints, ImageSquare as ImagePlus, Package, Stack as Layers, Trash, Warning } from '@phosphor-icons/react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,9 @@ interface Props {
   onOpenSheet: (id: string) => void;
   onEditImage: (sheet: TechnicalSheetGridItem) => void;
   onDeleteSheet: (sheet: TechnicalSheetGridItem) => void;
+  /** Área de rascunhos: CTA rápido para publicar. */
+  onPublishSheet?: (sheet: TechnicalSheetGridItem) => void;
+  publishingSheetId?: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -89,6 +92,8 @@ export function TechnicalSheetCardGrid({
   onOpenSheet,
   onEditImage,
   onDeleteSheet,
+  onPublishSheet,
+  publishingSheetId = null,
 }: Props) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5 min-[1800px]:grid-cols-6">
@@ -98,6 +103,7 @@ export function TechnicalSheetCardGrid({
         const auditGaps = auditGapsBySheet?.get(sheet.id) || [];
         const auditGapLabels = auditGaps.map(gap => gap.label).join(' • ');
         const hasCriticalAuditGap = auditGaps.some(gap => gap.severity === 'critical');
+        const publishing = publishingSheetId === sheet.id;
 
         return (
           <article
@@ -195,6 +201,20 @@ export function TechnicalSheetCardGrid({
                 {sheet.shoe_category || 'Geral'}
               </Badge>
               <div className="flex shrink-0 items-center gap-0.5">
+                {onPublishSheet && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 text-success hover:text-success sm:h-8 sm:w-8"
+                    aria-label={`Publicar ficha ${sheet.name}`}
+                    title={`Publicar ${sheet.name}`}
+                    disabled={publishing}
+                    onClick={() => onPublishSheet(sheet)}
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" weight="fill" />
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="ghost"

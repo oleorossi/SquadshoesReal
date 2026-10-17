@@ -67,6 +67,7 @@ export const navigationCatalog: NavigationResource[] = [
   // Engenharia (absorve Tiras)
   { path: '/engenharia', label: 'Engenharia', group: 'Engenharia', icon: Compass, surfaces: ['hub', 'command'], preload: () => import('@/pages/EngenhariaHub') },
   { path: '/fichas-tecnicas', label: 'Fichas Técnicas', group: 'Engenharia', icon: Ruler, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TechnicalSheets') },
+  { path: '/engenharia/fichas-rascunho', label: 'Fichas em rascunho', group: 'Engenharia', icon: FileText, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/FichasEmRascunhoPage') },
   { path: '/engenharia/materiais-base', label: 'Materiais base', group: 'Engenharia', icon: DollarSign, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/MateriaisBasePage') },
   { path: '/atelie', label: 'Ateliê', group: 'Engenharia', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Atelie') },
   { path: '/escalonamento', label: 'Escalonamento', group: 'Engenharia', icon: Calculator, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/EscalonamentoCadPage') },

@@ -13,7 +13,14 @@ import { buildBulkSolePatch, evaluateTechnicalSheetReadiness } from '@/lib/techn
 import type { TechnicalSheetAuditSignals, TechnicalSheetReadinessInput } from '@/lib/technicalSheetReadiness';
 import { buildTechnicalSheetPatch, cloneTechnicalSheetSnapshot } from '@/lib/technicalSheetPatch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import {
+  FICHAS_RASCUNHO_PATH,
+  isDraftCatalogFicha,
+  isPublishBlockedByDraftMaterials,
+  matchesCatalogScope,
+  type TechnicalSheetCatalogScope,
+} from '@/lib/technicalSheetCatalogScope';
 import { SignedImage } from '@/components/ui/signed-image';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -27,6 +34,16 @@ import { RequiredMark } from '@/components/ui/required-mark';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -176,7 +193,16 @@ function YieldFromPlate({ groupName, consumptionDm2, groups }: { groupName: stri
 }
 
 
-export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {}) {
+export default function TechnicalSheets({
+  embedded,
+  catalogScope = 'published',
+}: {
+  embedded?: boolean;
+  /** Hub = só publicada; área Engenharia = rascunho/em_revisão/validada. */
+  catalogScope?: TechnicalSheetCatalogScope;
+} = {}) {
+  const isDraftCatalog = catalogScope === 'drafts';
+  const navigate = useNavigate();
   const { data: sheets = [], isLoading, isError, error, refetch } = useTechnicalSheetsCatalog();
   const { data: stock = [] } = useReadyStock();
   const sheetsAuditQuery = useSheetsAudit();
@@ -191,6 +217,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   const { data: materialVariantsBySheet } = useAllActiveReferenceMaterialVariants();
   const addSheet = useAddSheet();
   const updateSheet = useUpdateSheet();
+  // Mesma capacidade do hub (Q12): criar/editar/publicar usam a permissão de fichas.
   const perm = useCan('/fichas-tecnicas');
 
   const cloneSheet = useCloneSheet();
@@ -201,6 +228,8 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   const [cloneNewName, setCloneNewName] = useState<string>('');
   const [cloneSearchTerm, setCloneSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [publishTarget, setPublishTarget] = useState<TechnicalSheetGridItem | null>(null);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
   // Deep-link via ?ref=<id> (usado pelo IncompleteWeightWarning em outras
   // telas pra pular direto pra ficha que precisa cadastrar peso).
   const [searchParams, setSearchParams] = useSearchParams();
@@ -212,6 +241,18 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
       else toast.error('Você não tem permissão para criar ficha técnica.');
     }
     if (refFromUrl && refFromUrl !== expandedId) {
+      const target = sheets.find((s) => s.id === refFromUrl) as
+        | (typeof sheets[number] & { status_ficha?: string | null })
+        | undefined;
+      if (target && !matchesCatalogScope(target.status_ficha, catalogScope)) {
+        // Ficha no escopo errado desta tela → manda pro catálogo certo.
+        const dest = isDraftCatalogFicha(target.status_ficha)
+          ? `${FICHAS_RASCUNHO_PATH}?ref=${refFromUrl}`
+          : `/fichas-tecnicas?ref=${refFromUrl}`;
+        const tab = searchParams.get('tab');
+        navigate(tab ? `${dest}&tab=${encodeURIComponent(tab)}` : dest, { replace: true });
+        return;
+      }
       setExpandedId(refFromUrl);
     }
     if ((refFromUrl && refFromUrl !== expandedId) || (createFromUrl && !perm.loading)) {
@@ -223,7 +264,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
       setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, sheets, catalogScope]);
   const [imageDialogSheet, setImageDialogSheet] = useState<any>(null);
   const [deleteSheetTarget, setDeleteSheetTarget] = useState<TechnicalSheetGridItem | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -245,12 +286,56 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   // Fichas aposentadas continuam no cache global para resolver pedidos e
   // históricos, mas não podem voltar a aparecer no catálogo nem em ações que
   // criam/copiam configuração operacional.
-  const activeSheets = useMemo(
+  const nonRetiredSheets = useMemo(
     () => sheets.filter((sheet) => !(
       sheet as typeof sheet & { retired_at?: string | null }
     ).retired_at),
     [sheets],
   );
+
+  // Hub = só publicada; área de rascunhos = rascunho/em_revisão/validada.
+  const activeSheets = useMemo(
+    () => nonRetiredSheets.filter((sheet) =>
+      matchesCatalogScope(
+        (sheet as typeof sheet & { status_ficha?: string | null }).status_ficha,
+        catalogScope,
+      )),
+    [nonRetiredSheets, catalogScope],
+  );
+
+  // Clone pode usar qualquer ficha ativa como origem (publicado → rascunho).
+  const cloneSourceSheets = nonRetiredSheets;
+
+  const openCreatedOrClonedSheet = (id: string) => {
+    if (isDraftCatalog) {
+      setExpandedId(id);
+      return;
+    }
+    // Hub só lista publicada: cria/clone nasce rascunho → área de rascunhos.
+    navigate(`${FICHAS_RASCUNHO_PATH}?ref=${id}`);
+  };
+
+  const handleConfirmPublish = async () => {
+    if (!publishTarget) return;
+    const id = publishTarget.id;
+    const name = publishTarget.name;
+    setPublishingId(id);
+    try {
+      await updateSheet.mutateAsync({ id, data: { status_ficha: 'publicada' } as any });
+      toast.success(`${name} publicada — agora aparece em Fichas Técnicas e no PV.`);
+      setPublishTarget(null);
+      if (expandedId === id) setExpandedId(null);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(`Não foi possível publicar: ${message}`);
+      if (isPublishBlockedByDraftMaterials(message)) {
+        setPublishTarget(null);
+        navigate(`${FICHAS_RASCUNHO_PATH}?ref=${id}&tab=costs`);
+      }
+    } finally {
+      setPublishingId(null);
+    }
+  };
 
   // Distinct sole list from sheets (sorted, with count of reference sheets per sole)
   const soleOptions = useMemo(() => {
@@ -290,12 +375,12 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
   // Fichas candidatas do dialog de cópia (busca própria do dialog)
   const cloneFilteredSheets = useMemo(
     () => rankBySearchScore(
-      activeSheets.filter((s) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
+      cloneSourceSheets.filter((s) => searchMatchesAllTerms(cloneSearchTerm, s.name, s.code)),
       cloneSearchTerm,
       (s) => s.name,
       (s) => s.code,
     ),
-    [activeSheets, cloneSearchTerm],
+    [cloneSourceSheets, cloneSearchTerm],
   );
 
   const handleCatalogViewChange = (view: CatalogView) => {
@@ -417,11 +502,31 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
         <NonFiniteDevWatcher />
         <EditorialPageHeader
           sectionLabel="ENGENHARIA · FICHAS"
-          title="Fichas Técnicas"
-          description="Materiais, consumos e custos"
+          title={isDraftCatalog ? 'Fichas em rascunho' : 'Fichas Técnicas'}
+          description={
+            isDraftCatalog
+              ? 'Referências ainda não publicadas — rascunho, em revisão e validadas'
+              : 'Catálogo publicado — materiais, consumos e custos'
+          }
           actions={
             <>
               <SheetsAuditButton onJumpToSheet={(id) => setExpandedId(id)} />
+              {!isDraftCatalog && (
+                <Button variant="outline" asChild className="gap-2">
+                  <Link to={FICHAS_RASCUNHO_PATH}>
+                    <FileText className="h-4 w-4" />
+                    <span className="hidden sm:inline">Rascunhos</span>
+                  </Link>
+                </Button>
+              )}
+              {isDraftCatalog && (
+                <Button variant="outline" asChild className="gap-2">
+                  <Link to="/fichas-tecnicas">
+                    <CheckCircle className="h-4 w-4" />
+                    <span className="hidden sm:inline">Publicadas</span>
+                  </Link>
+                </Button>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="gap-2" aria-label="Abrir ferramentas das fichas técnicas">
@@ -620,12 +725,20 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 icon={FileText}
                 title={
                   activeSheets.length === 0
-                    ? 'Nenhuma ficha técnica cadastrada'
+                    ? (isDraftCatalog
+                      ? 'Nenhuma ficha em rascunho'
+                      : 'Nenhuma ficha técnica publicada')
                     : searchTerm.trim()
                       ? `Nenhum resultado para "${searchTerm}"`
                       : 'Nenhuma ficha encontrada'
                 }
-                description={activeSheets.length === 0 ? undefined : 'Ajuste a busca ou os filtros de categoria.'}
+                description={
+                  activeSheets.length === 0
+                    ? (isDraftCatalog
+                      ? 'Crie uma nova ficha ou copie uma publicada para começar a elaborar.'
+                      : 'Publique uma referência em Fichas em rascunho para ela aparecer aqui.')
+                    : 'Ajuste a busca ou os filtros de categoria.'
+                }
                 action={activeSheets.length > 0 ? <Button variant="link" onClick={() => { setCategoryFilter('all'); setSoleFilter('all'); setSearchTerm(''); }}>Limpar filtros</Button> : undefined}
               />
             </CardContent>
@@ -650,6 +763,8 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               onOpenSheet={setExpandedId}
               onEditImage={setImageDialogSheet}
               onDeleteSheet={setDeleteSheetTarget}
+              onPublishSheet={isDraftCatalog && perm.canEdit ? setPublishTarget : undefined}
+              publishingSheetId={publishingId}
             />
           ) : (
             <div className="overflow-hidden border-2 border-foreground bg-card">
@@ -718,7 +833,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
               Preencha os dados de identificação para criar uma nova ficha técnica.
             </DialogDescription>
           </DialogHeader>
-          <QuickCreateForm onCreated={(id) => { setDialogOpen(false); setExpandedId(id); }} onCancel={() => setDialogOpen(false)} />
+          <QuickCreateForm onCreated={(id) => { setDialogOpen(false); openCreatedOrClonedSheet(id); }} onCancel={() => setDialogOpen(false)} />
         </DialogContent>
       </Dialog>
 
@@ -743,7 +858,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 value={cloneSearchTerm}
                 onChange={setCloneSearchTerm}
                 resultCount={cloneFilteredSheets.length}
-                totalCount={activeSheets.length}
+                totalCount={cloneSourceSheets.length}
               />
               <div className="max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border/50">
                 {cloneFilteredSheets.length === 0 && cloneSearchTerm.trim() && (
@@ -800,7 +915,7 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
                 onClick={async () => {
                   const newId = await cloneSheet.mutateAsync({ sourceId: cloneSourceId, newName: cloneNewName.trim() });
                   setCloneDialogOpen(false);
-                  setExpandedId(newId);
+                  openCreatedOrClonedSheet(newId);
                 }}
               >
                 {cloneSheet.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
@@ -830,6 +945,31 @@ export default function TechnicalSheets({ embedded }: { embedded?: boolean } = {
         sheet={deleteSheetTarget}
         onOpenChange={(open) => { if (!open) setDeleteSheetTarget(null); }}
       />
+
+      <AlertDialog open={!!publishTarget} onOpenChange={(open) => { if (!open && !publishingId) setPublishTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Publicar {publishTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A referência passa a aparecer em Fichas Técnicas e fica disponível para Pedidos de Venda.
+              Materiais ainda sem estoque na Precificação bloqueiam a publicação.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!publishingId}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!publishingId}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleConfirmPublish();
+              }}
+            >
+              {publishingId ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Publicar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
