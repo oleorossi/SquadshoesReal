@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, Briefcase, Ruler, ShieldCheck, Lightning as Zap, ShoppingBag, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UsersThree, Briefcase, Ruler, Compass, ShieldCheck, Lightning as Zap, ShoppingBag, Basket, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, CalendarBlank, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock, Storefront, CheckCircle, Notebook } from '@phosphor-icons/react';
 
 /**
  * Superfícies de descoberta.
@@ -52,8 +52,8 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/dashboard', label: 'Painel', group: 'Início', icon: LayoutDashboard, surfaces: ['command'], preload: () => import('@/pages/Dashboard') },
 
   // Comercial — hub landing = /comercial (ComercialDashboard)
-  { path: '/comercial', label: 'Comercial', group: 'Comercial', icon: ShoppingCart, surfaces: ['hub', 'command'], preload: () => import('@/pages/ComercialDashboard') },
-  { path: '/sales', label: 'Pedidos de Venda', group: 'Comercial', icon: FileText, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/SaleOrders') },
+  { path: '/comercial', label: 'Comercial', group: 'Comercial', icon: Storefront, surfaces: ['hub', 'command'], preload: () => import('@/pages/ComercialDashboard') },
+  { path: '/sales', label: 'Pedidos de Venda', group: 'Comercial', icon: Notebook, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/SaleOrders') },
   { path: '/pronta-entrega', label: 'Pronta-Entrega', group: 'Comercial', icon: Box, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProntaEntrega') },
   { path: '/catalogo', label: 'Catálogo', group: 'Comercial', icon: Sparkles, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Catalogo') },
   { path: '/clients', label: 'Clientes', group: 'Comercial', icon: Users, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Clients') },
@@ -65,7 +65,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/forecast', label: 'Forecast', group: 'Comercial', icon: TrendingUp, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/Forecast') },
 
   // Engenharia (absorve Tiras)
-  { path: '/engenharia', label: 'Engenharia', group: 'Engenharia', icon: Ruler, surfaces: ['hub', 'command'], preload: () => import('@/pages/EngenhariaHub') },
+  { path: '/engenharia', label: 'Engenharia', group: 'Engenharia', icon: Compass, surfaces: ['hub', 'command'], preload: () => import('@/pages/EngenhariaHub') },
   { path: '/fichas-tecnicas', label: 'Fichas Técnicas', group: 'Engenharia', icon: Ruler, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TechnicalSheets') },
   { path: '/engenharia/materiais-base', label: 'Materiais base', group: 'Engenharia', icon: DollarSign, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/MateriaisBasePage') },
   { path: '/atelie', label: 'Ateliê', group: 'Engenharia', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Atelie') },
@@ -76,9 +76,9 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/fichas-tecnicas/padroes', label: 'Padrões por Cor', group: 'Engenharia', icon: Sparkles, surfaces: ['command'], preload: () => import('@/pages/ColorStandards') },
 
   // Produção
-  { path: '/producao', label: 'Produção', group: 'Produção', icon: Factory, surfaces: ['hub', 'command'], preload: () => import('@/pages/ProducaoHub') },
+  { path: '/producao', label: 'Produção', group: 'Produção', icon: BarChart3, surfaces: ['hub', 'command'], preload: () => import('@/pages/ProducaoHub') },
   { path: '/producao/sequencia', label: 'Sequência / Liberação', group: 'Produção', icon: RouteIcon, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoSequencia') },
-  { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
+  { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: CalendarBlank, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
   { path: '/producao/corte-lookahead', label: 'Fila de Corte', group: 'Produção', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoCorteLookahead') },
   // Mantém o path concedível histórico para não invalidar permissões por item;
   // a rota redireciona imediatamente para a Central em Modo Gestão.
@@ -95,7 +95,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/orders', label: 'Ordens de Produção', group: 'Produção', icon: ClipboardCheck, surfaces: ['command', 'quick-action'], preload: () => import('@/pages/Orders') },
 
   // Materiais (ex-Estoque)
-  { path: '/materiais', label: 'Materiais', group: 'Materiais', icon: Package, surfaces: ['hub', 'command'], preload: () => import('@/pages/MateriaisHub') },
+  { path: '/materiais', label: 'Materiais', group: 'Materiais', icon: Box, surfaces: ['hub', 'command'], preload: () => import('@/pages/MateriaisHub') },
   { path: '/estoque', label: 'Estoque', group: 'Materiais', icon: Package, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Index') },
   { path: '/grupos', label: 'Grupos', group: 'Materiais', icon: FolderOpen, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Groups') },
   { path: '/ajuste-estoque', label: 'Ajustes', group: 'Materiais', icon: Boxes, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/StockAdjustmentPage') },
@@ -105,7 +105,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/estoque?tab=conversion', label: 'Auditoria de Unidades', group: 'Materiais', icon: Scale, surfaces: ['command'], preload: () => import('@/components/inventory/tabs/UnitConversionAuditTab') },
 
   // Compras
-  { path: '/compras', label: 'Compras', group: 'Compras', icon: ShoppingBag, surfaces: ['hub', 'command'], preload: () => import('@/pages/ComprasHub') },
+  { path: '/compras', label: 'Compras', group: 'Compras', icon: Basket, surfaces: ['hub', 'command'], preload: () => import('@/pages/ComprasHub') },
   { path: '/purchase-planning', label: 'Planejamento', group: 'Compras', icon: Calendar, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchasePlanning') },
   { path: '/quotations', label: 'Cotações (RFQ)', group: 'Compras', icon: FileSpreadsheet, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Quotations') },
   { path: '/purchase-orders', label: 'Ordens de Compra', group: 'Compras', icon: ShoppingBag, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchaseOrders') },
@@ -147,7 +147,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/sped/bloco-k', label: 'SPED Bloco K', group: 'Fiscal', icon: Factory, surfaces: ['command'], preload: () => import('@/pages/BlocoK') },
 
   // Pessoas
-  { path: '/rh', label: 'Pessoas', group: 'RH', icon: Users, surfaces: ['hub', 'command'], preload: () => import('@/pages/RHHub') },
+  { path: '/rh', label: 'Pessoas', group: 'RH', icon: UsersThree, surfaces: ['hub', 'command'], preload: () => import('@/pages/RHHub') },
   { path: '/fichas-montadores', label: 'Ficha Montadores', group: 'RH', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/FichaMontadoresPage') },
   { path: '/terceirizados', label: 'Terceirizados', group: 'RH', icon: Truck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
   // Ajuste de batidas/ausências (workspace único do Ponto). Sem resolver,
@@ -156,10 +156,10 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/rh?tab=ponto&subtab=pendencias', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Timesheet') },
 
   // Sistema (admin)
-  { path: '/admin/aprovacao-ordens-compra', label: 'Aprovação de Ordens de Compra', group: 'Sistema', icon: ShoppingBag, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchaseOrderApprovals') },
+  { path: '/admin/aprovacao-ordens-compra', label: 'Aprovação de Ordens de Compra', group: 'Sistema', icon: CheckCircle, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchaseOrderApprovals') },
   { path: '/settings', label: 'Configurações', group: 'Sistema', icon: Settings, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Settings') },
   { path: '/automations', label: 'Automações', group: 'Sistema', icon: Zap, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Automations') },
-  { path: '/relatorios', label: 'Relatórios', group: 'Sistema', icon: BarChart3, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/RelatoriosHub') },
+  { path: '/relatorios', label: 'Relatórios', group: 'Sistema', icon: FileText, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/RelatoriosHub') },
   { path: '/security', label: 'Segurança & Logs', group: 'Sistema', icon: ShieldCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Security') },
   // Analytics tem filtros, gráficos e exportação próprios. Não o fundimos ao
   // hub A4 em homologação para não publicar aqueles documentos por associação.
@@ -210,7 +210,7 @@ const hubsDeclarados: NavigationHub[] = [
   {
     path: '/comercial',
     label: 'Comercial',
-    icon: ShoppingCart,
+    icon: Storefront,
     groups: ['Comercial'],
     children: [
       resource('/sales'),
@@ -223,7 +223,7 @@ const hubsDeclarados: NavigationHub[] = [
   {
     path: '/engenharia',
     label: 'Engenharia',
-    icon: Ruler,
+    icon: Compass,
     groups: ['Engenharia'],
     children: [
       resource('/fichas-tecnicas'),
@@ -236,7 +236,7 @@ const hubsDeclarados: NavigationHub[] = [
   {
     path: '/producao',
     label: 'Produção',
-    icon: Factory,
+    icon: BarChart3,
     groups: ['Produção'],
     children: [
       resource('/producao/sequencia'),
@@ -253,7 +253,7 @@ const hubsDeclarados: NavigationHub[] = [
   {
     path: '/materiais',
     label: 'Materiais',
-    icon: Package,
+    icon: Box,
     groups: ['Materiais'],
     children: [
       resource('/estoque'),
@@ -266,7 +266,7 @@ const hubsDeclarados: NavigationHub[] = [
   {
     path: '/compras',
     label: 'Compras',
-    icon: ShoppingBag,
+    icon: Basket,
     groups: ['Compras'],
     children: [
       resource('/purchase-planning'),
@@ -319,7 +319,7 @@ const hubsDeclarados: NavigationHub[] = [
   {
     path: '/rh',
     label: 'Pessoas',
-    icon: Users,
+    icon: UsersThree,
     groups: ['RH'],
     children: [
       resource('/rh?tab=ponto&subtab=pendencias'),

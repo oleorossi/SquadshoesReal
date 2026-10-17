@@ -178,20 +178,22 @@
   --chart-8: var(--muted-foreground); /* cinza neutro — série "outros" */
 
   /* ═══════════════════════════════════════════════════════════════
-     ▼ SIDEBAR (grafite editorial · destaque vermelho Squad · permanente)
-     Cinza escuro em vez de preto puro — preto chapado cansava a leitura.
+     ▼ SIDEBAR (painel flutuante preto · destaque vermelho Squad)
+     Near-black sólido (referência visual 2026-10); independente do tema.
      ═════════════════════════════════════════════════════════════ */
-  --sidebar-background:           0 0% 15%;            /* #262626 */
-  --sidebar-foreground:           0 0% 92%;
-  --sidebar-muted:                0 0% 58%;            /* texto 2º plano legível */
-  --sidebar-accent:               0 0% 23%;            /* #3B3B3B hover/ativo */
+  --sidebar-background:           0 0% 4%;             /* #0A0A0A */
+  --sidebar-foreground:           0 0% 98%;
+  --sidebar-muted:                0 0% 55%;            /* texto 2º plano */
+  --sidebar-accent:               0 0% 12%;            /* hover discreto */
   --sidebar-accent-foreground:    0 0% 100%;
-  --sidebar-border:               0 0% 28%;            /* #474747 divisor visível */
+  --sidebar-border:               0 0% 16%;            /* divisores sutis */
   --sidebar-primary:              354 78% 50%;         /* vermelho Squad */
   --sidebar-primary-foreground:   0 0% 100%;
   --sidebar-ring:                 354 78% 50%;
-  --sidebar-gradient-from:        0 0% 14%;
-  --sidebar-gradient-to:          0 0% 18%;
+  --sidebar-gradient-from:        0 0% 4%;
+  --sidebar-gradient-to:          0 0% 8%;
+  --sidebar-radius:               22px;                /* cantos do painel flutuante */
+  --sidebar-gutter:               12px;                /* margem ao redor do painel */
 
   /* ═══════════════════════════════════════════════════════════════
      ▼ RADIUS · escala (Factory OS — radius mais generoso)
@@ -292,8 +294,8 @@
   /* Layout dimensions — densificação operacional (2026-10): sidebar/page/table
      apertados pra caber ~25–35% mais informação na viewport. Print/fichas
      não leem estes tokens. */
-  --layout-sidebar:           200px;
-  --layout-sidebar-collapsed: 56px;
+  --layout-sidebar:           248px;
+  --layout-sidebar-collapsed: 64px;
   --layout-topbar:            48px;
   --layout-page-padding:      var(--space-4);
   --layout-card-padding:      10px;
@@ -452,18 +454,20 @@
   --chart-7: 148 50% 52%;
   --chart-8: var(--muted-foreground);
 
-  /* Sidebar (dark — mantém o mesmo do :root pq sempre é dark) */
-  --sidebar-background:           0 0% 15%;            /* #262626 — cinza escuro, não preto */
-  --sidebar-foreground:           0 0% 92%;
-  --sidebar-muted:                0 0% 58%;
-  --sidebar-accent:               0 0% 23%;
+  /* Sidebar (sempre dark — espelha :root; painel flutuante preto) */
+  --sidebar-background:           0 0% 4%;             /* #0A0A0A */
+  --sidebar-foreground:           0 0% 98%;
+  --sidebar-muted:                0 0% 55%;
+  --sidebar-accent:               0 0% 12%;
   --sidebar-accent-foreground:    0 0% 100%;
-  --sidebar-border:               0 0% 28%;
+  --sidebar-border:               0 0% 16%;
   --sidebar-primary:              354 78% 50%;
   --sidebar-primary-foreground:   0 0% 100%;
   --sidebar-ring:                 354 78% 50%;
-  --sidebar-gradient-from:        0 0% 14%;
-  --sidebar-gradient-to:          0 0% 18%;
+  --sidebar-gradient-from:        0 0% 4%;
+  --sidebar-gradient-to:          0 0% 8%;
+  --sidebar-radius:               22px;
+  --sidebar-gutter:               12px;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -963,8 +967,16 @@ a:focus-visible {
     border-left: 4px solid hsl(var(--sidebar-primary));
   }
 
+  /* Painel da sidebar: sólido opaco (sem glass). Nome legado mantido
+     porque AppLayout e DensityAudit ainda referenciam a classe. */
   .glass-sidebar {
-    @apply bg-sidebar/95 backdrop-blur-xl border-r border-sidebar-border;
+    @apply bg-sidebar;
+  }
+
+  .sidebar-panel {
+    background: hsl(var(--sidebar-background));
+    border-radius: var(--sidebar-radius);
+    overflow: hidden;
   }
 
   .card-shimmer {

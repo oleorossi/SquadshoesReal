@@ -40,12 +40,15 @@ describe('ui density package — primitives', () => {
 });
 
 describe('ui density package — chrome', () => {
-  it('sidebar desktop 200/56 e main py-4', () => {
+  it('sidebar desktop flutuante 248/64 (+ gutter) e main py-4', () => {
     const src = read('components/layout/AppLayout.tsx');
-    expect(src).toContain("w-[200px]");
-    expect(src).toContain("w-[56px]");
+    // Slot = painel + gutters 12px: 248+24=272 / 64+24=88
+    expect(src).toContain("w-[272px]");
+    expect(src).toContain("w-[88px]");
+    expect(src).toContain('sidebar-panel');
     expect(src).toMatch(/md:pb-4/);
-    expect(src).not.toContain("w-[232px]");
+    expect(src).not.toContain("w-[200px]");
+    expect(src).not.toContain("w-[56px]");
   });
 
   it('EditorialPageHeader default não usa hero-editorial-title', () => {
@@ -58,8 +61,10 @@ describe('ui density package — chrome', () => {
 
   it('tokens de layout densos', () => {
     const css = read('index.css');
-    expect(css).toMatch(/--layout-sidebar:\s*200px/);
-    expect(css).toMatch(/--layout-sidebar-collapsed:\s*56px/);
+    expect(css).toMatch(/--layout-sidebar:\s*248px/);
+    expect(css).toMatch(/--layout-sidebar-collapsed:\s*64px/);
+    expect(css).toMatch(/--sidebar-radius:\s*22px/);
+    expect(css).toMatch(/--sidebar-gutter:\s*12px/);
     expect(css).toMatch(/--layout-table-row:\s*34px/);
     expect(css).toMatch(/minmax\(160px/);
   });

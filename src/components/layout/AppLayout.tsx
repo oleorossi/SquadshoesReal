@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { SignOut as LogOut, List as Menu, X, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star, Lightning as Zap } from '@phosphor-icons/react';
+import { SignOut as LogOut, List as Menu, X, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star } from '@phosphor-icons/react';
 import {
   HUBS,
   systemItems,
@@ -305,80 +305,80 @@ export default function AppLayout({ children, printMode = false }: { children: R
   };
 
   // ── Nav item active class ────────────────────────────────
-  // Industrial Editorial Pro: active state ganha borda esquerda 2px vermelho
-  // squad + texto foreground. Rounded-sm em vez de lg. Sem bg colorido — borda
-  // diz tudo. Hover sutil em foreground/5.
-  // 22/05/2026: fonte reduzida text-base → text-[13px] + py mais apertado
-  // (1.5 em vez de 2) pra densidade maior no menu — pedido user.
-  // Industrial Editorial Pro 2.0: border-left ativo bump 2px → 3px pra
-  // statement editorial mais decisivo. Padding interno compensado pra
-  // manter alinhamento visual com itens não-ativos.
+  // Painel flutuante (ref. visual 2026-10): ativo = barra vermelha + ícone
+  // vermelho + texto branco, SEM wash de fundo. Inativo = cinza muted.
   /**
    * ⚠ A estrela de favorito NÃO pode viver dentro do NavLink: `<button>` dentro
    * de `<a>` é HTML inválido e cria uma parada de teclado ambígua — ativar a
    * estrela podia disparar a navegação junto (achado F16 da auditoria de IA).
-   * Ela é irmã, posicionada em cima; por isso o `pr-9` reserva o espaço dela.
+   * Ela é irmã, posicionada em cima; por isso o `pr-8` reserva o espaço dela.
    */
-  const navItemClass = (isActive: boolean) => cn(
-    "group flex items-center justify-between rounded-sm text-[12px] font-medium transition-all duration-150 relative pr-8",
+  const navItemClass = (isActive: boolean, reserveRight = false) => cn(
+    "group flex items-center justify-between text-[13px] font-medium transition-colors duration-150 relative",
+    reserveRight ? "pr-8" : "pr-3",
     isActive
-      ? "border-l-[3px] border-primary pl-[10px] pr-3 py-1 text-sidebar-foreground font-semibold bg-sidebar-foreground/[0.04]"
-      : "border-l-2 border-transparent px-3 py-1 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
+      ? "border-l-[3px] border-primary pl-[13px] py-2.5 text-sidebar-foreground"
+      : "border-l-[3px] border-transparent pl-[13px] py-2.5 text-sidebar-muted hover:text-sidebar-foreground"
   );
 
+  const navIconClass = (isActive: boolean) =>
+    cn("h-[18px] w-[18px] shrink-0", isActive ? "text-primary" : "text-sidebar-muted group-hover:text-sidebar-foreground");
+
   const collapsedItemClass = (isActive: boolean) => cn(
-    "flex items-center justify-center h-8 w-8 rounded-sm mx-auto mb-0.5 transition-all duration-100",
+    "group flex items-center justify-center h-10 w-10 mx-auto mb-1 transition-colors duration-100",
     isActive
-      ? "border-l-[3px] border-primary text-sidebar-foreground bg-sidebar-foreground/[0.04]"
-      : "border-l-2 border-transparent text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/[0.04]"
+      ? "border-l-[3px] border-primary text-primary"
+      : "border-l-[3px] border-transparent text-sidebar-muted hover:text-sidebar-foreground"
   );
+
+  const sectionLabelClass = "px-4 pt-3 pb-1.5 text-[11px] font-medium text-sidebar-muted/80";
 
   // ── Sidebar content ──────────────────────────────────────
   const sidebarContent = (mobile: boolean) => {
     const isCollapsed = !mobile && sidebarCollapsed;
 
     return (
-      <div className={cn("flex flex-col h-full bg-sidebar text-sidebar-foreground overflow-hidden glass-sidebar", mobile && "safe-top")}>
+      <div className={cn("flex flex-col h-full text-sidebar-foreground overflow-hidden", mobile && "safe-top")}>
 
         {/* ── Brand header ── */}
         <div className={cn(
-          "border-b border-sidebar-border shrink-0",
-          isCollapsed ? "px-1.5 py-2 flex flex-col items-center gap-1.5" : "px-3 py-2"
+          "border-b border-sidebar-border/60 shrink-0",
+          isCollapsed ? "px-1.5 py-3 flex flex-col items-center gap-2" : "px-4 pt-4 pb-3"
         )}>
           {isCollapsed ? (
             <>
-              <div className="h-8 w-8 rounded-lg overflow-hidden ring-1 ring-sidebar-border shadow-sm bg-card shrink-0">
+              <div className="h-9 w-9 rounded-md overflow-hidden ring-1 ring-sidebar-border/80 bg-card shrink-0">
                 <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
               </div>
               <GlobalSearch compact />
-              <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
-               <NotificationBell key="desktop-notif" className="h-7 w-7" />
+              <ModeToggle className="h-8 w-8 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
+              <NotificationBell key="desktop-notif" className="h-8 w-8" />
             </>
           ) : (
             <>
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-sm overflow-hidden ring-1 ring-sidebar-border shrink-0 bg-card">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-md overflow-hidden ring-1 ring-sidebar-border/80 shrink-0 bg-card">
                   <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  {/* Industrial Editorial Pro: nome em Anton uppercase com
-                      ponto separador vermelho squad (espelha o /design-preview). */}
-                  <p className="ed-display text-lg text-sidebar-foreground leading-none">
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p className="ed-display text-[22px] uppercase tracking-tight text-sidebar-foreground leading-none">
                     Squad<span className="text-primary">·</span>Shoes
                   </p>
-                  <p className="ed-eyebrow text-sidebar-muted mt-1">Gestão Industrial</p>
+                  <p className="mt-2 text-[10px] font-medium tracking-[0.14em] uppercase text-sidebar-muted">
+                    Gestão Industrial
+                  </p>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <ModeToggle className="h-7 w-7 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
-               <NotificationBell key="sidebar-mobile-notif" className="h-7 w-7" />
+                <div className="flex items-center gap-0.5 shrink-0 -mt-0.5">
+                  <ModeToggle className="h-8 w-8 text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent" />
+                  <NotificationBell key="sidebar-mobile-notif" className="h-8 w-8" />
                   {mobile && (
-                    <Button variant="ghost" size="icon" aria-label="Fechar menu lateral" className="shrink-0 md:hidden h-7 w-7 text-sidebar-muted" onClick={() => setMobileOpen(false)}>
+                    <Button variant="ghost" size="icon" aria-label="Fechar menu lateral" className="shrink-0 md:hidden h-8 w-8 text-sidebar-muted" onClick={() => setMobileOpen(false)}>
                       <X className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   )}
                 </div>
               </div>
-              <div className="mt-2.5">
+              <div className="mt-3.5">
                 <GlobalSearch />
               </div>
             </>
@@ -390,14 +390,14 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
           {/* Dashboard — item fixo no topo */}
           {isCollapsed ? (
-            <div className="px-2 pt-1 pb-2 border-b border-sidebar-border/30 mb-1">
+            <div className="px-2 pt-1 pb-2 border-b border-sidebar-border/40 mb-1">
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
                   <NavLink
                     to={topItem.path}
                     className={({ isActive }) => collapsedItemClass(isActive)}
                   >
-                    <topItem.icon className="h-4 w-4 shrink-0" />
+                    {({ isActive }) => <topItem.icon className={navIconClass(isActive)} weight={isActive ? 'bold' : 'regular'} />}
                   </NavLink>
                 </TooltipTrigger>
                 <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
@@ -406,15 +406,18 @@ export default function AppLayout({ children, printMode = false }: { children: R
               </Tooltip>
             </div>
           ) : (
-            <div className="px-2 pb-2 border-b border-sidebar-border/30 mb-1">
+            <div className="px-2 pb-2 border-b border-sidebar-border/40 mb-1">
+              <p className={sectionLabelClass}>Painel</p>
               <NavLink
                 to={topItem.path}
                 className={({ isActive }) => navItemClass(isActive)}
               >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <topItem.icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{topItem.label}</span>
-                </div>
+                {({ isActive }) => (
+                  <div className="flex items-center gap-3 min-w-0">
+                    <topItem.icon className={navIconClass(isActive)} weight={isActive ? 'bold' : 'regular'} />
+                    <span className="truncate">{topItem.label}</span>
+                  </div>
+                )}
               </NavLink>
             </div>
           )}
@@ -422,14 +425,18 @@ export default function AppLayout({ children, printMode = false }: { children: R
           {/* Atalhos — sistema + favoritos */}
           {isCollapsed ? (
             atalhoPaths.length > 0 && (
-              <div className="px-2 pb-2 mb-1 border-b border-sidebar-border/30 space-y-0.5">
+              <div className="px-2 pb-2 mb-1 border-b border-sidebar-border/40 space-y-1">
                 {atalhoPaths.map((item) => (
                   <Tooltip key={item.path} delayDuration={0}>
                     <TooltipTrigger asChild>
                       <NavLink to={item.path} className={({ isActive }) => cn(collapsedItemClass(isActive), 'relative')}>
-                        <item.icon className="h-4 w-4 shrink-0" />
-                        {item.favorited && (
-                          <div className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                        {({ isActive }) => (
+                          <>
+                            <item.icon className={navIconClass(isActive)} weight={isActive ? 'bold' : 'regular'} />
+                            {item.favorited && (
+                              <div className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                            )}
+                          </>
                         )}
                       </NavLink>
                     </TooltipTrigger>
@@ -442,11 +449,8 @@ export default function AppLayout({ children, printMode = false }: { children: R
             )
           ) : (
             atalhoPaths.length > 0 && (
-              <div className="px-2 pb-2 mb-1 border-b border-sidebar-border/30">
-                <p className="px-3 py-1.5 ed-eyebrow text-sidebar-muted flex items-center gap-1.5">
-                  <Zap className="h-3 w-3 shrink-0 text-primary" />
-                  Atalhos
-                </p>
+              <div className="px-2 pb-2 mb-1 border-b border-sidebar-border/40">
+                <p className={sectionLabelClass}>Atalhos</p>
                 <div className="mt-0.5 space-y-0.5">
                   {atalhoPaths.map((item) => (
                     <div key={item.path} className="relative">
@@ -462,17 +466,19 @@ export default function AppLayout({ children, printMode = false }: { children: R
                         onMouseLeave={cancelPrefetch}
                         onFocus={() => prefetch(item.path)}
                         style={item.favorited ? favDropStyle(item.path) : undefined}
-                        className={({ isActive }) => cn(navItemClass(isActive), !mobile && item.favorited && 'cursor-grab active:cursor-grabbing select-none')}
+                        className={({ isActive }) => cn(navItemClass(isActive, item.favorited), !mobile && item.favorited && 'cursor-grab active:cursor-grabbing select-none')}
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <item.icon className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{item.name}</span>
-                        </div>
+                        {({ isActive }) => (
+                          <div className="flex items-center gap-3 min-w-0">
+                            <item.icon className={navIconClass(isActive)} weight={isActive ? 'bold' : 'regular'} />
+                            <span className="truncate">{item.name}</span>
+                          </div>
+                        )}
                       </NavLink>
                       {item.favorited && (
                         <button
                           onClick={(e) => toggleFavorite(e, item.name, item.path)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm opacity-100 text-primary hover:text-primary/60 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm text-sidebar-muted hover:text-primary transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           aria-label={`Remover ${item.name} dos favoritos`}
                         >
                           <Star className="h-3 w-3 fill-current" />
@@ -487,7 +493,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
           {/* Hubs */}
           {isCollapsed ? (
-            <div className="px-2 space-y-0.5">
+            <div className="px-2 space-y-1">
               {orderedHubs.map((hub) => (
                 <Tooltip key={hub.path} delayDuration={0}>
                   <TooltipTrigger asChild>
@@ -497,7 +503,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                       onMouseLeave={cancelPrefetch}
                       className={() => collapsedItemClass(isHubActive(hub))}
                     >
-                      <hub.icon className="h-4 w-4 shrink-0" />
+                      <hub.icon className={navIconClass(isHubActive(hub))} weight={isHubActive(hub) ? 'bold' : 'regular'} />
                     </NavLink>
                   </TooltipTrigger>
                   <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
@@ -506,16 +512,20 @@ export default function AppLayout({ children, printMode = false }: { children: R
                 </Tooltip>
               ))}
               {filteredSystemItems.length > 0 && (
-                <div className="pt-2 mt-2 border-t border-sidebar-border/40 space-y-0.5">
+                <div className="pt-2 mt-2 border-t border-sidebar-border/40 space-y-1">
                   {filteredSystemItems.map((item) => (
                     <Tooltip key={item.path} delayDuration={0}>
                       <TooltipTrigger asChild>
                         <NavLink to={item.path} className={({ isActive }) => cn(collapsedItemClass(isActive), 'relative')}>
-                          <item.icon className="h-4 w-4 shrink-0" />
-                          {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
-                            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
-                              {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
-                            </span>
+                          {({ isActive }) => (
+                            <>
+                              <item.icon className={navIconClass(isActive)} weight={isActive ? 'bold' : 'regular'} />
+                              {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
+                                <span className="absolute -right-0.5 -top-0.5 text-[10px] font-medium tabular-nums text-sidebar-muted">
+                                  {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
+                                </span>
+                              )}
+                            </>
                           )}
                         </NavLink>
                       </TooltipTrigger>
@@ -530,16 +540,16 @@ export default function AppLayout({ children, printMode = false }: { children: R
           ) : (
             <div className="px-2 space-y-0.5">
               {orderedHubs.length === 0 && (
-                <div className="mx-1 mt-2 rounded-md border border-sidebar-border/60 bg-sidebar-accent/30 p-3">
+                <div className="mx-2 mt-2 rounded-lg border border-sidebar-border/60 bg-sidebar-accent/40 p-3">
                   <p className="text-xs font-semibold text-sidebar-foreground">Nenhuma área liberada</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-sidebar-foreground/70">
+                  <p className="mt-1 text-[11px] leading-relaxed text-sidebar-muted">
                     Sua conta ainda não tem permissão para nenhuma área do sistema.
                     Peça a um administrador para liberar os acessos em Configurações.
                   </p>
                 </div>
               )}
               {orderedHubs.length > 0 && (
-                <p className="px-3 py-1.5 mt-1 ed-eyebrow text-sidebar-muted">Áreas</p>
+                <p className={sectionLabelClass}>Áreas</p>
               )}
               {orderedHubs.map((hub) => {
                 const active = isHubActive(hub);
@@ -561,8 +571,8 @@ export default function AppLayout({ children, printMode = false }: { children: R
                       onFocus={() => prefetch(hub.path)}
                       className={() => cn(navItemClass(active), !mobile && 'cursor-grab active:cursor-grabbing select-none')}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <hub.icon className="h-4 w-4 shrink-0" />
+                      <div className="flex items-center gap-3 min-w-0">
+                        <hub.icon className={navIconClass(active)} weight={active ? 'bold' : 'regular'} />
                         <span className="truncate">{hub.label}</span>
                       </div>
                     </NavLink>
@@ -573,15 +583,15 @@ export default function AppLayout({ children, printMode = false }: { children: R
               {!mobile && hasCustomOrder && (
                 <button
                   onClick={() => { resetOrder(); }}
-                  className="w-full text-left px-3 py-1.5 mt-1 ed-eyebrow text-sidebar-muted hover:text-sidebar-foreground transition-colors"
+                  className="w-full text-left px-4 py-2 mt-1 text-[11px] font-medium text-sidebar-muted hover:text-sidebar-foreground transition-colors"
                 >
                   ↺ Restaurar ordem padrão
                 </button>
               )}
 
               {filteredSystemItems.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-sidebar-border/40">
-                  <p className="px-3 py-1 ed-eyebrow text-sidebar-muted">Sistema</p>
+                <div className="mt-2 pt-2 border-t border-sidebar-border/40">
+                  <p className={sectionLabelClass}>Sistema</p>
                   {filteredSystemItems.map((item) => (
                     <NavLink
                       key={item.path}
@@ -591,15 +601,17 @@ export default function AppLayout({ children, printMode = false }: { children: R
                       onFocus={() => prefetch(item.path)}
                       className={({ isActive }) => navItemClass(isActive)}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <item.icon className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{item.label}</span>
-                        {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
-                          <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
-                            {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
-                          </span>
-                        )}
-                      </div>
+                      {({ isActive }) => (
+                        <div className="flex items-center gap-3 min-w-0 w-full">
+                          <item.icon className={navIconClass(isActive)} weight={isActive ? 'bold' : 'regular'} />
+                          <span className="truncate">{item.label}</span>
+                          {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
+                            <span className="ml-auto text-[12px] font-medium tabular-nums text-sidebar-muted">
+                              {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </NavLink>
                   ))}
                 </div>
@@ -610,14 +622,14 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
         {/* ── Footer ── */}
         <div className={cn(
-          "border-t border-sidebar-border shrink-0",
-          isCollapsed ? "px-2 py-3 flex flex-col items-center gap-1.5" : "px-3 py-2.5"
+          "border-t border-sidebar-border/60 shrink-0",
+          isCollapsed ? "px-2 py-3 flex flex-col items-center gap-2" : "px-3 py-3"
         )}>
           {isCollapsed ? (
             <>
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
-                  <button onClick={toggleSidebar} className="flex items-center justify-center h-8 w-8 rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+                  <button onClick={toggleSidebar} className="flex items-center justify-center h-9 w-9 rounded-md text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
                     <PanelLeftOpen className="h-4 w-4" />
                   </button>
                 </TooltipTrigger>
@@ -625,7 +637,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
               </Tooltip>
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
-                  <button onClick={signOut} className="flex items-center justify-center h-8 w-8 rounded-lg text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150">
+                  <button onClick={signOut} className="flex items-center justify-center h-9 w-9 rounded-md text-sidebar-muted hover:text-destructive hover:bg-destructive/10 transition-colors">
                     <LogOut className="h-4 w-4" />
                   </button>
                 </TooltipTrigger>
@@ -633,37 +645,35 @@ export default function AppLayout({ children, printMode = false }: { children: R
               </Tooltip>
             </>
           ) : (
-            <div className="flex flex-col gap-1.5">
-              {/* User row */}
-              <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-sidebar-accent/40">
-                <div className="h-7 w-7 rounded-full bg-sidebar-primary/20 ring-1 ring-sidebar-primary/30 flex items-center justify-center shrink-0 text-sidebar-primary font-bold text-xs">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2.5 px-1.5 py-1">
+                <div className="h-8 w-8 rounded-full bg-sidebar-accent ring-1 ring-sidebar-border flex items-center justify-center shrink-0 text-sidebar-foreground font-semibold text-[11px]">
                   {currentProfile?.full_name
                     ? currentProfile.full_name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('')
                     : '?'}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-sidebar-foreground/90 truncate leading-tight">
+                  <p className="text-[12px] font-medium text-sidebar-foreground truncate leading-tight">
                     {currentProfile?.full_name || 'Usuário'}
                   </p>
-                  <p className="text-xs text-sidebar-muted truncate leading-tight">
+                  <p className="text-[11px] text-sidebar-muted truncate leading-tight mt-0.5">
                     {currentRoles.length > 0
                       ? ROLES.find(r => r.key === currentRoles[0].role)?.label || currentRoles[0].role
                       : (import.meta.env.VITE_APP_VERSION?.split('-')[0] || 'ERP Industrial')}
                   </p>
                 </div>
               </div>
-              {/* Action row */}
               <div className="flex items-center gap-1">
                 <button
                   onClick={signOut}
-                  className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm font-medium text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all duration-150"
+                  className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[13px] font-medium text-sidebar-muted hover:text-destructive hover:bg-destructive/10 transition-colors"
                 >
                   <LogOut className="h-3.5 w-3.5 shrink-0" />
                   <span>Sair</span>
                 </button>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
-                    <button onClick={toggleSidebar} className="flex items-center justify-center h-7 w-7 rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors shrink-0">
+                    <button onClick={toggleSidebar} className="flex items-center justify-center h-8 w-8 rounded-md text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors shrink-0">
                       <PanelLeftClose className="h-3.5 w-3.5" />
                     </button>
                   </TooltipTrigger>
@@ -691,7 +701,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
             <item.icon className="h-4 w-4" />
             <span>{item.label}</span>
             {item.path === '/admin/aprovacao-ordens-compra' && purchaseApprovalCount > 0 && (
-              <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+              <span className="ml-auto text-[12px] font-medium tabular-nums text-muted-foreground">
                 {purchaseApprovalCount > 99 ? '99+' : purchaseApprovalCount}
               </span>
             )}
@@ -700,6 +710,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
       </DropdownMenuContent>
     </DropdownMenu>
   ) : null;
+
+  // Slot desktop = painel + gutters (12px cada lado). 248+24 / 64+24.
+  const desktopSidebarSlot = sidebarCollapsed ? 'w-[88px]' : 'w-[272px]';
 
   return (
     <AppLayoutContext.Provider value={true}>
@@ -721,7 +734,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
             />
           )}
 
-          {/* Mobile sidebar */}
+          {/* Mobile sidebar — painel flutuante com margem (mesma linguagem do desktop) */}
           <aside
             ref={mobileDrawerRef}
             role="dialog"
@@ -729,22 +742,26 @@ export default function AppLayout({ children, printMode = false }: { children: R
             aria-label="Menu de navegação"
             aria-hidden={!mobileOpen}
             className={cn(
-            'fixed inset-y-0 left-0 z-50 w-[260px] flex flex-col transform transition-transform duration-200 ease-out md:hidden',
-            mobileOpen ? 'translate-x-0' : '-translate-x-full',
-            printMode && 'print:hidden'
-          )}
-            style={{ boxShadow: mobileOpen ? '4px 0 30px -4px rgba(0,0,0,0.5)' : 'none' }}
+              'fixed z-50 flex flex-col transform transition-transform duration-200 ease-out md:hidden',
+              'top-3 bottom-3 left-3 w-[min(260px,calc(100vw-1.5rem))]',
+              mobileOpen ? 'translate-x-0' : '-translate-x-[calc(100%+1.5rem)]',
+              printMode && 'print:hidden'
+            )}
           >
-            {sidebarContent(true)}
+            <div className="sidebar-panel flex flex-col h-full w-full shadow-[0_12px_40px_-12px_rgba(0,0,0,0.55)]">
+              {sidebarContent(true)}
+            </div>
           </aside>
 
-          {/* Desktop sidebar — densificação 2026-10: 200px expandida / 56px colapsada */}
+          {/* Desktop sidebar — painel flutuante 248px / 64px + gutter 12px */}
           <aside className={cn(
-            'hidden md:flex shrink-0 border-r border-sidebar-border flex-col sticky top-0 h-screen transition-all duration-200 ease-in-out overflow-hidden',
-            sidebarCollapsed ? 'w-[56px]' : 'w-[200px]',
+            'hidden md:flex shrink-0 sticky top-0 h-screen box-border p-3 transition-all duration-200 ease-in-out',
+            desktopSidebarSlot,
             printMode && 'print:hidden'
           )}>
-            {sidebarContent(false)}
+            <div className="sidebar-panel flex flex-col h-full w-full min-h-0 shadow-[0_8px_30px_-14px_rgba(0,0,0,0.45)]">
+              {sidebarContent(false)}
+            </div>
           </aside>
 
           <div className="flex-1 min-w-0 flex flex-col min-h-screen relative overflow-x-hidden">

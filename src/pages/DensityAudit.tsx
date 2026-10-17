@@ -1,7 +1,7 @@
 /**
  * DensityAudit — medição DEV do pacote de densificação (2026-10).
  *
- * Espelha a geometria de Pedidos de Venda (sidebar 200px + header compact +
+ * Espelha a geometria de Pedidos de Venda (sidebar flutuante 248px + header compact +
  * SalesOperationsRail + tabela 1 linha) com fixtures, sem login/Supabase.
  * Só existe em import.meta.env.DEV (ver DESIGN_PREVIEW_ROUTES em App.tsx).
  *
@@ -58,26 +58,28 @@ export default function DensityAudit() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex" data-density-audit>
-      {/* Sidebar mock — mesmas larguras do AppLayout densificado */}
-      <aside className="hidden md:flex w-[200px] shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground flex-col">
-        <div className="px-3 py-2 border-b border-sidebar-border">
-          <p className="ed-display text-lg leading-none">SQUAD</p>
-          <p className="ed-eyebrow text-sidebar-muted mt-1">Gestão Industrial</p>
+      {/* Sidebar mock — mesma geometria do AppLayout flutuante (248 + gutter 12) */}
+      <aside className="hidden md:flex w-[272px] shrink-0 sticky top-0 h-screen box-border p-3">
+        <div className="sidebar-panel flex flex-col h-full w-full bg-sidebar text-sidebar-foreground shadow-[0_8px_30px_-14px_rgba(0,0,0,0.45)]">
+          <div className="px-4 pt-4 pb-3 border-b border-sidebar-border/60">
+            <p className="ed-display text-[22px] uppercase tracking-tight leading-none">Squad·Shoes</p>
+            <p className="mt-2 text-[10px] font-medium tracking-[0.14em] uppercase text-sidebar-muted">Gestão Industrial</p>
+          </div>
+          <nav className="p-2 space-y-0.5 text-[13px]">
+            {['Painel', 'Pedidos de Venda', 'Estoque', 'Kanban'].map((label, i) => (
+              <div
+                key={label}
+                className={
+                  i === 1
+                    ? 'border-l-[3px] border-primary pl-[13px] pr-3 py-2.5 text-sidebar-foreground font-medium'
+                    : 'border-l-[3px] border-transparent pl-[13px] pr-3 py-2.5 text-sidebar-muted'
+                }
+              >
+                {label}
+              </div>
+            ))}
+          </nav>
         </div>
-        <nav className="p-2 space-y-0.5 text-[12px]">
-          {['Painel', 'Pedidos de Venda', 'Estoque', 'Kanban'].map((label, i) => (
-            <div
-              key={label}
-              className={
-                i === 1
-                  ? 'border-l-[3px] border-primary pl-[10px] pr-3 py-1 font-semibold'
-                  : 'border-l-2 border-transparent px-3 py-1 text-sidebar-foreground/60'
-              }
-            >
-              {label}
-            </div>
-          ))}
-        </nav>
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col">
