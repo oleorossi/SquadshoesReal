@@ -953,7 +953,7 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
       return;
     }
     const result = await addSheet.mutateAsync(form);
-    if (result) onCreated(result.id);
+    if (result?.sheet?.id) onCreated(result.sheet.id);
   };
 
   return (

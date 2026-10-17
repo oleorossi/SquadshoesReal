@@ -23,7 +23,7 @@ export function matchCategory(productCategory: string): string {
 }
 
 export const emptyMaterialForm: SheetMaterialFormData = {
-  product_id: null, group_id: null, quantity_per_unit: 0, consumption_per_size: {}, color: '', width: '', weight: '', supplier: '', notes: '', sizes: '', consumption_sector: '',
+  product_id: null, group_id: null, quantity_per_unit: 0, consumption_per_size: {}, color: '', width: '', weight: '', supplier: '', notes: '', sizes: '', consumption_sector: null,
   line_kind: 'material', cost_mode: 'consumo_x_preco', is_active: true, include_in_consumption: true,
 };
 

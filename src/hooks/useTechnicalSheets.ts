@@ -304,8 +304,8 @@ export type SheetMaterialFormData = {
   supplier: string;
   notes: string;
   sizes: string;
-  /** Setor físico que recebe e consome este item no início da operação. */
-  consumption_sector: string;
+  /** Setor físico que recebe e consome este item. NULL = ainda não definido (kit/rascunho). */
+  consumption_sector: string | null;
   part_name?: string | null;
   draft_name?: string | null;
   line_kind?: 'material' | 'ajuste';
@@ -670,22 +670,27 @@ export function useAddSheet() {
       if (error) throw error;
 
       // Kit de materiais base da categoria → linhas na Precificação (rascunho).
+      let kitApplied = 0;
+      let kitError: string | null = null;
       try {
-        const n = await applyBaseMaterialKitToSheet(data.id);
-        if (n > 0) {
-          toast.message(`${n} material(is) base aplicados na Precificação.`);
-        }
+        kitApplied = await applyBaseMaterialKitToSheet(data.id);
       } catch (kitErr) {
+        kitError = kitErr instanceof Error ? kitErr.message : String(kitErr);
         console.warn('[useAddSheet] falha ao aplicar kit de materiais base:', kitErr);
       }
 
-      return data;
+      return { sheet: data, kitApplied, kitError };
     },
-    onSuccess: (_data, _variables) => {
+    onSuccess: (result) => {
       invalidateTechnicalSheets(qc);
       invalidateSheetAudit(qc);
       qc.invalidateQueries({ queryKey: ['sheet_materials'] });
       toast.success('Ficha técnica criada!');
+      if (result.kitApplied > 0) {
+        toast.message(`${result.kitApplied} material(is) base aplicados na Precificação.`);
+      } else if (result.kitError) {
+        toast.error(`Ficha criada, mas o kit base não foi aplicado: ${result.kitError}`);
+      }
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
   });

@@ -21,6 +21,17 @@ describe('Materiais base · precificação rascunho', () => {
     expect(sql).toContain("'Rasteirinha'");
   });
 
+  it('fix do kit apply usa consumption_sector NULL (não string vazia)', () => {
+    const fix = resolve(
+      ROOT,
+      'supabase/migrations/20270101042100_fix-kit-apply-consumption-sector-null.sql',
+    );
+    expect(existsSync(fix)).toBe(true);
+    const sql = readFileSync(fix, 'utf8');
+    expect(sql).toContain('NULL, -- NUNCA');
+    expect(sql).toContain('apply_base_material_kit_to_sheet');
+  });
+
   it('UI e navegação concentram materiais base em Engenharia', () => {
     const nav = readFileSync(resolve(ROOT, 'src/data/navigation.ts'), 'utf8');
     expect(nav).toContain("'/engenharia/materiais-base'");

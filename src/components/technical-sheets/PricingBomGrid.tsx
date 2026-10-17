@@ -7,11 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   useSheetMaterials, useUpdateSheetMaterial, useAddSheetMaterial, useDeleteSheetMaterial,
   type SheetFormData,
 } from '@/hooks/useTechnicalSheets';
 import { useProducts } from '@/hooks/useProducts';
+import { applyBaseMaterialKitToSheet } from '@/hooks/useBaseMaterialKits';
 import { formatCurrency } from '@/lib/utils';
 import {
   allowsDraftMaterials,
@@ -47,6 +50,7 @@ interface Props {
  */
 export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) {
   const { data: materials = [], isLoading } = useSheetMaterials(sheetId);
+  const qc = useQueryClient();
   const updateMat = useUpdateSheetMaterial(sheetId);
   const addMat = useAddSheetMaterial();
   const deleteMat = useDeleteSheetMaterial(sheetId);
@@ -58,6 +62,7 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
   const [draftQty, setDraftQty] = useState('1');
   const [addMode, setAddMode] = useState<'estoque' | 'rascunho' | 'ajuste'>('estoque');
   const [productId, setProductId] = useState('');
+  const [applyingKit, setApplyingKit] = useState(false);
 
   const specRows: SpecRow[] = useMemo(() => {
     const rows: SpecRow[] = [];
@@ -109,15 +114,20 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
   const totalMp = specsTotal + bomTotal;
   const unlinked = bomLines.filter(isUnlinkedDraftMaterial);
 
+  const blankLineMeta = {
+    color: '', width: '', weight: '', supplier: '', notes: '', sizes: '',
+    // CHECK: NULL ou setor canônico — nunca string vazia
+    consumption_sector: null as unknown as string,
+  };
+
   const handleAdd = async () => {
     if (addMode === 'ajuste') {
       await addMat.mutateAsync({
         sheetId,
         data: {
-          product_id: null as any,
+          product_id: null,
           quantity_per_unit: 1,
-          color: '', width: '', weight: '', supplier: '', notes: '', sizes: '',
-          consumption_sector: '',
+          ...blankLineMeta,
           part_name: draftName.trim() || 'Ajuste',
           draft_name: draftName.trim() || 'Ajuste',
           line_kind: 'ajuste',
@@ -125,7 +135,7 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
           cost_per_pair: Number(draftPrice) || 0,
           is_active: true,
           include_in_consumption: false,
-        } as any,
+        },
       });
     } else if (addMode === 'rascunho') {
       if (!canDraft) {
@@ -134,10 +144,9 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
       await addMat.mutateAsync({
         sheetId,
         data: {
-          product_id: null as any,
+          product_id: null,
           quantity_per_unit: Number(draftQty) || 1,
-          color: '', width: '', weight: '', supplier: '', notes: '', sizes: '',
-          consumption_sector: '',
+          ...blankLineMeta,
           part_name: draftName.trim(),
           draft_name: draftName.trim(),
           line_kind: 'material',
@@ -145,7 +154,7 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
           estimated_unit_price: Number(draftPrice) || 0,
           is_active: true,
           include_in_consumption: false,
-        } as any,
+        },
       });
     } else {
       if (!productId) return;
@@ -156,14 +165,13 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
           product_id: productId,
           group_id: prod?.group_id || null,
           quantity_per_unit: Number(draftQty) || 1,
-          color: '', width: '', weight: '', supplier: '', notes: '', sizes: '',
-          consumption_sector: '',
+          ...blankLineMeta,
           part_name: prod?.name || '',
           line_kind: 'material',
           cost_mode: 'consumo_x_preco',
           is_active: true,
           include_in_consumption: true,
-        } as any,
+        },
       });
     }
     setAddingDraft(false);
@@ -172,6 +180,22 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
     setDraftQty('1');
     setProductId('');
   };
+
+  const handleApplyKit = async () => {
+    setApplyingKit(true);
+    try {
+      const n = await applyBaseMaterialKitToSheet(sheetId);
+      await qc.invalidateQueries({ queryKey: ['sheet_materials', sheetId] });
+      if (n > 0) toast.success(`${n} material(is) base aplicados.`);
+      else toast.message('Nenhum item a aplicar (kit ausente ou já aplicado).');
+    } catch (err) {
+      toast.error(`Erro ao aplicar kit: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setApplyingKit(false);
+    }
+  };
+
+  const hasKitLines = bomLines.some((l: any) => l.from_kit_item_id);
 
   return (
     <div className="space-y-3">
@@ -259,6 +283,18 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
         <div className="border-t p-3 space-y-3 bg-muted/10">
           {!addingDraft ? (
             <div className="flex flex-wrap gap-2">
+              {!hasKitLines && canDraft && form.shoe_category && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={applyingKit}
+                  onClick={() => void handleApplyKit()}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {applyingKit ? 'Aplicando…' : `Aplicar kit ${form.shoe_category}`}
+                </Button>
+              )}
               <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => { setAddMode('estoque'); setAddingDraft(true); }}>
                 <Plus className="h-3.5 w-3.5" /> Do estoque
               </Button>
