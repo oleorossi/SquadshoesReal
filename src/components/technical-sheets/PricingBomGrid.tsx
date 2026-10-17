@@ -195,7 +195,7 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
     }
   };
 
-  const hasKitLines = bomLines.some((l: any) => l.from_kit_item_id);
+  const hasKitLines = bomLines.some((l) => Boolean((l as { from_kit_item_id?: string | null }).from_kit_item_id));
 
   return (
     <div className="space-y-3">
