@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Link } from 'react-router-dom';
 import { CircleNotch as Loader2, UserMinus, CalendarX, Users, CheckCircle, CalendarBlank, CaretRight, Warning as AlertTriangle, FilePdf } from '@phosphor-icons/react';
 import { printRhReport, type RhCell } from '@/lib/printRhReport';
 import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
@@ -59,6 +60,12 @@ interface FaltaRow {
   schedule: WorkSchedule | null;
   /** Minutos de jornada que entram na conta de horas (dias × jornada esperada). */
   hoursMinutes: number;
+}
+
+interface PendingPunchRow {
+  id: string;
+  name: string;
+  days: string[];
 }
 
 function monthsBetween(from: string, to: string): { y: number; m: number }[] {
@@ -225,11 +232,11 @@ export default function RelatorioFaltas() {
     [coverage?.coveredDates],
   );
 
-  const { data: rows = [], isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['relatorio-faltas', from, to, employees.length, schedules.length, holidayKey, absenceKey, swapKey, coverageKey],
     enabled: !!from && !!to && from <= to && employees.length > 0 && !absencesLoading && !coverageLoading,
     staleTime: 60_000,
-    queryFn: async (): Promise<FaltaRow[]> => {
+    queryFn: async (): Promise<{ rows: FaltaRow[]; pending: PendingPunchRow[] }> => {
       // Batidas do período via fonte ÚNICA paginada (mesma da folha e do calendário).
       const recs = await fetchTimeRecordsInRange(from, to);
 
@@ -239,6 +246,7 @@ export default function RelatorioFaltas() {
       }
 
       const out: FaltaRow[] = [];
+      const pending: PendingPunchRow[] = [];
       for (const emp of employees.filter(e => employeeOverlapsEmploymentRange(e, from, to))) {
         const empPunches = identity.byEmployee.get(emp.id) || new Map<string, string[]>();
         const sch = (emp.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
@@ -257,6 +265,13 @@ export default function RelatorioFaltas() {
           dailyRate: Number(emp.daily_rate) || 0,
         });
         const faltas = (res.falta_dates || []).slice().sort((a, b) => a.localeCompare(b));
+        const pendingDays = (res.day_ledger || [])
+          .filter((d) => d.status === 'pending')
+          .map((d) => d.date)
+          .sort((a, b) => a.localeCompare(b));
+        if (pendingDays.length > 0) {
+          pending.push({ id: emp.id, name: emp.name, days: pendingDays });
+        }
         if (faltas.length > 0) {
           out.push({
             id: emp.id, name: emp.name, days: faltas,
@@ -264,15 +279,21 @@ export default function RelatorioFaltas() {
           });
         }
       }
-      return out.sort((a, b) => b.days.length - a.days.length);
+      return {
+        rows: out.sort((a, b) => b.days.length - a.days.length),
+        pending: pending.sort((a, b) => b.days.length - a.days.length),
+      };
     },
   });
+  const rows = data?.rows ?? [];
+  const pendingRows = data?.pending ?? [];
 
   const totals = useMemo(() => {
     const dias = rows.reduce((s, r) => s + r.days.length, 0);
     const horasMin = rows.reduce((s, r) => s + r.hoursMinutes, 0);
-    return { funcionarios: rows.length, dias, horasMin };
-  }, [rows]);
+    const pendingDias = pendingRows.reduce((s, r) => s + r.days.length, 0);
+    return { funcionarios: rows.length, dias, horasMin, pendingFunc: pendingRows.length, pendingDias };
+  }, [rows, pendingRows]);
 
   const periodBtn = (m: Mode, label: string) => (
     <Button type="button" variant={mode === m ? 'default' : 'outline'} size="sm" className="h-9" onClick={() => setMode(m)}>{label}</Button>
@@ -348,6 +369,32 @@ export default function RelatorioFaltas() {
             Ponto importado só até <b>{fmtDia(coverage!.maxCovered!)}</b>. Os dias após essa data não entram no relatório
             (não foram lidos do relógio) — importe o arquivo até {fmtDia(to)} para o período completo.
           </span>
+        </div>
+      )}
+
+      {totals.pendingDias > 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-900 dark:text-amber-300 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-2 font-semibold">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {totals.pendingDias} dia{totals.pendingDias === 1 ? '' : 's'} com batida pendente — não calculado
+              ({totals.pendingFunc} funcionário{totals.pendingFunc === 1 ? '' : 's'})
+            </p>
+            <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+              <Link to="/rh?tab=ponto&subtab=pendencias">Resolver em Pendências</Link>
+            </Button>
+          </div>
+          <ul className="space-y-1 max-h-28 overflow-y-auto">
+            {pendingRows.slice(0, 12).map((p) => (
+              <li key={p.id}>
+                <span className="font-medium">{p.name}</span>
+                <span className="text-muted-foreground"> · {p.days.map(fmtDia).join(', ')}</span>
+              </li>
+            ))}
+            {pendingRows.length > 12 && (
+              <li className="text-muted-foreground">+{pendingRows.length - 12} outros…</li>
+            )}
+          </ul>
         </div>
       )}
 

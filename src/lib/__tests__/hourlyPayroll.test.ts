@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { splitDayMinutes, calculateHourlyPayroll, type HourlyDayInput } from '../hourlyPayroll';
 
-// Folha por hora trabalhada (refocus 2026-06-01). Trava a regra:
+// Folha por hora trabalhada. Trava a regra (atualizada 2026-10-17):
 // VH = salário/220; 1,5× após 18h / sáb / dom / feriado; não acumula;
-// almoço não-batido (2 batidas, dia >6h) deduz 1h padrão;
-// nº ÍMPAR de batidas = INCONSISTENTE → 0h (fica de fora; resolver no Pendências).
+// só par ≥4 batidas paga; 1/2/3 e ímpar ≥5 = INCONSISTENTE → 0h (Pendências).
 const WED = 3, SAT = 6, SUN = 0;
 
 describe('splitDayMinutes', () => {
@@ -13,90 +12,61 @@ describe('splitDayMinutes', () => {
     expect(r).toEqual({ normal: 540, premium: 0, incomplete: false });
   });
 
-  it('n=3 com saída real (08/13/18): infere almoço e conta 9h — não é mais pendência', () => {
-    const r = splitDayMinutes(['08:00', '13:00', '18:00'], WED, false);
-    expect(r).toEqual({ normal: 540, premium: 0, incomplete: false });
-  });
-
-  it('n=3 com saída 21:28: tarde conta e os minutos após 18:00 viram HE', () => {
-    const r = splitDayMinutes(['08:00', '13:00', '21:28'], WED, false);
-    expect(r.incomplete).toBe(false);
-    expect(r.normal).toBe(540);
-    expect(r.premium).toBe(208); // 21:28 − 18:00
-  });
-
-  it('n=3 ainda no almoço (08/12/13): falta a saída final → pendência', () => {
+  it('n=3 (qualquer) vira pendência — decisão 2026-10-17', () => {
+    expect(splitDayMinutes(['08:00', '13:00', '18:00'], WED, false))
+      .toEqual({ normal: 0, premium: 0, incomplete: true });
+    expect(splitDayMinutes(['08:00', '13:00', '21:28'], WED, false).incomplete).toBe(true);
     expect(splitDayMinutes(['08:00', '12:00', '13:00'], WED, false))
       .toEqual({ normal: 0, premium: 0, incomplete: true });
   });
 
   it('ímpar ≥5 continua pendência — decisão 2026-07-30 intacta', () => {
-    // ⚠ Decisão do dono 2026-07-30 (auditoria RH, D1/P2) SUPERSEDE a de
-    // 2026-06-21, que tratava a última batida como saída quando n ≥ 5. A regra
-    // antiga pagava o span 1º→último e produziu jornadas de 13h a 21h32 num
-    // único dia. Pior: o motor SQL `calculate_day_summary` marcava esses mesmos
-    // dias como 'irregular' e a tela de Pendências os listava — o dia aparecia
-    // como pendência A RESOLVER e era pago integralmente ao mesmo tempo.
-    // 62 dias assim em produção. Alinhar o TS com o SQL é o que faz o dia cair
-    // na fila e não ser pago até alguém corrigir as batidas.
     const cincoBatidas = splitDayMinutes(['08:00', '12:00', '13:00', '18:00', '20:00'], WED, false);
     expect(cincoBatidas).toEqual({ normal: 0, premium: 0, incomplete: true });
-
-    expect(splitDayMinutes(['08:00', '12:00', '13:00'], WED, false).incomplete).toBe(true);
     expect(splitDayMinutes(['08:06', '12:01', '12:59', '18:09', '20:09'], WED, false).incomplete).toBe(true);
   });
 
   it('hora que não existe no relógio vira pendência, nunca pagamento', () => {
-    // `timeToMin` só soma h*60+m, sem checar faixa: '29:59' virava 1.799 min e
-    // ['08:00','29:59'] era PAGO como 20h59. O regex da RPC `complete_punches`
-    // aceita '29:59', então o valor chega do banco.
     expect(splitDayMinutes(['08:00', '29:59'], WED, false)).toEqual({ normal: 0, premium: 0, incomplete: true });
     expect(splitDayMinutes(['08:00', '12:75'], WED, false).incomplete).toBe(true);
-    // A anotação '*' (batida lançada à mão pelo RH) continua sendo tolerada.
-    expect(splitDayMinutes(['08:00', '18:00*'], WED, false).incomplete).toBe(false);
+    // 2 batidas (mesmo com *) também são pendência agora.
+    expect(splitDayMinutes(['08:00', '18:00*'], WED, false).incomplete).toBe(true);
   });
 
-  it('só entrada+saída longa (08/18): deduz 1h almoço não-batido → 9h', () => {
-    expect(splitDayMinutes(['08:00', '18:00'], WED, false)).toEqual({ normal: 540, premium: 0, incomplete: false });
+  it('2 batidas (entrada+saída) viram pendência — sem inferir almoço', () => {
+    expect(splitDayMinutes(['08:00', '18:00'], WED, false))
+      .toEqual({ normal: 0, premium: 0, incomplete: true });
+    expect(splitDayMinutes(['08:00', '13:00'], WED, false).incomplete).toBe(true);
+    expect(splitDayMinutes(['08:00', '12:00'], WED, false).incomplete).toBe(true);
   });
 
-  it('2 batidas curtas (08/13, <6h): não deduz almoço → 5h', () => {
-    expect(splitDayMinutes(['08:00', '13:00'], WED, false)).toEqual({ normal: 300, premium: 0, incomplete: false });
-  });
-
-  it('meio período (08/12): 4h, sem dedução', () => {
-    expect(splitDayMinutes(['08:00', '12:00'], WED, false)).toEqual({ normal: 240, premium: 0, incomplete: false });
-  });
-
-  it('vai até 20h (completo): 9h normal + 2h após 18h a 1,5×', () => {
+  it('vai até 20h (completo 4 batidas): 9h normal + 2h após 18h a 1,5×', () => {
     const r = splitDayMinutes(['08:00', '12:00', '13:00', '20:00'], WED, false);
     expect(r).toEqual({ normal: 540, premium: 120, incomplete: false });
   });
 
-  it('sábado o dia inteiro é 1,5× (entrada+saída deduz almoço) → 9h premium', () => {
-    expect(splitDayMinutes(['08:00', '18:00'], SAT, false)).toEqual({ normal: 0, premium: 540, incomplete: false });
+  it('sábado com só 2 batidas é pendência; com 4 é tudo 1,5×', () => {
+    expect(splitDayMinutes(['08:00', '18:00'], SAT, false).incomplete).toBe(true);
+    expect(splitDayMinutes(['08:00', '12:00', '13:00', '18:00'], SAT, false))
+      .toEqual({ normal: 0, premium: 540, incomplete: false });
   });
 
   it('domingo completo: 9h premium (almoço no gap)', () => {
     expect(splitDayMinutes(['08:00', '12:00', '13:00', '18:00'], SUN, false)).toEqual({ normal: 0, premium: 540, incomplete: false });
   });
 
-  it('feriado n=3 com saída real: conta a jornada (tudo 1,5×), não zera', () => {
+  it('feriado n=3 é pendência (não paga)', () => {
     const r = splitDayMinutes(['08:00', '13:00', '18:00'], WED, true);
-    expect(r).toEqual({ normal: 0, premium: 540, incomplete: false });
+    expect(r).toEqual({ normal: 0, premium: 0, incomplete: true });
   });
 
   it('tolera batida assumida com * e minutos não-zero (12:37*, 18:00*)', () => {
-    // 08:00, 12:37*, 13:00, 18:00*: pausa de 23min em 12–14 → completa pra 1h.
-    // Trabalhado bruto 577min − 37min (top-up do almoço) = 540 = 9h.
     const r = splitDayMinutes(['08:00', '12:37*', '13:00', '18:00*'], WED, false);
     expect(r.normal).toBe(540);
     expect(r.premium).toBe(0);
   });
 
   it('almoço curto batido (Quesia: 13:00→13:05 = 5min) é completado pra 1h → 8h59', () => {
-    // pares (08:01→13:00)=299 + (13:05→18:00)=295 = 594; pausa em 12–14 = 5min
-    // → top-up 55min → 539 = 8h59.
     const r = splitDayMinutes(['08:01', '13:00', '13:05', '18:00'], WED, false);
     expect(r.normal).toBe(539);
     expect(r.premium).toBe(0);
@@ -104,13 +74,8 @@ describe('splitDayMinutes', () => {
 
   it('pausa LONGA batida (08/11/15/18 = saiu 4h no meio) usa a real, sem forçar 1h → 6h', () => {
     const r = splitDayMinutes(['08:00', '11:00', '15:00', '18:00'], WED, false);
-    expect(r.normal).toBe(360); // 3h manhã + 3h tarde; pausa de 12–14 já > 1h
+    expect(r.normal).toBe(360);
     expect(r.premium).toBe(0);
-  });
-
-  it('batida assumida só entrada+saída (08:09, 18:00*) deduz 1h almoço', () => {
-    const r = splitDayMinutes(['08:09', '18:00*'], WED, false);
-    expect(r.normal).toBe((1080 - 489) - 60); // span 591 − 60 = 531
   });
 
   it('batida única ou vazia: 0h (única marca incompleto)', () => {
@@ -132,8 +97,8 @@ describe('calculateHourlyPayroll', () => {
     expect(r.net_value).toBe(90);
   });
 
-  it('hora 1,5×: sábado de 9h com VH 10 = R$ 135', () => {
-    const r = calculateHourlyPayroll(2200, [day('2026-06-06', SAT, ['08:00', '18:00'])], 0);
+  it('hora 1,5×: sábado de 9h (4 batidas) com VH 10 = R$ 135', () => {
+    const r = calculateHourlyPayroll(2200, [day('2026-06-06', SAT, ['08:00', '12:00', '13:00', '18:00'])], 0);
     expect(r.premium_minutes).toBe(540);
     expect(r.premium_value).toBe(135);
     expect(r.gross_value).toBe(135);
@@ -146,11 +111,11 @@ describe('calculateHourlyPayroll', () => {
     expect(r.net_value).toBe(40);
   });
 
-  it('dia com 3 batidas e saída real entra no cálculo (almoço inferido)', () => {
+  it('dia com 3 batidas NÃO entra no cálculo — resolve no Pendências', () => {
     const r = calculateHourlyPayroll(2200, [day('2026-06-03', WED, ['08:00', '13:00', '18:00'])], 0);
-    expect(r.incomplete_days).toBe(0);
-    expect(r.normal_minutes).toBe(540);
-    expect(r.gross_value).toBe(90);
+    expect(r.incomplete_days).toBe(1);
+    expect(r.normal_minutes).toBe(0);
+    expect(r.gross_value).toBe(0);
   });
 
   it('ímpar ≥5 NÃO entra no cálculo, só conta pro alerta (resolve no Pendências)', () => {

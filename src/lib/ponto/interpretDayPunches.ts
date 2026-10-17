@@ -1,11 +1,10 @@
 // interpretDayPunches.ts — lê uma lista plana de batidas e diz QUAL marcação
-// faltou, quando dá pra inferir com segurança.
+// faltou, pra pré-preencher os 4 slots nomeados na UI de pendências.
 //
-// Decisão do dono 2026-09-12: 3 batidas em que a ÚLTIMA já é saída de expediente
-// (volta ~13h + saída 18h30 / 21h28) NÃO são "falta saída final". A pessoa só
-// esqueceu a saída (ou a volta) do almoço. O diário da folha passa a contar a
-// tarde e a HE depois das 18h. 1 batida e ímpar ≥5 continuam pendência
-// (auditoria RH 2026-07-30 — jornadas de 13h–21h).
+// Decisão do dono 2026-10-17: 1, 2 ou 3 batidas SEMPRE são pendência — o RH
+// completa na fila. Acaba a inferência que pagava n=2 (almoço 1h) e n=3 com
+// saída real (supercede 2026-09-12). Este módulo ainda classifica *qual* slot
+// falta (mapThreePunchesToNamedSlots), mas threePunchesStayPending é sempre true.
 
 export const LUNCH_START_MIN = 12 * 60;
 export const LUNCH_END_MIN = 13 * 60;
@@ -45,30 +44,22 @@ export function sortedPunchMinutes(punches: string[]): number[] | null {
 }
 
 /**
- * 3 batidas ordenadas. Última ainda na janela de almoço → falta a saída final
- * (pendência). Última depois do almoço → a saída existe; falta a pausa do meio.
+ * 3 batidas ordenadas — só classifica QUAL slot falta pra UI.
+ * Sempre `incomplete: true` (decisão 2026-10-17): não paga, não some da fila.
+ * `intervals` fica vazio de propósito (o motor não consome mais este caminho).
  */
 export function interpretThreePunches(sortedMinutes: number[]): ThreePunchInterpretation {
   if (sortedMinutes.length !== 3) {
     return { kind: 'missing_final_exit', incomplete: true, intervals: [] };
   }
-  const [a, b, c] = sortedMinutes;
+  const [, b, c] = sortedMinutes;
   if (c <= LUNCH_END_MIN) {
     return { kind: 'missing_final_exit', incomplete: true, intervals: [] };
   }
   if (b >= LUNCH_MID_MIN) {
-    const lunchOut = Math.min(LUNCH_START_MIN, b);
-    return {
-      kind: 'missing_lunch_out',
-      incomplete: false,
-      intervals: lunchOut > a ? [[a, lunchOut], [b, c]] : [[b, c]],
-    };
+    return { kind: 'missing_lunch_out', incomplete: true, intervals: [] };
   }
-  return {
-    kind: 'missing_lunch_return',
-    incomplete: false,
-    intervals: c > LUNCH_END_MIN ? [[a, b], [LUNCH_END_MIN, c]] : [[a, b]],
-  };
+  return { kind: 'missing_lunch_return', incomplete: true, intervals: [] };
 }
 
 export function interpretDayPunches(punches: string[]): ThreePunchInterpretation | null {
@@ -91,9 +82,12 @@ export function looksLikeWeekdayJourney(punches: string[]): boolean {
   return first < LUNCH_START_MIN && last >= WEEKDAY_EXIT_MIN;
 }
 
-export function threePunchesStayPending(punches: string[]): boolean {
-  const interp = interpretDayPunches(punches);
-  return !interp || interp.incomplete;
+/**
+ * Sempre true (decisão 2026-10-17): n=3 não é mais interpretado como completo.
+ * Mantido como API pra callers da fila/serviço de pendências.
+ */
+export function threePunchesStayPending(_punches?: string[]): boolean {
+  return true;
 }
 
 export interface NamedPunchSlots {
@@ -123,8 +117,7 @@ export function mapThreePunchesToNamedSlots(punches: string[]): NamedPunchSlots 
   return { entrada: p1, saidaAlmoco: p2, voltaAlmoco: p3, saida: '' };
 }
 
-/** Só sugere 18:00 quando a última batida ainda não é a saída do expediente. */
+/** Sugere 18:00 enquanto o dia não tem os 4 slots (sempre, se incompleto). */
 export function shouldSuggestFinalExit(punches: string[]): boolean {
-  if ((punches || []).length === 3 && !threePunchesStayPending(punches)) return false;
-  return true;
+  return (punches || []).length < 4;
 }

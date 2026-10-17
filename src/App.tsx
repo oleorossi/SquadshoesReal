@@ -1021,7 +1021,7 @@ const router = createBrowserRouter([
       {
         // Legado: fila dedicada → workspace único Ajustar.
         path: "rh/pendencias-ponto",
-        element: <LegacyRouteRedirect to="/rh?tab=ponto&subtab=manual" />,
+        element: <LegacyRouteRedirect to="/rh?tab=ponto&subtab=pendencias" />,
       },
       {
         path: "navigation-audit",

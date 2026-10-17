@@ -215,7 +215,7 @@ export function EmployeeBalanceCalendar({ report, kind }: { report: EmployeeTime
         <span><strong className="text-foreground">Célula:</strong> batidas · trabalhado/meta · horas (falta integra e compensa HE)</span>
         <span><strong className="text-foreground">Semana:</strong> créditos e débitos se compensam somente dentro dela</span>
         <span><strong className="text-foreground">Resultado final:</strong> mesma compensação do período usada pela folha</span>
-        {report.pendingPunchDays > 0 && <span className="font-semibold text-warning">{report.pendingPunchDays} {report.pendingPunchDays === 1 ? 'dia com batida pendente' : 'dias com batida pendente'}</span>}
+        {report.pendingPunchDays > 0 && <span className="font-semibold text-warning">{report.pendingPunchDays} {report.pendingPunchDays === 1 ? 'dia pendente — não calculado' : 'dias pendentes — não calculados'}</span>}
         {report.overtimeRateMissing && <span className="font-semibold text-warning">Taxa de hora extra não cadastrada</span>}
       </div>
     </Panel>

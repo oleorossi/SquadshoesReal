@@ -1,4 +1,5 @@
 import AdjustmentWorkspace from '@/components/timesheet/AdjustmentWorkspace';
+import PendingPunchesWorkspace from '@/components/timesheet/PendingPunchesWorkspace';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -1706,15 +1707,15 @@ function TimesheetRecordsTab() {
 export default function Timesheet() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
-    values: ['records', 'manual', 'arquivos', 'config'] as const,
+    values: ['records', 'pendencias', 'manual', 'arquivos', 'config'] as const,
     defaultValue: 'records',
     param: 'subtab',
     clearOnChange: ['correction'],
     aliases: {
       overview: 'records',
-      late: 'manual',
-      occurrences: 'manual',
-      pending: 'manual',
+      late: 'pendencias',
+      occurrences: 'pendencias',
+      pending: 'pendencias',
       ausencias: 'manual',
       reports: 'records',
       overtime: 'records',
@@ -1745,11 +1746,18 @@ export default function Timesheet() {
       step: '1',
     },
     {
+      value: 'pendencias',
+      label: 'Pendências',
+      description: 'Complete batidas inválidas do mês.',
+      icon: AlertTriangle,
+      step: '2',
+    },
+    {
       value: 'manual',
       label: 'Ajustar',
-      description: 'Batidas e justificativas do período.',
+      description: 'Edição livre do período.',
       icon: ClipboardEdit,
-      step: '2',
+      step: undefined,
     },
     {
       value: 'arquivos',
@@ -1771,15 +1779,13 @@ export default function Timesheet() {
   return (
     <div className="space-y-4 page-enter">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        {/* Fluxo enxuto: Importar → Ajustar (grade única). Justificar/Central
-            foram fundidos na janela do dia. */}
         <div className="rounded-xl border border-border/70 bg-card p-2 shadow-sm">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
             <div className="flex min-w-[132px] items-center gap-2 px-2 py-1">
               <AlarmClock className="h-4 w-4 text-primary" />
               <div>
                 <span className="eyebrow block text-[9px]">Fluxo do ponto</span>
-                <span className="block text-[10px] text-muted-foreground">Importar → Ajustar</span>
+                <span className="block text-[10px] text-muted-foreground">Importar → Pendências → Ajustar</span>
               </div>
             </div>
             <TabsList
@@ -1800,7 +1806,7 @@ export default function Timesheet() {
                   {section.step}
                 </span>
                 <span className="truncate">{section.label}</span>
-                {section.value === 'manual' && pendingTotal > 0 && (
+                {section.value === 'pendencias' && pendingTotal > 0 && (
                   <>
                     <span
                       className={cn('h-2 w-2 shrink-0 rounded-full sm:hidden', overdueTotal > 0 ? 'bg-destructive' : 'bg-amber-500')}
@@ -1827,7 +1833,7 @@ export default function Timesheet() {
             </TabsList>
             <TabsList
               indicator="none"
-              className="grid h-auto grid-cols-2 gap-1 border-0 bg-transparent p-0 xl:w-auto"
+              className="grid h-auto grid-cols-3 gap-1 border-0 bg-transparent p-0 xl:w-auto"
               aria-label="Ferramentas do controle de ponto"
             >
               {supportSections.map(section => (
@@ -1845,6 +1851,7 @@ export default function Timesheet() {
         </div>
 
         <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
+        <TabsContent value="pendencias"><PendingPunchesWorkspace /></TabsContent>
         <TabsContent value="manual"><AdjustmentWorkspace /></TabsContent>
         <TabsContent value="arquivos"><ImportHistoryPanel /></TabsContent>
         <TabsContent value="config" className="space-y-6">

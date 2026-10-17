@@ -18,7 +18,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CircleNotch as Loader2, Clock, Timer, Users, CheckCircle, CalendarBlank, CaretRight, FilePdf } from '@phosphor-icons/react';
+import { Link } from 'react-router-dom';
+import { CircleNotch as Loader2, Clock, Timer, Users, CheckCircle, CalendarBlank, CaretRight, FilePdf, Warning as AlertTriangle } from '@phosphor-icons/react';
 import { printEmployeeAtraso, printAtrasoSummary } from '@/lib/atrasoReportPrint';
 import { employeeOverlapsEmploymentRange } from '@/lib/employeeEmployment';
 import { groupPayrollPunchesByEmployee } from '@/lib/payrollComparativo';
@@ -236,11 +237,14 @@ export default function RelatorioAtrasos() {
     [coverage?.coveredDates],
   );
 
-  const { data: rows = [], isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['relatorio-atrasos', from, to, employees.length, schedules.length, holidayKey, absenceKey, swapKey, coverageKey],
     enabled: !!from && !!to && from <= to && employees.length > 0 && !absencesLoading && !coverageLoading,
     staleTime: 60_000,
-    queryFn: async (): Promise<AtrasoRow[]> => {
+    queryFn: async (): Promise<{
+      rows: AtrasoRow[];
+      pending: { id: string; name: string; days: string[] }[];
+    }> => {
       // Batidas do período via fonte ÚNICA paginada (mesma da folha e do
       // comparativo/calendário) — motores do RH sincronizados.
       const recs = await fetchTimeRecordsInRange(from, to);
@@ -251,6 +255,7 @@ export default function RelatorioAtrasos() {
       }
 
       const out: AtrasoRow[] = [];
+      const pending: { id: string; name: string; days: string[] }[] = [];
       for (const emp of employees.filter(e => employeeOverlapsEmploymentRange(e, from, to))) {
         const empPunches = identity.byEmployee.get(emp.id) || new Map<string, string[]>();
         const sch = (emp.work_schedule_id && schedules.find(s => s.id === emp.work_schedule_id)) || defaultSchedule;
@@ -265,6 +270,13 @@ export default function RelatorioAtrasos() {
           dailyRate: Number(emp.daily_rate) || 0,
         });
         const late = (res.late_days || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+        const pendingDays = (res.day_ledger || [])
+          .filter((d) => d.status === 'pending')
+          .map((d) => d.date)
+          .sort((a, b) => a.localeCompare(b));
+        if (pendingDays.length > 0) {
+          pending.push({ id: emp.id, name: emp.name, days: pendingDays });
+        }
         if (late.length > 0) {
           out.push({
             id: emp.id, name: emp.name, days: late, totalMin: late.reduce((s, d) => s + d.minutes, 0),
@@ -276,9 +288,14 @@ export default function RelatorioAtrasos() {
           });
         }
       }
-      return out.sort((a, b) => b.totalMin - a.totalMin);
+      return {
+        rows: out.sort((a, b) => b.totalMin - a.totalMin),
+        pending: pending.sort((a, b) => b.days.length - a.days.length),
+      };
     },
   });
+  const rows = data?.rows ?? [];
+  const pendingRows = data?.pending ?? [];
 
   const totals = useMemo(() => ({
     funcionarios: rows.length,
@@ -286,7 +303,9 @@ export default function RelatorioAtrasos() {
     minutosBrutos: rows.reduce((s, r) => s + r.totalMin, 0),
     compensados: rows.reduce((s, r) => s + r.compensatedMin, 0),
     minutosLiquidos: rows.reduce((s, r) => s + r.netMin, 0),
-  }), [rows]);
+    pendingDias: pendingRows.reduce((s, r) => s + r.days.length, 0),
+    pendingFunc: pendingRows.length,
+  }), [rows, pendingRows]);
 
   const periodBtn = (m: Mode, label: string) => (
     <Button type="button" variant={mode === m ? 'default' : 'outline'} size="sm" className="h-9" onClick={() => setMode(m)}>{label}</Button>
@@ -306,6 +325,32 @@ export default function RelatorioAtrasos() {
         </div>
         {isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
+
+      {totals.pendingDias > 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-900 dark:text-amber-300 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-2 font-semibold">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {totals.pendingDias} dia{totals.pendingDias === 1 ? '' : 's'} com batida pendente — não calculado
+              ({totals.pendingFunc} funcionário{totals.pendingFunc === 1 ? '' : 's'})
+            </p>
+            <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+              <Link to="/rh?tab=ponto&subtab=pendencias">Resolver em Pendências</Link>
+            </Button>
+          </div>
+          <ul className="space-y-1 max-h-28 overflow-y-auto">
+            {pendingRows.slice(0, 12).map((p) => (
+              <li key={p.id}>
+                <span className="font-medium">{p.name}</span>
+                <span className="text-muted-foreground"> · {p.days.map(fmtDia).join(', ')}</span>
+              </li>
+            ))}
+            {pendingRows.length > 12 && (
+              <li className="text-muted-foreground">+{pendingRows.length - 12} outros…</li>
+            )}
+          </ul>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">

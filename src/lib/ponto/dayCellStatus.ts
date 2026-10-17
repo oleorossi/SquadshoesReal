@@ -2,7 +2,6 @@
  * Status de uma célula da grade Ajustar (mês × pessoa).
  * Fonte única pra filtro e marca visual — espelha pendência de batida + virada + ausência.
  */
-import { threePunchesStayPending } from '@/lib/ponto/interpretDayPunches';
 import { detectOvernightCarries } from '@/lib/ponto/overnightPunches';
 
 export type DayCellStatus = 'ok' | 'needs_fix' | 'justified' | 'empty' | 'out_of_scope';
@@ -21,13 +20,11 @@ function validPunchCount(punches: string[]): number {
   }).length;
 }
 
-/** Dia com batidas irregulares (ímpar, 1 batida, 3 ainda sem saída final). */
+/** Dia com batidas irregulares: tudo que não for par ≥4 (decisão 2026-10-17). */
 export function punchesNeedFix(punches: string[]): boolean {
   const n = validPunchCount(punches);
   if (n === 0) return false;
-  if (n === 1) return true;
-  if (n === 3) return threePunchesStayPending(punches);
-  if (n % 2 === 1) return true;
+  if (n < 4 || n % 2 === 1) return true;
   return false;
 }
 

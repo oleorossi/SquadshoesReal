@@ -23,7 +23,6 @@
  * salário. O salário cadastrado é sempre a referência cheia de 220h/mês.
  */
 
-import { interpretThreePunches } from './ponto/interpretDayPunches';
 import { orderPunchMinutesForIntervals } from './ponto/overnightPunches';
 
 /** 44h/semana → 220h/mês (DSR embutido). Base do valor-hora. */
@@ -91,19 +90,17 @@ function isPunchOutOfRange(t: string): boolean {
  * - Sábado/domingo/feriado → tudo 1,5×.
  * - Dia útil → antes das 18:00 normal; depois das 18:00 vira 1,5×.
  *
- * Batidas:
- * - **4+ pares** (ex.: 08:00,12:00,13:00,18:00) → soma os pares reais.
- * - **2 batidas** (entrada+saída) → span do 1º ao último (não perde a tarde).
- * - **n=3 com saída real** (última depois do almoço) → infere a pausa do meio
- *   (`interpretThreePunches`, decisão 2026-09-12). 1 batida e ímpar ≥5 continuam
- *   pendência (auditoria 2026-07-30 — jornadas de 13h–21h).
+ * Batidas (decisão do dono 2026-10-17 — pendências precisas):
+ * - **Só 4+ pares** (ex.: 08:00,12:00,13:00,18:00) → soma os pares reais.
+ * - **1, 2 ou 3 batidas** → pendência (RH completa na fila). Acaba a inferência
+ *   de almoço em n=2 e a interpretação de n=3 (supercede 2026-09-12).
+ * - **Ímpar ≥5** → pendência (auditoria 2026-07-30).
  *
- * Almoço (decisão 2026-06-02): é **1h dentro de 12:00–14:00**. Em dia longo (>6h)
- * que cruza o meio-dia, garante **no mínimo 1h** de almoço — se a pessoa bateu uma
- * pausa MENOR que 1h nessa janela (ou não bateu), desconta o que faltar pra 1h; se
- * bateu pausa MAIOR (ex.: saiu 2h), respeita a real. O desconto sai da hora normal
- * (12–14 é período normal); o que sobrar sai do 1,5×. Meia-noite tratada de forma
- * defensiva.
+ * Almoço (decisão 2026-06-02): com 4+ batidas, é **1h dentro de 12:00–14:00**.
+ * Em dia longo (>6h) que cruza o meio-dia, garante **no mínimo 1h** de almoço —
+ * se a pessoa bateu pausa MENOR que 1h nessa janela, desconta o que faltar; se
+ * bateu pausa MAIOR, respeita a real. O desconto sai da hora normal; o que
+ * sobrar sai do 1,5×.
  */
 export function splitDayMinutes(
   punches: string[],
@@ -118,33 +115,17 @@ export function splitDayMinutes(
   forceNormalDay: boolean = false,
 ): { normal: number; premium: number; incomplete: boolean } {
   const n = punches.length;
-  if (n < 2) return { normal: 0, premium: 0, incomplete: n === 1 };
+  if (n === 0) return { normal: 0, premium: 0, incomplete: false };
+  // 1 / 2 / 3 / ímpar ≥5 → fila de pendências. Só par ≥4 paga.
+  if (n < 4 || n % 2 !== 0) return { normal: 0, premium: 0, incomplete: true };
   // Hora inexistente (ex.: '29:59') → PENDÊNCIA, nunca pagamento. Ver isPunchOutOfRange.
   if (punches.some(isPunchOutOfRange)) return { normal: 0, premium: 0, incomplete: true };
   // Ordena antes de parear (relógio fora de ordem). Virada à noite: saída de
   // madrugada na cauda da lista original ganha +1440 — senão ['08:14','03:04']
   // vira manhã 03:04→08:14. Ver overnightPunches.ts.
   const orderedMins = orderPunchMinutesForIntervals(punches);
-  // ⚠ Decisão do dono 2026-07-30 (auditoria RH, D1/P2) — ímpar ≥5 continua
-  // pendência. SUPERSEDE a de 2026-06-21, que pagava o span 1º→último e produziu
-  // jornadas de 13h a 21h32 (Thais Batista 26/02/2026).
-  //
-  // ⚠ Decisão do dono 2026-09-12 — SUPERSEDE a de 2026-07-30 SÓ para n=3 quando
-  // a última batida já é saída de expediente (volta ~13h + saída 18h30 / 21h28).
-  // Aí falta a pausa do almoço, não a saída final. 1 batida e n=3 ainda no almoço
-  // continuam pendência.
-  let intervals: [number, number][];
-  if (n % 2 !== 0) {
-    if (n !== 3) return { normal: 0, premium: 0, incomplete: true };
-    const interp = interpretThreePunches(orderedMins);
-    if (interp.incomplete) return { normal: 0, premium: 0, incomplete: true };
-    intervals = interp.intervals;
-  } else if (n >= 4) {
-    intervals = [];
-    for (let i = 0; i + 1 < n; i += 2) intervals.push([orderedMins[i], orderedMins[i + 1]]);
-  } else {
-    intervals = [[orderedMins[0], orderedMins[n - 1]]];
-  }
+  const intervals: [number, number][] = [];
+  for (let i = 0; i + 1 < n; i += 2) intervals.push([orderedMins[i], orderedMins[i + 1]]);
   const allPremium = !forceNormalDay && (isHoliday || dayOfWeek === 0 || dayOfWeek === 6);
 
   // Classifica normal × 1,5× (corte às 18:00; tudo 1,5× em sáb/dom/feriado).
@@ -188,7 +169,6 @@ export function splitDayMinutes(
     premium = Math.max(0, premium - lunch);
   }
 
-  // Completos: par (≥2) e n=3 interpretado. Ímpar ≥5 e n=3 sem saída já retornaram.
   return { normal, premium, incomplete: false };
 }
 

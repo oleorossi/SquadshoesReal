@@ -7,54 +7,42 @@ import {
   threePunchesStayPending,
   mapThreePunchesToNamedSlots,
   shouldSuggestFinalExit,
-  LUNCH_START_MIN,
-  LUNCH_END_MIN,
   WEEKDAY_JOURNEY_MIN,
 } from './interpretDayPunches';
 
 describe('interpretThreePunches', () => {
-  it('31/08 — volta ~13h e saída ~18h30: falta só a saída do almoço', () => {
+  it('classifica slot faltante mas SEMPRE incomplete (decisão 2026-10-17)', () => {
     const mins = sortedPunchMinutes(['08:18', '12:58', '18:03'])!;
     const r = interpretThreePunches(mins);
-    expect(r.incomplete).toBe(false);
+    expect(r.incomplete).toBe(true);
     expect(r.kind).toBe('missing_lunch_out');
-    expect(r.intervals).toEqual([
-      [8 * 60 + 18, LUNCH_START_MIN],
-      [12 * 60 + 58, 18 * 60 + 3],
-    ]);
+    expect(r.intervals).toEqual([]);
   });
 
-  it('22/08 — volta 13h e saída 21h28: tarde conta, inclusive HE após 18h', () => {
+  it('volta 13h + saída 21h28: falta saída do almoço — ainda pendência', () => {
     const mins = sortedPunchMinutes(['08:22', '13:00', '21:28'])!;
     const r = interpretThreePunches(mins);
-    expect(r.incomplete).toBe(false);
+    expect(r.incomplete).toBe(true);
     expect(r.kind).toBe('missing_lunch_out');
-    expect(r.intervals).toEqual([
-      [8 * 60 + 22, LUNCH_START_MIN],
-      [13 * 60, 21 * 60 + 28],
-    ]);
   });
 
-  it('padrão canônico 08/13/18: entrada, volta, saída — infere 12:00', () => {
+  it('padrão 08/13/18: missing_lunch_out + incomplete', () => {
     const r = interpretThreePunches([8 * 60, 13 * 60, 18 * 60]);
     expect(r).toEqual({
       kind: 'missing_lunch_out',
-      incomplete: false,
-      intervals: [[8 * 60, LUNCH_START_MIN], [13 * 60, 18 * 60]],
+      incomplete: true,
+      intervals: [],
     });
   });
 
-  it('meio-dia cedo (12:00) é saída de almoço — infere volta 13:00', () => {
+  it('meio-dia cedo (12:00) é saída de almoço — missing_lunch_return', () => {
     const r = interpretThreePunches([8 * 60, 12 * 60, 18 * 60]);
     expect(r.kind).toBe('missing_lunch_return');
-    expect(r.incomplete).toBe(false);
-    expect(r.intervals).toEqual([
-      [8 * 60, 12 * 60],
-      [LUNCH_END_MIN, 18 * 60],
-    ]);
+    expect(r.incomplete).toBe(true);
+    expect(r.intervals).toEqual([]);
   });
 
-  it('última batida ainda no almoço: falta a saída final (pendência)', () => {
+  it('última batida ainda no almoço: falta a saída final', () => {
     const r = interpretThreePunches([8 * 60, 12 * 60, 13 * 60]);
     expect(r.kind).toBe('missing_final_exit');
     expect(r.incomplete).toBe(true);
@@ -113,25 +101,23 @@ describe('mapThreePunchesToNamedSlots', () => {
 });
 
 describe('shouldSuggestFinalExit', () => {
-  it('não sugere 18:00 quando a última já é a saída', () => {
-    expect(shouldSuggestFinalExit(['08:18', '12:58', '18:03'])).toBe(false);
-    expect(shouldSuggestFinalExit(['08:22', '13:00', '21:28'])).toBe(false);
-  });
-
-  it('sugere quando falta a saída ou não é o padrão de 3 batidas', () => {
+  it('sugere 18:00 enquanto não há 4 batidas', () => {
+    expect(shouldSuggestFinalExit(['08:18', '12:58', '18:03'])).toBe(true);
+    expect(shouldSuggestFinalExit(['08:22', '13:00', '21:28'])).toBe(true);
     expect(shouldSuggestFinalExit(['08:00', '12:00', '13:00'])).toBe(true);
     expect(shouldSuggestFinalExit(['08:00'])).toBe(true);
     expect(shouldSuggestFinalExit(['08:00', '18:00'])).toBe(true);
   });
+
+  it('não sugere quando já tem 4 batidas', () => {
+    expect(shouldSuggestFinalExit(['08:00', '12:00', '13:00', '18:00'])).toBe(false);
+  });
 });
 
 describe('threePunchesStayPending', () => {
-  it('sai da fila quando a última batida já é a saída', () => {
-    expect(threePunchesStayPending(['08:18', '12:58', '18:03'])).toBe(false);
-    expect(threePunchesStayPending(['08:22', '13:00', '21:28'])).toBe(false);
-  });
-
-  it('fica na fila quando falta a saída final', () => {
+  it('sempre pendência (decisão 2026-10-17)', () => {
+    expect(threePunchesStayPending(['08:18', '12:58', '18:03'])).toBe(true);
+    expect(threePunchesStayPending(['08:22', '13:00', '21:28'])).toBe(true);
     expect(threePunchesStayPending(['08:00', '12:00', '13:00'])).toBe(true);
     expect(threePunchesStayPending(['08:00'])).toBe(true);
   });

@@ -16,14 +16,16 @@ const WORKSPACE = read('src/components/timesheet/AdjustmentWorkspace.tsx');
 const DIALOG = read('src/components/timesheet/DayAdjustDialog.tsx');
 
 describe('workspace único de ajuste do ponto', () => {
-  it('fluxo só Importar → Ajustar, sem Central/correction modes', () => {
-    expect(PAGE).toContain("values: ['records', 'manual', 'arquivos', 'config']");
+  it('fluxo Importar → Pendências → Ajustar, sem Central/correction modes', () => {
+    expect(PAGE).toContain("values: ['records', 'pendencias', 'manual', 'arquivos', 'config']");
+    expect(PAGE).toContain("label: 'Pendências'");
     expect(PAGE).toContain("label: 'Ajustar'");
-    expect(PAGE).toContain('Importar → Ajustar');
+    expect(PAGE).toContain('Importar → Pendências → Ajustar');
+    expect(PAGE).toContain('<TabsContent value="pendencias"><PendingPunchesWorkspace /></TabsContent>');
     expect(PAGE).toContain('<TabsContent value="manual"><AdjustmentWorkspace /></TabsContent>');
+    expect(PAGE).toContain("pending: 'pendencias'");
     expect(PAGE).not.toContain('param: \'correction\'');
     expect(PAGE).not.toMatch(/Central de correção/);
-    expect(PAGE).not.toMatch(/PendingTimeRecordsPanel/);
     expect(PAGE).not.toMatch(/OvernightCarryPanel/);
     expect(PAGE).not.toMatch(/ExceptionsTab/);
     expect(PAGE).not.toMatch(/<ManualEntryTab/);
@@ -52,7 +54,8 @@ describe('workspace único de ajuste do ponto', () => {
 describe('dayCellStatus', () => {
   it('classifica ímpar / ausência / ok / vazio em dia útil', () => {
     expect(punchesNeedFix(['08:00'])).toBe(true);
-    expect(punchesNeedFix(['08:00', '18:00'])).toBe(false);
+    expect(punchesNeedFix(['08:00', '18:00'])).toBe(true); // n=2 → pendência (2026-10-17)
+    expect(punchesNeedFix(['08:00', '12:00', '13:00', '18:00'])).toBe(false);
 
     expect(
       classifyDayCell({
@@ -79,6 +82,17 @@ describe('dayCellStatus', () => {
     expect(
       classifyDayCell({
         punches: ['08:00', '18:00'],
+        hasAbsence: false,
+        overnightPending: false,
+        expectsWork: true,
+        withinEmployment: true,
+        isFuture: false,
+      }),
+    ).toBe('needs_fix'); // n=2 → pendência (2026-10-17)
+
+    expect(
+      classifyDayCell({
+        punches: ['08:00', '12:00', '13:00', '18:00'],
         hasAbsence: false,
         overnightPending: false,
         expectsWork: true,

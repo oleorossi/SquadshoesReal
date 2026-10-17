@@ -12,11 +12,12 @@ import { computePeriodFolha } from '../salaryPayroll';
 const WED = 3;
 
 describe('overnightPunches', () => {
-  it('dayNeedsOvernightExit cobre 1 batida, ímpar e n=3 sem saída final', () => {
+  it('dayNeedsOvernightExit cobre 1 batida, ímpar e n=3 ainda sem saída final', () => {
     expect(dayNeedsOvernightExit(['08:14'])).toBe(true);
     expect(dayNeedsOvernightExit(['08:00', '12:00', '13:00', '18:00', '20:00'])).toBe(true);
     expect(dayNeedsOvernightExit(['08:12', '12:41', '13:08'])).toBe(true);
     expect(dayNeedsOvernightExit(['08:00', '12:00', '13:00', '18:00'])).toBe(false);
+    // n=3 com última após 16h: já tem "saída" pra efeito de virada (não carrega madrugada)
     expect(dayNeedsOvernightExit(['08:00', '13:00', '21:28'])).toBe(false);
   });
 
@@ -76,14 +77,10 @@ describe('overnightPunches', () => {
 });
 
 describe('splitDayMinutes — virada à noite', () => {
-  it('08:14 + 03:04 conta a jornada noturna, não a manhã invertida', () => {
+  it('08:14 + 03:04 (só 2 batidas) fica pendência até o RH completar 4 slots', () => {
     const r = splitDayMinutes(['08:14', '03:04'], WED, false);
-    expect(r.incomplete).toBe(false);
-    // 08:14→03:04(+1) = 18h50 brutos − 1h almoço = 17h50
-    // normal 08:14→18:00 = 586 − 60 almoço = 526; premium 18:00→03:04 = 544
-    expect(r.normal).toBe(526);
-    expect(r.premium).toBe(544);
-    expect(r.normal + r.premium).toBe(17 * 60 + 50);
+    expect(r.incomplete).toBe(true);
+    expect(r.normal + r.premium).toBe(0);
   });
 
   it('n=4 com saída 00:48 na cauda pareia a virada', () => {
@@ -103,7 +100,7 @@ describe('computePeriodFolha — virada carrega sozinha', () => {
     holiday_multiplier: 1.5, tolerance_minutes: 0, minimum_overtime_minutes: 10, is_default: true,
   };
 
-  it('Tália 02–03/07: D completa e D+1 não fica pendente órfão', () => {
+  it('Tália 02–03/07: carry une as batidas em D; n=2 ainda fica pendência (2026-10-17)', () => {
     const punches = new Map<string, string[]>([
       ['2026-07-02', ['08:14']],
       ['2026-07-03', ['03:04']],
@@ -120,10 +117,32 @@ describe('computePeriodFolha — virada carrega sozinha', () => {
     });
     const d2 = r.day_ledger!.find(d => d.date === '2026-07-02')!;
     const d3 = r.day_ledger!.find(d => d.date === '2026-07-03')!;
-    expect(d2.status).not.toBe('pending');
-    expect((d2.worked_minutes || 0)).toBeGreaterThan(10 * 60);
-    // 03/07 quinta: sem batida após o carry → débito de jornada (compensa HE), não pendência
+    // Carry move 03:04 → D, mas 2 batidas não bastam — RH completa almoço na fila.
+    expect(d2.status).toBe('pending');
+    expect(d2.worked_minutes || 0).toBe(0);
+    expect(d2.punches).toEqual(['08:14', '03:04']);
+    // 03/07 quinta: sem batida após o carry → débito de jornada, não pendência de batida
     expect(d3.status).not.toBe('pending');
     expect(d3.worked_minutes || 0).toBe(0);
+  });
+
+  it('virada com 4 batidas após carry conta a jornada', () => {
+    const punches = new Map<string, string[]>([
+      ['2026-07-02', ['08:14', '12:00', '13:00']],
+      ['2026-07-03', ['03:04']],
+    ]);
+    const r = computePeriodFolha({
+      salary: 2200,
+      from: '2026-07-02',
+      to: '2026-07-03',
+      schedule: SCHED as never,
+      holidaysSet: new Set(),
+      punchesByDate: punches,
+      coveredDates: new Set(['2026-07-02', '2026-07-03']),
+      heNormalRate: 15,
+    });
+    const d2 = r.day_ledger!.find(d => d.date === '2026-07-02')!;
+    expect(d2.status).not.toBe('pending');
+    expect((d2.worked_minutes || 0)).toBeGreaterThan(10 * 60);
   });
 });

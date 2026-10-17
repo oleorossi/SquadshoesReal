@@ -66,11 +66,9 @@ export interface PendingCount {
 // Hooks
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Pendência = batida ímpar/errada (inconsistent/irregular/partial) OU FALTA em dia
-// útil (absent — A5: antes a falta sumia da aba, justamente o item que mais precisa
-// de triagem). Dias normais de 2 batidas com almoço inferido (1h) NÃO entram: é o
-// padrão Squad e a folha lê o ponto cru e infere 1h — completar não muda o pagamento
-// (M6: eram ~82% de ruído que esvaziava a tela).
+// Pendência = batida incompleta (inconsistent/irregular/partial) OU FALTA em dia
+// útil (absent). Decisão 2026-10-17: n=2 e n=3 também são irregular (sem inferir
+// almoço) — entram na fila até o RH completar 4 batidas ou marcar falta.
 const PROBLEM_STATUSES: DayStatus[] = ['inconsistent', 'irregular', 'partial', 'absent'];
 
 const isPendingRow = (r: TimePending): boolean => {
@@ -86,9 +84,8 @@ function errorMessage(error: unknown): string | null {
 }
 
 /**
- * Lista de registros de ponto problemáticos (status inconsistent/irregular/partial,
- * ou 2 batidas com almoço inferido) nos últimos 90 dias úteis.
- * View v_time_pendings já filtra fim de semana + feriados.
+ * Lista de registros de ponto problemáticos (status inconsistent/irregular/partial/absent)
+ * nos últimos 90 dias úteis. View v_time_pendings já filtra fim de semana + feriados.
  */
 export function useTimePendings(opts?: { onlyProblems?: boolean }) {
   return useQuery({
