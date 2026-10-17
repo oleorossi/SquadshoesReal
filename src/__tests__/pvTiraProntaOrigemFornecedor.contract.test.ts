@@ -16,6 +16,15 @@ function migrationSql(): string {
   return readFileSync(resolve(MIGRATIONS, MIGRATION_FILE), 'utf8');
 }
 
+/**
+ * Última migration que PATCHA o ramo no writer — não a última que apenas
+ * CARREGA o carimbo. O carimbo viaja como comentário dentro de
+ * `resolve_committed_strap_identity`, então quem recria só essa função
+ * (ex.: `20270101041800`) o menciona sem tocar no writer, e as asserções
+ * abaixo (`finished_product_id`, `Cor Principal`) não existiriam lá.
+ */
+const WRITER = 'prepare_sale_order_item_internal_straps';
+
 function latestPatchMigration(needle: string): { file: string; sql: string } {
   const files = readdirSync(MIGRATIONS)
     .filter((f) => f.endsWith('.sql'))
@@ -23,9 +32,9 @@ function latestPatchMigration(needle: string): { file: string; sql: string } {
   let hit: { file: string; sql: string } | null = null;
   for (const file of files) {
     const sql = readFileSync(resolve(MIGRATIONS, file), 'utf8');
-    if (sql.includes(needle)) hit = { file, sql };
+    if (sql.includes(needle) && sql.includes(WRITER)) hit = { file, sql };
   }
-  if (!hit) throw new Error(`nenhuma migration menciona ${needle}`);
+  if (!hit) throw new Error(`nenhuma migration patcha ${needle} em ${WRITER}`);
   return hit;
 }
 
