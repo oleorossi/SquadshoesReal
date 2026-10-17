@@ -46,8 +46,8 @@ describe('calculateSalaryPayroll', () => {
   });
 
   it('ATRASO + saída cedo (Marcio 21/05, 08:35–17:18): desconta 77min × valor-hora', () => {
-    // span 08:35→17:18 = 523min − 1h almoço = 463 normal. déficit = 540 − 463 = 77min.
-    const r = calculateSalaryPayroll(1850, [work('2026-05-21', THU, ['08:35', '17:18'])], 0);
+    // 4 batidas: 08:35–12:00 + 13:00–17:18 = 205+258 = 463. déficit = 540 − 463 = 77min.
+    const r = calculateSalaryPayroll(1850, [work('2026-05-21', THU, ['08:35', '12:00', '13:00', '17:18'])], 0);
     expect(r.normal_minutes).toBe(463);
     expect(r.atraso_minutes).toBe(77);
     expect(r.atraso_desconto).toBeCloseTo((77 / 60) * (1850 / 220), 2); // ≈ 10.79
@@ -63,8 +63,8 @@ describe('calculateSalaryPayroll', () => {
   });
 
   it('DOMINGO trabalhado (Marcio 24/05, 09:45–17:48): tudo HE 1,5×, sem desconto', () => {
-    // span 09:45→17:48 = 483 − 1h = 423min, todo premium (domingo).
-    const r = calculateSalaryPayroll(1850, [weekend('2026-05-24', SUN, ['09:45', '17:48'])], 0);
+    // 4 batidas: 09:45–12:00 + 13:00–17:48 = 135+288 = 423min, todo premium (domingo).
+    const r = calculateSalaryPayroll(1850, [weekend('2026-05-24', SUN, ['09:45', '12:00', '13:00', '17:48'])], 0);
     expect(r.falta_days).toBe(0);
     expect(r.atraso_minutes).toBe(0);
     expect(r.he_minutes).toBe(423);
@@ -72,16 +72,15 @@ describe('calculateSalaryPayroll', () => {
     expect(r.gross_value).toBeCloseTo(1850 + (423 / 60) * (1850 / 220) * 1.5, 2);
   });
 
-  it('n=3 com volta ~13h e saída real CONTA — não é mais pendência (decisão 2026-09-12)', () => {
+  it('n=3 (qualquer padrão) fica PENDENTE — decisão 2026-10-17 mata inferência', () => {
     const r = calculateSalaryPayroll(2200, [work('2026-05-21', THU, ['08:21', '13:06', '18:30'])], 0);
-    expect(r.pending_days).toBe(0);
+    expect(r.pending_days).toBe(1);
     expect(r.falta_days).toBe(0);
     expect(r.workdays).toBe(1);
     expect(r.expected_minutes).toBe(540);
-    expect(r.worked_minutes).toBeGreaterThan(0);
-    // 08:21–12:00 + 13:06–18:30 = 219+324 = 543 → +3 min HE
-    expect(r.worked_minutes).toBe(543);
-    expect(r.he_minutes).toBe(3);
+    expect(r.worked_minutes).toBe(0);
+    expect(r.he_minutes).toBe(0);
+    expect(r.atraso_minutes).toBe(0);
   });
 
   it('n=3 ainda no almoço (faltou a saída): PENDENTE — não desconta nem paga, MAS conta no esperado', () => {
@@ -109,7 +108,7 @@ describe('calculateSalaryPayroll', () => {
       work('2026-05-04', MON, ['08:00', '12:00', '13:00', '18:00']), // perfeito
       work('2026-05-05', 2,   ['08:00', '12:00', '13:00', '18:00']), // perfeito
       work('2026-05-06', 3,   []),                                   // falta → 540min delay
-      work('2026-05-07', THU, ['08:30', '18:00']),                   // atraso 30min
+      work('2026-05-07', THU, ['08:30', '12:00', '13:00', '18:00']), // atraso 30min
     ], 200);
     expect(r.falta_days).toBe(1);
     expect(r.falta_desconto).toBe(0);
@@ -177,9 +176,10 @@ describe('calculateSalaryPayroll — compensação de créditos e atrasos no per
   it('domingo trabalhado compensa o déficit parcial de segunda', () => {
     // Seg: 08–12 (240 trab, esperado 540 ⇒ déficit 300). Dom: 2h trabalhadas.
     // Saldo: atraso 300 (seg) − crédito 120 (dom) = atraso líquido 180.
+    // Dia curto = 4 batidas com gap zero (sem inferência n=2).
     const r = calculateSalaryPayroll(2200, [
-      work('2026-05-04', MON, ['08:00', '12:00']),
-      weekend('2026-05-10', SUN, ['14:00', '16:00']),
+      work('2026-05-04', MON, ['08:00', '10:00', '10:00', '12:00']),
+      weekend('2026-05-10', SUN, ['14:00', '15:00', '15:00', '16:00']),
     ], 0);
     expect(r.raw_delay_minutes).toBe(300);
     expect(r.raw_credit_minutes).toBe(120);
@@ -197,7 +197,7 @@ describe('calculateSalaryPayroll — compensação de créditos e atrasos no per
       work('2026-05-06', 3, ['08:00', '12:00', '13:00', '18:00']),
       work('2026-05-07', 4, ['08:00', '12:00', '13:00', '18:00']),
       work('2026-05-08', 5, ['08:00', '12:00', '13:00', '18:00']),
-      weekend('2026-05-09', 6, ['08:00', '12:00']), // sábado +4h
+      weekend('2026-05-09', 6, ['08:00', '10:00', '10:00', '12:00']), // sábado +4h
     ];
     const r = calculateSalaryPayroll(2200, week, 0);
     expect(r.atraso_minutes).toBe(0);
@@ -221,7 +221,7 @@ describe('calculateSalaryPayroll — compensação de créditos e atrasos no per
 
   it('sábado só de manhã continua crédito integral (folga trabalhada)', () => {
     const r = calculateSalaryPayroll(2200, [
-      weekend('2026-08-29', 6, ['08:00', '12:00']),
+      weekend('2026-08-29', 6, ['08:00', '10:00', '10:00', '12:00']),
     ], 0);
     expect(r.expected_minutes).toBe(0);
     expect(r.he_minutes).toBe(240);
@@ -231,7 +231,7 @@ describe('calculateSalaryPayroll — compensação de créditos e atrasos no per
     // Seg 10:00–18:00 = 420 trab (deve 540 ⇒ atraso 120). Ter 08–20 c/ almoço = 660
     // (sobra 120). Os dois saldos se anulam dentro do período.
     const r = calculateSalaryPayroll(2200, [
-      work('2026-05-04', 1, ['10:00', '18:00']),
+      work('2026-05-04', 1, ['10:00', '12:00', '13:00', '18:00']),
       work('2026-05-05', 2, ['08:00', '12:00', '13:00', '20:00']),
     ], 0);
     expect(r.raw_delay_minutes).toBe(120);
@@ -247,7 +247,7 @@ describe('calculateSalaryPayroll — compensação de créditos e atrasos no per
     // Dia de 9h (540) com só 30min batidos → déficit bruto 510. Sem teto o desconto
     // seria 510/60×10 = R$85 > valor-dia (R$73,33) = mais caro que faltar. Capado a
     // 440min (=(220/30)×60) → desconto = 440/60×10 = R$73,33 = exatamente 1 valor-dia.
-    const r = calculateSalaryPayroll(2200, [work('2026-05-04', MON, ['08:00', '08:30'])], 0);
+    const r = calculateSalaryPayroll(2200, [work('2026-05-04', MON, ['08:00', '08:15', '08:15', '08:30'])], 0);
     expect(r.atraso_minutes).toBe(440);                 // capado (não 510)
     expect(r.atraso_desconto).toBeCloseTo(73.33, 2);    // = valor_dia
     expect(r.atraso_desconto).toBeCloseTo(r.valor_dia, 2);
@@ -281,7 +281,7 @@ describe('computePeriodFolha — helper de período (escala + feriados + batidas
   });
 
   it('feriado obrigatório não vira falta; trabalho nele = HE', () => {
-    const punches = new Map<string, string[]>([['2026-05-01', ['08:00', '12:00']]]);
+    const punches = new Map<string, string[]>([['2026-05-01', ['08:00', '10:00', '10:00', '12:00']]]);
     const r = computePeriodFolha({ salary: 2200, from: '2026-05-01', to: '2026-05-01', schedule: SCHED, holidaysSet: new Set(['2026-05-01']), punchesByDate: punches });
     expect(r.falta_days).toBe(0);
     expect(r.he_minutes).toBe(240); // 4h no feriado
@@ -644,13 +644,14 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
 
   it('HE domingo = taxa domingo/feriado; sábado = taxa NORMAL', () => {
     // Domingo 03/05 4h @ R$25 = 100. Sábado 02/05 4h @ R$20 (normal) = 80.
-    const dom = new Map<string, string[]>([['2026-05-03', ['08:00', '12:00']]]);
+    const short4h = ['08:00', '10:00', '10:00', '12:00'];
+    const dom = new Map<string, string[]>([['2026-05-03', short4h]]);
     const rd = computePeriodFolha({ salary: 2200, from: '2026-05-03', to: '2026-05-03', ...base, punchesByDate: dom, heNormalRate: 20, heSundayHolidayRate: 25 });
     expect(rd.he_holiday_minutes).toBe(240);
     expect(rd.he_normal_minutes).toBe(0);
     expect(rd.he_value).toBeCloseTo(100, 2);         // 4h × 25
 
-    const sab = new Map<string, string[]>([['2026-05-02', ['08:00', '12:00']]]);
+    const sab = new Map<string, string[]>([['2026-05-02', short4h]]);
     const rs = computePeriodFolha({ salary: 2200, from: '2026-05-02', to: '2026-05-02', ...base, punchesByDate: sab, heNormalRate: 20, heSundayHolidayRate: 25 });
     expect(rs.he_normal_minutes).toBe(240);          // sábado usa a NORMAL
     expect(rs.he_holiday_minutes).toBe(0);
@@ -661,7 +662,7 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
     const punches = new Map<string, string[]>([
       ['2026-05-04', ['08:00', '12:00', '13:00', '19:00']], // +60 normal
       ['2026-05-05', ['09:30', '12:00', '13:00', '18:00']], // −90
-      ['2026-05-10', ['14:00', '16:00']],                    // +120 domingo
+      ['2026-05-10', ['14:00', '15:00', '15:00', '16:00']], // +120 domingo
     ]);
     const r = computePeriodFolha({
       salary: 2200, from: '2026-05-04', to: '2026-05-10', ...base,
@@ -677,7 +678,7 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
   });
 
   it('HE domingo sem taxa própria cai na HE normal (fallback)', () => {
-    const dom = new Map<string, string[]>([['2026-05-03', ['08:00', '12:00']]]);
+    const dom = new Map<string, string[]>([['2026-05-03', ['08:00', '10:00', '10:00', '12:00']]]);
     const r = computePeriodFolha({ salary: 2200, from: '2026-05-03', to: '2026-05-03', ...base, punchesByDate: dom, heNormalRate: 18 });
     expect(r.he_value).toBeCloseTo(72, 2);           // 4h × 18 (fallback pra HE normal)
   });
@@ -802,7 +803,7 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
   it('E5: sábado de meio-período usa a jornada de SÁBADO (sem falso atraso)', () => {
     // Escala que trabalha sábado 08:00–12:00 (4h). Sábado 02/05/2026 trabalhado 4h.
     const schSat = { ...SCHED, works_saturday: true, saturday_entry: '08:00:00', saturday_exit: '12:00:00' };
-    const punches = new Map<string, string[]>([['2026-05-02', ['08:00', '12:00']]]);
+    const punches = new Map<string, string[]>([['2026-05-02', ['08:00', '10:00', '10:00', '12:00']]]);
     const r = computePeriodFolha({ salary: 2100, from: '2026-05-02', to: '2026-05-02', schedule: schSat, holidaysSet: NO_HOL, punchesByDate: punches });
     expect(r.atraso_minutes).toBe(0);   // 4h trabalhadas == 4h esperadas de sábado (não 9h)
     expect(r.he_minutes).toBe(0);
@@ -824,8 +825,8 @@ describe('computePeriodFolha — política canônica de HE/falta/atraso (2026-07
   it('DIARISTA com meia-diária: ≥6h→1, 2–6h→0,5, <2h→0', () => {
     const punches = new Map<string, string[]>([
       ['2026-05-04', ['08:00', '12:00', '13:00', '18:00']], // 9h → 1
-      ['2026-05-05', ['08:00', '12:00']],                   // 4h → 0,5
-      ['2026-05-06', ['08:00', '09:30']],                   // 1,5h → 0
+      ['2026-05-05', ['08:00', '10:00', '10:00', '12:00']], // 4h → 0,5
+      ['2026-05-06', ['08:00', '08:45', '08:45', '09:30']], // 1,5h → 0
     ]);
     const r = computePeriodFolha({ salary: 0, from: '2026-05-04', to: '2026-05-06', ...base, punchesByDate: punches, payRegime: 'diarista', dailyRate: 120 });
     expect(r.paid_days).toBe(2);                     // 2 dias com diária (1 + 0,5)
@@ -918,7 +919,7 @@ describe('HE period_compensation (default) + simulação dia-CLT', () => {
   });
 
   it('feriado usa he_sunday_holiday_rate do quadro', () => {
-    const punches = new Map<string, string[]>([['2026-09-21', ['08:00', '12:00']]]); // 4h em feriado
+    const punches = new Map<string, string[]>([['2026-09-21', ['08:00', '10:00', '10:00', '12:00']]]); // 4h em feriado
     const r = computePeriodFolha({
       salary: 2200, from: '2026-09-21', to: '2026-09-21', schedule: SCHED,
       holidaysSet: new Set(['2026-09-21']), punchesByDate: punches,
