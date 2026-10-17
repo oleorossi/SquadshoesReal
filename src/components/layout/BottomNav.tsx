@@ -146,15 +146,20 @@ export function BottomNav() {
     location.pathname === path ||
     (path !== '/dashboard' && location.pathname.startsWith(path + '/'));
 
+  // Ativo = tipografia/ícone primary + barra 3px, SEM wash de fundo
+  // (mesma gramática da sidebar flutuante).
   const tileClass = (active: boolean, favorited = false) => cn(
-    'flex min-h-11 flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all',
+    'relative flex min-h-11 flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-colors',
     active
-      ? favorited
-        ? 'bg-primary/15 text-primary'
-        : 'bg-primary/10 text-primary'
+      ? 'text-primary'
       : favorited
-        ? 'bg-primary/[0.06] text-foreground hover:bg-primary/10'
+        ? 'bg-muted/40 text-foreground hover:bg-muted'
         : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+  );
+
+  const tileBarClass = (active: boolean) => cn(
+    'absolute left-1.5 top-2 bottom-2 w-[3px] rounded-full bg-primary transition-opacity',
+    active ? 'opacity-100' : 'opacity-0',
   );
 
   return (
@@ -225,7 +230,8 @@ export function BottomNav() {
                         onClick={() => { navigate(item.path); setMoreOpen(false); }}
                         className={tileClass(active, true)}
                       >
-                        <Icon className="h-4 w-4" />
+                        <span className={tileBarClass(active)} aria-hidden="true" />
+                        <Icon className="h-4 w-4" weight={active ? 'bold' : 'regular'} />
                         <span className="leading-none text-center">{item.name}</span>
                       </button>
                     );
@@ -248,7 +254,8 @@ export function BottomNav() {
                         onClick={() => { navigate(item.path); setMoreOpen(false); }}
                         className={tileClass(active)}
                       >
-                        <item.icon className="h-4 w-4" />
+                        <span className={tileBarClass(active)} aria-hidden="true" />
+                        <item.icon className="h-4 w-4" weight={active ? 'bold' : 'regular'} />
                         <span className="leading-none text-center">{item.label}</span>
                       </button>
                     );
@@ -271,7 +278,8 @@ export function BottomNav() {
                         onClick={() => { navigate(hub.path); setMoreOpen(false); }}
                         className={tileClass(active)}
                       >
-                        <hub.icon className="h-4 w-4" />
+                        <span className={tileBarClass(active)} aria-hidden="true" />
+                        <hub.icon className="h-4 w-4" weight={active ? 'bold' : 'regular'} />
                         <span className="leading-none text-center">{hub.label}</span>
                       </button>
                     );
@@ -294,7 +302,8 @@ export function BottomNav() {
                         onClick={() => { navigate(item.path); setMoreOpen(false); }}
                         className={tileClass(active)}
                       >
-                        <item.icon className="h-4 w-4" />
+                        <span className={tileBarClass(active)} aria-hidden="true" />
+                        <item.icon className="h-4 w-4" weight={active ? 'bold' : 'regular'} />
                         <span className="leading-none text-center">{item.label}</span>
                       </button>
                     );
@@ -306,7 +315,7 @@ export function BottomNav() {
         </div>
       )}
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border z-40 safe-bot">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background border-t border-border z-40 safe-bot">
         <div className="flex justify-around items-stretch h-16 px-1">
           {primaryItems.map((item) => {
             const active = isActive(item.path);
@@ -320,8 +329,11 @@ export function BottomNav() {
                   "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] rounded-b-full bg-primary transition-all duration-300 ease-out",
                   active ? "w-8 opacity-100" : "w-0 opacity-0"
                 )} />
-                <item.icon className={cn("h-5 w-5 transition-all duration-200", active ? "text-primary scale-110" : "text-muted-foreground")} />
-                <span className={cn("text-xs font-medium transition-colors leading-none", active ? "text-primary font-semibold" : "text-muted-foreground")}>
+                <item.icon
+                  weight={active ? 'bold' : 'regular'}
+                  className={cn("h-5 w-5 transition-colors duration-200", active ? "text-primary" : "text-muted-foreground")}
+                />
+                <span className={cn("text-xs font-medium transition-colors leading-none", active ? "text-primary" : "text-muted-foreground")}>
                   {item.label}
                 </span>
               </NavLink>
@@ -338,8 +350,11 @@ export function BottomNav() {
               "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] rounded-b-full bg-primary transition-all duration-300 ease-out",
               moreOpen ? "w-8 opacity-100" : "w-0 opacity-0"
             )} />
-            <MoreHorizontal className={cn("h-5 w-5 transition-all duration-200", moreOpen ? "text-primary scale-110" : "text-muted-foreground")} />
-            <span className={cn("text-xs font-medium transition-colors leading-none", moreOpen ? "text-primary font-semibold" : "text-muted-foreground")}>
+            <MoreHorizontal
+              weight={moreOpen ? 'bold' : 'regular'}
+              className={cn("h-5 w-5 transition-colors duration-200", moreOpen ? "text-primary" : "text-muted-foreground")}
+            />
+            <span className={cn("text-xs font-medium transition-colors leading-none", moreOpen ? "text-primary" : "text-muted-foreground")}>
               Mais
             </span>
           </button>

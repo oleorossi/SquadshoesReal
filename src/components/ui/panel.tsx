@@ -33,7 +33,7 @@ export function Panel({
 }: PanelProps) {
   const hasHeader = eyebrow || title || subtitle || actions;
   return (
-    <div className={cn('bg-card border border-border rounded-lg overflow-hidden', className)}>
+    <div className={cn('bg-card border border-border overflow-hidden chrome-surface', className)}>
       {hasHeader && (
         <div className="flex items-start justify-between gap-4 px-4 py-3 border-b border-border">
           <div className="min-w-0 space-y-0.5">

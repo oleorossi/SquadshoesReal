@@ -196,6 +196,14 @@
   --sidebar-gutter:               12px;                /* margem ao redor do painel */
 
   /* ═══════════════════════════════════════════════════════════════
+     ▼ CHROME · ponte sidebar → superfícies claras do conteúdo
+     Mesma família de cantos/elevação do painel flutuante, sem
+     escurecer o PAPER das telas.
+     ═════════════════════════════════════════════════════════════ */
+  --chrome-radius:                22px;
+  --chrome-shadow:                0 8px 24px -12px rgb(0 0 0 / 0.18), 0 2px 8px -4px rgb(0 0 0 / 0.06);
+
+  /* ═══════════════════════════════════════════════════════════════
      ▼ RADIUS · escala (Factory OS — radius mais generoso)
      ═════════════════════════════════════════════════════════════ */
   --radius:      0.85rem;    /* 13.6px · padrão de cards (Factory OS) */
@@ -468,6 +476,8 @@
   --sidebar-gradient-to:          0 0% 8%;
   --sidebar-radius:               22px;
   --sidebar-gutter:               12px;
+  --chrome-radius:                22px;
+  --chrome-shadow:                0 8px 24px -12px rgb(0 0 0 / 0.28), 0 2px 8px -4px rgb(0 0 0 / 0.12);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -977,6 +987,12 @@ a:focus-visible {
     background: hsl(var(--sidebar-background));
     border-radius: var(--sidebar-radius);
     overflow: hidden;
+  }
+
+  /* Superfície clara com a família visual da sidebar (Panel / StatCard). */
+  .chrome-surface {
+    border-radius: var(--chrome-radius);
+    box-shadow: var(--chrome-shadow);
   }
 
   .card-shimmer {
