@@ -51,6 +51,17 @@ describe('Materiais base · precificação rascunho', () => {
     expect(addSheet).toContain('applyBaseMaterialKitToSheet');
   });
 
+  it('custo da linha usa parseBrlNumberNonNeg (vírgula pt-BR) e não Number cru', () => {
+    const page = readFileSync(resolve(ROOT, 'src/pages/MateriaisBasePage.tsx'), 'utf8');
+    const costLib = readFileSync(resolve(ROOT, 'src/lib/materiaisBaseKitCost.ts'), 'utf8');
+    expect(page).toContain('parseBrlNumberNonNeg');
+    expect(page).toContain('kitItemEffectiveCost');
+    expect(costLib).toContain('parseBrlNumberNonNeg');
+    // Number("3,45") gravava 0 e o total ativo ignorava as linhas novas.
+    expect(page).not.toMatch(/cost_per_pair:\s*Number\(cost\)/);
+    expect(page).not.toMatch(/Number\(cost\s*\|\|\s*0\)/);
+  });
+
   it('consumo ignora linhas de kit/ajuste/só-precificação', () => {
     const motor = readFileSync(resolve(ROOT, 'src/lib/orderConsumption.ts'), 'utf8');
     expect(motor).toContain('include_in_consumption !== false');

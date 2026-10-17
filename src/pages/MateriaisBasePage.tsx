@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Plus, FloppyDisk as Save, Trash as Trash2 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatCurrency } from '@/lib/utils';
+import { parseBrlNumberNonNeg } from '@/lib/parseBrlNumber';
+import { kitItemEffectiveCost } from '@/lib/materiaisBaseKitCost';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
 import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { useProducts } from '@/hooks/useProducts';
@@ -44,9 +46,27 @@ export default function MateriaisBasePage() {
   const usedCategories = useMemo(() => new Set(kits.map(k => k.shoe_category)), [kits]);
   const availableCategories = categories.filter(c => !usedCategories.has(c));
 
-  const totalAtivo = items
-    .filter(i => i.is_active)
-    .reduce((s, i) => s + (Number(i.cost_per_pair) || 0), 0);
+  // Rascunhos locais: o total acompanha o que está na tela (vírgula pt-BR inclusive),
+  // não só o último valor gravado — senão linhas novas com "3,45" somavam 0.
+  const [draftById, setDraftById] = useState<Record<string, { cost: string; active: boolean }>>({});
+
+  useEffect(() => {
+    setDraftById(prev => {
+      const next: Record<string, { cost: string; active: boolean }> = {};
+      for (const item of items) {
+        next[item.id] = prev[item.id] ?? {
+          cost: item.cost_per_pair == null ? '' : String(item.cost_per_pair),
+          active: item.is_active,
+        };
+      }
+      return next;
+    });
+  }, [items]);
+
+  const totalAtivo = items.reduce(
+    (s, i) => s + kitItemEffectiveCost(i, draftById[i.id]),
+    0,
+  );
 
   const handleCreateKit = async () => {
     if (!newCategory) return;
@@ -173,6 +193,8 @@ export default function MateriaisBasePage() {
                           item={item}
                           index={idx + 1}
                           products={products as Array<{ id: string; name: string; unit_price?: number | null }>}
+                          draft={draftById[item.id]}
+                          onDraftChange={(draft) => setDraftById(prev => ({ ...prev, [item.id]: draft }))}
                           onSave={(patch) => saveItem.mutateAsync({ ...item, ...patch, kit_id: item.kit_id, description: patch.description ?? item.description })}
                           onDelete={() => deleteItem.mutateAsync({ id: item.id, kitId: item.kit_id })}
                         />
@@ -221,23 +243,35 @@ function KitItemRow({
   item,
   index,
   products,
+  draft,
+  onDraftChange,
   onSave,
   onDelete,
 }: {
   item: BaseMaterialKitItem;
   index: number;
   products: Array<{ id: string; name: string; unit_price?: number | null }>;
+  draft?: { cost: string; active: boolean };
+  onDraftChange: (draft: { cost: string; active: boolean }) => void;
   onSave: (patch: Partial<BaseMaterialKitItem> & { description?: string }) => Promise<unknown>;
   onDelete: () => Promise<unknown>;
 }) {
   const [description, setDescription] = useState(item.description);
-  const [cost, setCost] = useState(String(item.cost_per_pair ?? ''));
   const [kind, setKind] = useState(item.line_kind);
   const [productId, setProductId] = useState(item.product_id || '');
-  const [active, setActive] = useState(item.is_active);
+  const cost = draft?.cost ?? (item.cost_per_pair == null ? '' : String(item.cost_per_pair));
+  const active = draft?.active ?? item.is_active;
+
+  useEffect(() => {
+    setDescription(item.description);
+    setKind(item.line_kind);
+    setProductId(item.product_id || '');
+  }, [item.id, item.description, item.line_kind, item.product_id]);
+
+  const parsedCost = parseBrlNumberNonNeg(cost);
   const dirty =
     description !== item.description
-    || Number(cost || 0) !== Number(item.cost_per_pair || 0)
+    || parsedCost !== parseBrlNumberNonNeg(item.cost_per_pair)
     || kind !== item.line_kind
     || (productId || null) !== (item.product_id || null)
     || active !== item.is_active;
@@ -276,12 +310,16 @@ function KitItemRow({
         <Input
           className="h-8 text-right font-mono"
           value={cost}
-          onChange={e => setCost(e.target.value)}
+          onChange={e => onDraftChange({ cost: e.target.value, active })}
           inputMode="decimal"
         />
       </td>
       <td className="p-2 text-center">
-        <Switch checked={active} onCheckedChange={setActive} aria-label="Ativo" />
+        <Switch
+          checked={active}
+          onCheckedChange={v => onDraftChange({ cost, active: v })}
+          aria-label="Ativo"
+        />
       </td>
       <td className="p-2">
         <div className="flex gap-1 justify-end">
@@ -296,8 +334,8 @@ function KitItemRow({
               description,
               line_kind: kind,
               product_id: kind === 'ajuste' ? null : (productId || null),
-              cost_per_pair: Number(cost) || 0,
-              estimated_unit_price: (!productId && kind === 'material') ? (Number(cost) || 0) : null,
+              cost_per_pair: parsedCost,
+              estimated_unit_price: (!productId && kind === 'material') ? parsedCost : null,
               is_active: active,
               cost_mode: 'fixed_per_pair',
             })}
