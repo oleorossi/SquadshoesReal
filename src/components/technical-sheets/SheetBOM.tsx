@@ -447,7 +447,7 @@ export function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
             {form.group_id && groupProductsForSelection.length > 1 && (
               <div className="col-span-2 sm:col-span-3">
                 <Label className="text-xs font-semibold text-primary">Item Específico do Grupo</Label>
-                <Select value={form.product_id} onValueChange={handleProductSelect}>
+                <Select value={form.product_id || undefined} onValueChange={handleProductSelect}>
                   <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue placeholder="Selecionar item..." /></SelectTrigger>
                   <SelectContent>
                     {groupProductsForSelection.map(p => (
@@ -474,7 +474,7 @@ export function SheetBOM({ sheetId, safetyPct, onSafetyChange, shoeCategory }: {
             {!form.group_id && (
               <div className="col-span-2 sm:col-span-3">
                 <Label className="text-xs text-muted-foreground">Ou selecione um produto individual (sem grupo)</Label>
-                <Select value={form.product_id} onValueChange={handleProductSelect}>
+                <Select value={form.product_id || undefined} onValueChange={handleProductSelect}>
                   <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Produto individual..." /></SelectTrigger>
                   <SelectContent>
                     {availableProducts.filter(p => !p.group_id).map(p => (

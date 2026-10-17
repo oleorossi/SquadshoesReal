@@ -48,6 +48,9 @@ const SheetBOM = lazy(() =>
 const CostsTab = lazy(() =>
   import('@/components/technical-sheets/CostsAnalysisTab').then((m) => ({ default: m.CostsAnalysisTab })),
 );
+const PricingBomGrid = lazy(() =>
+  import('@/components/technical-sheets/PricingBomGrid').then((m) => ({ default: m.PricingBomGrid })),
+);
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -4528,24 +4531,29 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           />
         </TabsContent>
 
-        {/* TAB: Custos */}
+        {/* TAB: Precificação — grade BOM+valores + preço de venda */}
         <TabsContent value="costs" className="mt-4 space-y-4">
           <div className="rounded-lg border bg-muted/20 px-4 py-2.5 flex items-center gap-3">
             <DollarSign className="h-4 w-4 text-primary shrink-0" />
             <div>
-              <div className="text-sm font-bold">Custos e preço comercial</div>
+              <div className="text-sm font-bold">Precificação da referência</div>
               <div className="text-xs text-muted-foreground">
-                Cadastre o preço-base da referência e acompanhe material (BOM), mão de obra e overhead.
+                Selecione materiais, informe consumo/valores, salve a ficha. Kit base vem da categoria na criação.
               </div>
             </div>
           </div>
+
+          <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+            <PricingBomGrid sheetId={sheet.id} form={form} />
+          </Suspense>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-primary" /> Preço-base comercial da referência
               </CardTitle>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Valor padrão por par usado quando o cliente não tem tabela de preço e a variante não possui preço próprio.
+                Valor padrão por par usado quando o cliente não tem tabela de preço e a variante não possui preço próprio. Use o botão Salvar da ficha.
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -4580,12 +4588,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     : 'Sem preço-base nesta ficha: se também não houver tabela efetiva nem preço próprio da variante, o valor positivo informado no item será aceito sem validação de piso comercial.'}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Prioridade automática: tabela do cliente → variante de material → preço-base da referência. Na ausência das três fontes, vale o preço positivo informado no item.
-              </p>
             </CardContent>
           </Card>
-          <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+
+          <Suspense fallback={<div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
             <CostsTab sheetId={sheet.id} form={form} groups={groups || []} />
           </Suspense>
         </TabsContent>

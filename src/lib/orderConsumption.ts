@@ -2662,7 +2662,15 @@ export function computeConsumptionForItems(
     // variantes); linha da variante DESTE item entra e, quando repete o
     // product_id de uma compartilhada, PREVALECE (override); linha de OUTRA
     // variante fica de fora. Sem variante no item → só as compartilhadas.
-    const sheetBomLines = (materials || []).filter((material: any) => material.sheet_id === item.reference_id);
+    // Kit base / ajuste / include_in_consumption=false: só precificação — não debitam.
+    const sheetBomLines = (materials || []).filter((material: any) =>
+      material.sheet_id === item.reference_id
+      && material.product_id
+      && material.include_in_consumption !== false
+      && material.line_kind !== 'ajuste'
+      && material.cost_mode !== 'fixed_per_pair'
+      && material.is_active !== false
+    );
     const itemVariantId = item.material_variant_id || null;
     const variantBomLines = itemVariantId
       ? sheetBomLines.filter((m: any) => m.material_variant_id === itemVariantId)

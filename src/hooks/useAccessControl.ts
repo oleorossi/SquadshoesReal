@@ -29,6 +29,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/grupos': 'estoque',
   '/fichas-tecnicas': 'produtos',
   '/fichas-tecnicas/padroes': 'produtos', // ferramenta de padrões da Engenharia
+  '/engenharia/materiais-base': 'produtos',
   '/atelie': 'produtos', // Ateliê — cabedal complexo (rua)
   '/escalonamento': 'produtos',
   '/tiras-artesanais': 'produtos',

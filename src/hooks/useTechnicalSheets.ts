@@ -293,7 +293,8 @@ export const emptySheetForm: SheetFormData = {
 };
 
 export type SheetMaterialFormData = {
-  product_id: string;
+  /** Null = linha-rascunho (só em rascunho/em_revisao) ou ajuste. */
+  product_id: string | null;
   group_id?: string | null;
   quantity_per_unit: number;
   consumption_per_size?: Record<string, number>;
@@ -305,6 +306,15 @@ export type SheetMaterialFormData = {
   sizes: string;
   /** Setor físico que recebe e consome este item no início da operação. */
   consumption_sector: string;
+  part_name?: string | null;
+  draft_name?: string | null;
+  line_kind?: 'material' | 'ajuste';
+  cost_mode?: 'fixed_per_pair' | 'consumo_x_preco';
+  cost_per_pair?: number | null;
+  estimated_unit_price?: number | null;
+  is_active?: boolean;
+  include_in_consumption?: boolean;
+  from_kit_item_id?: string | null;
 };
 
 export function useTechnicalSheets() {
@@ -509,6 +519,7 @@ export function useSheetMaterials(sheetId: string | null) {
 }
 
 import { sanitizeUuidFields } from '@/lib/utils';
+import { applyBaseMaterialKitToSheet } from '@/hooks/useBaseMaterialKits';
 
 
 /**
@@ -657,11 +668,23 @@ export function useAddSheet() {
         .select()
         .single();
       if (error) throw error;
+
+      // Kit de materiais base da categoria → linhas na Precificação (rascunho).
+      try {
+        const n = await applyBaseMaterialKitToSheet(data.id);
+        if (n > 0) {
+          toast.message(`${n} material(is) base aplicados na Precificação.`);
+        }
+      } catch (kitErr) {
+        console.warn('[useAddSheet] falha ao aplicar kit de materiais base:', kitErr);
+      }
+
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, _variables) => {
       invalidateTechnicalSheets(qc);
       invalidateSheetAudit(qc);
+      qc.invalidateQueries({ queryKey: ['sheet_materials'] });
       toast.success('Ficha técnica criada!');
     },
     onError: (err: Error) => toast.error(`Erro: ${err.message}`),
