@@ -477,8 +477,12 @@ export default function TechnicalSheets({
         <div className="space-y-4 page-enter">
           <EditorialPageHeader
             sectionLabel="ENGENHARIA · FICHAS"
-            title="Fichas Técnicas"
-            description="Materiais, consumos e custos"
+            title={isDraftCatalog ? 'Fichas em rascunho' : 'Fichas Técnicas'}
+            description={
+              isDraftCatalog
+                ? 'Referências ainda não publicadas'
+                : 'Catálogo publicado — materiais, consumos e custos'
+            }
           />
           <EmptyState
             icon={AlertTriangle}
