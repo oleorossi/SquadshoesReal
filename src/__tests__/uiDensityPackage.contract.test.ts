@@ -33,9 +33,16 @@ describe('ui density package — primitives', () => {
     expect(src).toMatch(/min = 16/);
   });
 
-  it('StatCard padding compacto', () => {
+  it('StatCard padding compacto e chrome-surface', () => {
     const src = read('components/ui/stat-card.tsx');
     expect(src).toContain('p-2.5 flex flex-col gap-1.5');
+    expect(src).toContain('chrome-surface');
+  });
+
+  it('Panel usa chrome-surface (família da sidebar)', () => {
+    const src = read('components/ui/panel.tsx');
+    expect(src).toContain('chrome-surface');
+    expect(src).not.toMatch(/rounded-lg overflow-hidden/);
   });
 });
 
@@ -57,6 +64,7 @@ describe('ui density package — chrome', () => {
     expect(src).toContain('text-lg sm:text-xl');
     expect(src).toContain('text-xl sm:text-2xl');
     expect(src).toContain('const denser = density === \'compact\'');
+    expect(src).toContain('tracking-[0.14em]');
   });
 
   it('tokens de layout densos', () => {
@@ -65,8 +73,18 @@ describe('ui density package — chrome', () => {
     expect(css).toMatch(/--layout-sidebar-collapsed:\s*64px/);
     expect(css).toMatch(/--sidebar-radius:\s*22px/);
     expect(css).toMatch(/--sidebar-gutter:\s*12px/);
+    expect(css).toMatch(/--chrome-radius:\s*22px/);
+    expect(css).toMatch(/--chrome-shadow:/);
+    expect(css).toMatch(/\.chrome-surface\s*\{/);
     expect(css).toMatch(/--layout-table-row:\s*34px/);
     expect(css).toMatch(/minmax\(160px/);
+  });
+
+  it('BottomNav ativo sem wash primary/10', () => {
+    const src = read('components/layout/BottomNav.tsx');
+    expect(src).not.toContain('bg-primary/10');
+    expect(src).not.toContain('bg-primary/15');
+    expect(src).toContain("weight={active ? 'bold' : 'regular'}");
   });
 });
 

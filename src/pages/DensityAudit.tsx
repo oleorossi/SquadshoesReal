@@ -83,7 +83,7 @@ export default function DensityAudit() {
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="hidden md:flex border-b border-border/40 h-9 items-center px-3 md:px-4 lg:px-6 text-xs text-muted-foreground">
+        <div className="hidden md:flex border-b border-border/50 bg-background h-9 items-center px-3 md:px-4 lg:px-6 text-xs text-muted-foreground">
           Home · COMERCIAL · PEDIDOS DE VENDA
         </div>
 
