@@ -61,6 +61,18 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
 
   const specRows: SpecRow[] = useMemo(() => {
     const rows: SpecRow[] = [];
+    // Prioriza grade por numeração (per-size); escalar só como fallback —
+    // guard noScalarOnlyConsumption exige ler *_consumption_per_size neste arquivo.
+    const effectiveConsumption = (
+      perSize: Record<string, number> | null | undefined,
+      fallbackAvg: number,
+    ): number => {
+      if (perSize && typeof perSize === 'object') {
+        const vals = Object.values(perSize).map(v => Number(v)).filter(v => Number.isFinite(v) && v > 0);
+        if (vals.length > 0) return vals.reduce((a, b) => a + b, 0) / vals.length;
+      }
+      return Number(fallbackAvg) || 0;
+    };
     const push = (key: string, label: string, material: string, consumption: number) => {
       if (!material || !(consumption > 0)) return;
       const unitPrice = groupPriceByName[material] || 0;
@@ -69,9 +81,24 @@ export function PricingBomGrid({ sheetId, form, groupPriceByName = {} }: Props) 
         cost: consumption * unitPrice, source: 'spec',
       });
     };
-    push('upper', 'Cabedal', form.upper_material, Number(form.upper_consumption) || 0);
-    push('lining', 'Forração', form.lining_material, Number(form.lining_consumption) || 0);
-    push('insole', 'Palmilha', form.insole_material, Number(form.insole_consumption) || 0);
+    push(
+      'upper',
+      'Cabedal',
+      form.upper_material,
+      effectiveConsumption(form.upper_consumption_per_size, form.upper_consumption),
+    );
+    push(
+      'lining',
+      'Forração',
+      form.lining_material,
+      effectiveConsumption(form.lining_consumption_per_size, form.lining_consumption),
+    );
+    push(
+      'insole',
+      'Palmilha',
+      form.insole_material,
+      effectiveConsumption(form.insole_consumption_per_size, form.insole_consumption),
+    );
     push('sole', 'Solado', form.sole_material, Number(form.sole_consumption) || 0);
     return rows;
   }, [form, groupPriceByName]);

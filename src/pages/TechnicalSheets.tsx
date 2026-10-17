@@ -4588,6 +4588,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     : 'Sem preço-base nesta ficha: se também não houver tabela efetiva nem preço próprio da variante, o valor positivo informado no item será aceito sem validação de piso comercial.'}
                 </span>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Prioridade automática: tabela do cliente → variante de material → preço-base da referência. Na ausência das três fontes, vale o preço positivo informado no item.
+              </p>
             </CardContent>
           </Card>
 
