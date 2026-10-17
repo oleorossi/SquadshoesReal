@@ -116,7 +116,7 @@ export function EditorialPageHeader({
           {live && (
             <span className="live-dot shrink-0" aria-hidden="true" />
           )}
-          <span className="ed-eyebrow">{sectionLabel}</span>
+          <span className="ed-eyebrow tracking-[0.14em]">{sectionLabel}</span>
         </div>
 
         {/* ── Title row (anton + actions inline em desktop) ── */}

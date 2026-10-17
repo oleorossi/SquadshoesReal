@@ -765,9 +765,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
           </aside>
 
           <div className="flex-1 min-w-0 flex flex-col min-h-screen relative overflow-x-hidden">
-            {/* Mobile top bar */}
+            {/* Mobile top bar — tipografia alinhada à hierarquia da sidebar */}
             <header className={cn(
-              'md:hidden sticky top-0 z-30 border-b border-border/60 h-14 flex items-center px-4 gap-2 bg-background/95 backdrop-blur-sm safe-top box-content',
+              'md:hidden sticky top-0 z-30 border-b border-border/50 h-14 flex items-center px-4 gap-2 bg-background safe-top box-content',
               printMode && 'print:hidden'
             )}>
               <Button variant="ghost" size="icon" aria-label="Abrir menu lateral" className="h-9 w-9 shrink-0" onClick={() => setMobileOpen(true)}>
@@ -778,14 +778,14 @@ export default function AppLayout({ children, printMode = false }: { children: R
                   <ArrowLeft className="h-5 w-5" aria-hidden="true" />
                 </Button>
               )}
-              <div className="h-8 w-8 rounded-lg overflow-hidden ring-1 ring-border bg-card shrink-0 shadow-sm">
+              <div className="h-8 w-8 rounded-md overflow-hidden ring-1 ring-border bg-card shrink-0">
                 <img src={logoImg} alt="Squad Shoes" className="h-full w-full object-contain" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-base font-extrabold text-foreground leading-tight tracking-tight truncate">
+                <p className="ed-display text-base uppercase tracking-tight text-foreground leading-none truncate">
                   {isDashboard ? 'Squad Shoes' : mobileNavMeta.label}
                 </p>
-                <p className="text-xs text-muted-foreground leading-tight mt-0.5 font-semibold tracking-[0.05em] uppercase truncate">
+                <p className="mt-1 text-[10px] font-medium tracking-[0.14em] uppercase text-muted-foreground truncate">
                   {isDashboard ? 'Gestão Industrial' : (mobileNavMeta.group || 'Squad Shoes')}
                 </p>
               </div>
@@ -800,8 +800,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
             {/* Desktop breadcrumb bar */}
             {!isDashboard && (
               <div className={cn(
-                "hidden md:flex border-b border-border/40 bg-background/96 backdrop-blur-md sticky top-0 z-20",
-                "shadow-[0_1px_0_0_hsl(var(--border)/0.4)]",
+                "hidden md:flex border-b border-border/50 bg-background sticky top-0 z-20",
                 printMode && 'print:hidden'
               )}>
                 <div className="w-full h-9 flex items-center px-3 md:px-4 lg:px-6 xl:px-8 gap-2">
