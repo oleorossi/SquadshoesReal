@@ -179,14 +179,14 @@ export default function PendingPunchesWorkspace() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="icon" className="h-9 w-9" onClick={() => goMonth(-1)}>
+          <Button type="button" variant="outline" size="icon" className="h-9 w-9" aria-label="Mês anterior" onClick={() => goMonth(-1)}>
             <CaretLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-[10rem] text-center">
             <p className="eyebrow text-[9px]">Competência</p>
             <p className="font-display text-sm font-semibold capitalize">{monthLabel}</p>
           </div>
-          <Button type="button" variant="outline" size="icon" className="h-9 w-9" onClick={() => goMonth(1)}>
+          <Button type="button" variant="outline" size="icon" className="h-9 w-9" aria-label="Próximo mês" onClick={() => goMonth(1)}>
             <CaretRight className="h-4 w-4" />
           </Button>
         </div>
