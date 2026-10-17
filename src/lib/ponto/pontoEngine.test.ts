@@ -23,8 +23,8 @@ const punchesByDate = new Map<string, string[]>([
   ['2026-06-02', ['08:00', '12:00', '13:00', '19:00']], // +1h após jornada
   // 2026-06-03 → SEM batidas = falta
   ['2026-06-04', ['08:00', '12:00', '13:00', '18:00']], // normal (540)
-  ['2026-06-05', ['08:00', '17:00']],                   // 2 batidas, déficit (almoço inferido)
-  ['2026-06-06', ['08:00', '12:00']],                   // sábado trabalhado (não-útil)
+  ['2026-06-05', ['08:00', '12:00', '13:00', '17:00']], // 4 batidas, déficit vs 540
+  ['2026-06-06', ['08:00', '10:00', '10:30', '12:00']], // sábado trabalhado (não-útil)
   ['2026-06-07', ['08:00']],                            // batida ÍMPAR → irregular/pendente
 ]);
 
