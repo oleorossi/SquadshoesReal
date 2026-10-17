@@ -1305,16 +1305,17 @@ export function useResyncOPsFromSheets() {
 }
 
 // SOFT DELETE: marca deleted_at em vez de apagar fisicamente. PV some das
-// listas (filtro deleted_at IS NULL) mas tudo continua intacto — items, OPs,
-// AR, etc. Restauração via useRestoreSaleOrder em 1 clique.
+// listas (filtro deleted_at IS NULL); items/AR/ledger fiscal seguem intactos.
+// Restauração via useRestoreSaleOrder em 1 clique (re-empenha soft).
 //
 // Mudança 19/05/2026: user reportou "PVs sumindo sem rastro" + 7 PVs ausentes
 // confirmados (LNG 102/103/105/106 + 112/113/114 sumiram antes da trigger de
 // audit existir). Soft delete elimina perda de dados por acidente de UI.
 //
 // Guards de NF-e ativa permanecem (impossível esconder PV com NF autorizada).
-// Exclusão física foi retirada: cancelamento compensatório + soft delete
-// preservam ledger fiscal, financeiro, estoque e a trilha de auditoria.
+// Decisão 17/10/2026: soft-delete LIBERA todas as reservas (solado, componente,
+// pv_commitment, …) e estorna out físico líquido — senão o empenho fica preso
+// (PV-00236). Restore reabre e re-empenha.
 interface SaleOrderLifecycleCommandResponse {
   ok: boolean;
   order_number?: string | null;
