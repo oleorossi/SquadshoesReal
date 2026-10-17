@@ -365,6 +365,25 @@ export function useMarkAtelierSent() {
   });
 }
 
+export function useMarkAtelierRealized() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (jobId: string) => {
+      const { data, error } = await supabase.rpc(
+        'atelier_mark_job_realized' as never,
+        { p_job_id: jobId } as never,
+      );
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      toast.success('Marcado como realizado pelo prestador');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Falha ao marcar realizado'),
+  });
+}
+
 export function useMarkAtelierReceived() {
   const qc = useQueryClient();
   return useMutation({
@@ -378,7 +397,7 @@ export function useMarkAtelierReceived() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
-      toast.success('Recebido na fábrica');
+      toast.success('Recebido e conferido na fábrica');
     },
     onError: (e: Error) => toast.error(e.message || 'Falha ao marcar recebimento'),
   });
@@ -475,7 +494,12 @@ export function useAtelierPrepConsumption(saleOrderIds: string[]) {
       return rows.filter((r) => {
         if (r.lot_id) return true;
         const st = r.cabedal_prep_jobs?.pipeline_status;
-        return st === 'cut' || st === 'sent_to_contractor' || st === 'received_at_factory';
+        return (
+          st === 'cut' ||
+          st === 'sent_to_contractor' ||
+          st === 'realized' ||
+          st === 'received_at_factory'
+        );
       });
     },
   });

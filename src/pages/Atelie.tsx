@@ -35,7 +35,6 @@ import {
   ATELIER_SECTOR_LABEL,
   ATELIER_SECTORS,
   atelierLotColumn,
-  atelierReportRows,
   groupAtelierLotsByReference,
   type AtelierSector,
 } from '@/lib/atelier';
@@ -46,6 +45,7 @@ import {
   useAtelierLots,
   useAtelierSettings,
   useConfirmAtelierLotCut,
+  useMarkAtelierRealized,
   useMarkAtelierReceived,
   useMarkAtelierSent,
   useReapplyAtelierEligibility,
@@ -56,13 +56,10 @@ import {
   type AtelierLotRow,
 } from '@/hooks/useAtelier';
 import { useContractors } from '@/hooks/useContractors';
-import {
-  deadlineChipLabel,
-  deadlineTone,
-  groupReportByOrderThenReference,
-} from '@/lib/reportOrderGrouping';
+import { deadlineChipLabel, deadlineTone } from '@/lib/reportOrderGrouping';
 import { daysUntilDeadline } from '@/lib/production/productionSequence';
 import { cn } from '@/lib/utils';
+import { AtelierRelatorioView } from '@/components/atelier/AtelierRelatorioView';
 
 const VIEW_SET = new Set(['cadastro', 'fila', 'relatorio']);
 
@@ -149,12 +146,14 @@ function JobRow({
   job,
   contractors,
   onSend,
+  onRealize,
   onReceive,
   busy,
 }: {
   job: AtelierLotJob;
   contractors: { id: string; name: string }[];
   onSend: (contractorId: string) => void;
+  onRealize: () => void;
   onReceive: () => void;
   busy: boolean;
 }) {
@@ -195,9 +194,18 @@ function JobRow({
             {job.contractor_name ?? 'Prestador'}
             {job.atelier_service_number ? ` · ${job.atelier_service_number}` : ''}
           </span>
+          <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={onRealize}>
+            <CheckCircle className="h-3.5 w-3.5" />
+            Realizado
+          </Button>
+        </div>
+      )}
+      {job.pipeline_status === 'realized' && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-muted-foreground">Aguardando conferência na fábrica</span>
           <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={onReceive}>
             <Warehouse className="h-3.5 w-3.5" />
-            Voltou
+            Conferir
           </Button>
         </div>
       )}
@@ -208,10 +216,12 @@ function JobRow({
 function LotCard({ lot, contractors }: { lot: AtelierLotRow; contractors: { id: string; name: string }[] }) {
   const cutMut = useConfirmAtelierLotCut();
   const sendMut = useMarkAtelierSent();
+  const realizedMut = useMarkAtelierRealized();
   const receiveMut = useMarkAtelierReceived();
   const [showKit, setShowKit] = useState(false);
   const pending = lot.debits.filter((d) => Number(d.pending_qty) > 0);
   const clients = [...new Set(lot.orders.map((o) => o.client_name).filter(Boolean))];
+  const jobBusy = sendMut.isPending || realizedMut.isPending || receiveMut.isPending;
 
   return (
     <article className="space-y-2 rounded-lg border border-border/70 bg-card p-3">
@@ -288,8 +298,9 @@ function LotCard({ lot, contractors }: { lot: AtelierLotRow; contractors: { id: 
             key={job.id}
             job={job}
             contractors={contractors}
-            busy={sendMut.isPending || receiveMut.isPending}
+            busy={jobBusy}
             onSend={(cid) => sendMut.mutate({ jobId: job.id, contractorId: cid })}
+            onRealize={() => realizedMut.mutate(job.id)}
             onReceive={() => receiveMut.mutate(job.id)}
           />
         ))}
@@ -529,8 +540,9 @@ function CadastroView() {
 const COLUMN_TITLE: Record<string, string> = {
   awaiting_cut: 'Aguardando corte',
   cut: 'Cortado · enviar',
-  sent_to_contractor: 'No prestador',
-  received_at_factory: 'Voltou · libera a OP',
+  sent_to_contractor: 'Enviado ao prestador',
+  realized: 'Realizado',
+  received_at_factory: 'Recebido e conferido',
 };
 
 function FilaView() {
@@ -578,7 +590,7 @@ function FilaView() {
           description="Quando um pedido com referência do Ateliê for aprovado, cada cor entra num lote aqui."
         />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-5">
           {ATELIER_QUEUE_COLUMNS.map((col) => {
             const colLots = byColumn.get(col) ?? [];
             return (
@@ -620,135 +632,6 @@ function FilaView() {
   );
 }
 
-/**
- * Relatório do Ateliê — `?view=relatorio`.
- *
- * Decisão do dono (12/10/2026): PEDIDO de cima pra baixo pelo prazo de entrega,
- * todos os itens do pedido agrupados por REFERÊNCIA. É a hierarquia que a fila
- * operacional não pode ter, porque lá o eixo 1 é o lote (`referência × cor`
- * atravessando vários PVs) e `atelier_confirm_lot_cut` opera por lote.
- *
- * ⚠ Leitura, não operação: não corta, não envia, não recebe. Quem age é a fila.
- */
-function RelatorioView() {
-  const { data: lots = [], isLoading, isError, refetch } = useAtelierLots();
-
-  const groups = useMemo(() => {
-    // Uma linha por (pedido × lote): o lote junta vários PVs, então o mesmo
-    // lote aparece no relatório de cada pedido que o alimenta, com os pares
-    // DAQUELE pedido — nunca com o total do lote, que somaria os outros.
-    const rows = atelierReportRows(lots);
-    return groupReportByOrderThenReference(rows, ({ lot, order }) => ({
-      saleOrderId: order.sale_order_id,
-      orderNumber: order.order_number,
-      clientName: order.client_name,
-      deliveryDeadline: order.delivery_deadline,
-      referenceLabel: lot.reference_code ?? lot.reference_name ?? 'Sem referência',
-      referenceKey: lot.reference_id,
-      pairs: Number(order.pairs) || 0,
-    }));
-  }, [lots]);
-
-  if (isError) {
-    return <p className="text-sm text-destructive">Não foi possível carregar o relatório.</p>;
-  }
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-  if (groups.length === 0) {
-    return (
-      <EmptyState
-        icon={CheckCircle}
-        title="Nenhum pedido no Ateliê"
-        description="Quando um pedido com referência do Ateliê for aprovado, ele aparece aqui pela data de entrega."
-      />
-    );
-  }
-
-  const totalPairs = groups.reduce((sum, g) => sum + g.pairs, 0);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Entrega mais próxima no topo, itens de cada pedido agrupados por referência.
-          {' '}
-          <span className="font-medium text-foreground">
-            {groups.length} {groups.length === 1 ? 'pedido' : 'pedidos'} · {formatQty(totalPairs)} pares
-          </span>
-        </p>
-        <Button variant="outline" size="sm" className="h-8" onClick={() => void refetch()}>
-          Atualizar
-        </Button>
-      </div>
-
-      <div className="space-y-3">
-        {groups.map((group) => (
-          <Panel key={group.saleOrderId} className="p-4 space-y-3">
-            <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-border/60 pb-2">
-              <h2 className="font-display text-lg leading-none text-foreground">{group.orderNumber || '—'}</h2>
-              <span className="text-sm text-muted-foreground">{group.clientName || '—'}</span>
-              <span className="text-xs text-muted-foreground">
-                Entrega{' '}
-                <span className="font-medium text-foreground">
-                  {group.deliveryDeadline ? formatDay(group.deliveryDeadline) : '—'}
-                </span>
-              </span>
-              <span
-                className={cn(
-                  'rounded border px-1.5 py-0.5 text-[11px] font-medium',
-                  deadlineChipClass({ min_delivery_deadline: group.deliveryDeadline }),
-                )}
-              >
-                {deadlineChipLabel(group.daysUntilDeadline)}
-              </span>
-              <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-                {formatQty(group.pairs)} pares · {group.references.length}{' '}
-                {group.references.length === 1 ? 'referência' : 'referências'}
-              </span>
-            </header>
-
-            {group.references.map((ref) => (
-              <section key={ref.key} className="space-y-1">
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <h3 className="font-display text-sm leading-none text-foreground">{ref.label}</h3>
-                  <span className="font-mono text-[10px] text-muted-foreground">
-                    {formatQty(ref.pairs)} pares · {ref.rows.length}{' '}
-                    {ref.rows.length === 1 ? 'cor' : 'cores'}
-                  </span>
-                </div>
-                <ul className="divide-y divide-border/50 rounded border border-border/60">
-                  {ref.rows.map(({ lot, order }) => (
-                    <li
-                      key={`${lot.id}-${order.sale_order_id}`}
-                      className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-2.5 py-1.5 text-xs"
-                    >
-                      <span className="font-medium text-foreground">{lot.color ?? 'Sem cor'}</span>
-                      <span className="font-mono text-[11px] text-muted-foreground">{lot.lot_number}</span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {COLUMN_TITLE[
-                          atelierLotColumn(lot.status, lot.jobs.map((j) => j.pipeline_status))
-                        ] ?? lot.status}
-                      </span>
-                      <span className="font-mono font-semibold tabular-nums text-foreground">
-                        {formatQty(Number(order.pairs) || 0)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </Panel>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function Atelie() {
   const [params, setParams] = useSearchParams();
   const raw = params.get('view') ?? 'fila';
@@ -770,7 +653,7 @@ export default function Atelie() {
       <EditorialPageHeader
         sectionLabel="ENGENHARIA · ATELIÊ"
         title="Ateliê"
-        description="Referências complexas preparadas antes da produção: corte em lote por cor, envio ao prestador e retorno antes da OP."
+        description="Cabedal complexo: escolha Corte, Costura e/ou Aviamento na ficha. Corte na fábrica; Costura/Aviamento no prestador (enviado → realizado → conferido) antes da OP."
         actions={
           <Button variant="outline" size="sm" className="h-9" asChild>
             <Link to="/terceirizados">
@@ -797,7 +680,7 @@ export default function Atelie() {
           <FilaView />
         </TabsContent>
         <TabsContent value="relatorio">
-          <RelatorioView />
+          <AtelierRelatorioView />
         </TabsContent>
         <TabsContent value="cadastro">
           <CadastroView />

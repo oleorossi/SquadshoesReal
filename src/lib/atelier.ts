@@ -28,15 +28,21 @@ export type AtelierPipelineStatus =
   | 'awaiting_cut'
   | 'cut'
   | 'sent_to_contractor'
+  | 'realized'
   | 'received_at_factory'
   | 'cancelled';
 
-/** Ateliê v2: o corte é do LOTE, na fila do Ateliê, antes da OP. */
+/**
+ * Pipeline do Ateliê:
+ * - Corte: só na fábrica (aguardando corte → cortado). Sem OKs de rua.
+ * - Costura/Aviamento: cortado → enviado ao prestador → realizado → recebido e conferido.
+ */
 export const ATELIER_PIPELINE_LABEL: Record<AtelierPipelineStatus, string> = {
   awaiting_cut: 'Aguardando corte',
   cut: 'Cortado',
-  sent_to_contractor: 'No prestador',
-  received_at_factory: 'Voltou',
+  sent_to_contractor: 'Enviado ao prestador',
+  realized: 'Realizado',
+  received_at_factory: 'Recebido e conferido',
   cancelled: 'Cancelado',
 };
 
@@ -45,6 +51,14 @@ export const ATELIER_QUEUE_COLUMNS: AtelierPipelineStatus[] = [
   'awaiting_cut',
   'cut',
   'sent_to_contractor',
+  'realized',
+  'received_at_factory',
+];
+
+/** OKs de rua (Costura/Aviamento) — o corte da fábrica não entra aqui. */
+export const ATELIER_STREET_OK_STEPS: AtelierPipelineStatus[] = [
+  'sent_to_contractor',
+  'realized',
   'received_at_factory',
 ];
 
@@ -52,7 +66,8 @@ const PIPELINE_ORDER: Record<AtelierPipelineStatus, number> = {
   awaiting_cut: 0,
   cut: 1,
   sent_to_contractor: 2,
-  received_at_factory: 3,
+  realized: 3,
+  received_at_factory: 4,
   cancelled: 99,
 };
 
@@ -74,16 +89,29 @@ export function atelierKanbanBadgeLabel(status: string | null | undefined): stri
     case 'cut':
       return 'Ateliê · cortado';
     case 'sent_to_contractor':
-      return 'Ateliê · no prestador';
+      return 'Ateliê · enviado ao prestador';
+    case 'realized':
+      return 'Ateliê · realizado';
     case 'received_at_factory':
-      return 'Ateliê · voltou';
+      return 'Ateliê · recebido e conferido';
     default:
       return null;
   }
 }
 
+/** Enquanto está no prestador (enviado ou já realizado, ainda sem conferência). */
 export function atelierBlocksKanbanPointing(status: string | null | undefined): boolean {
-  return status === 'sent_to_contractor';
+  return status === 'sent_to_contractor' || status === 'realized';
+}
+
+/** Próximo OK de rua a partir do status atual do job (Costura/Aviamento). */
+export function atelierNextStreetOk(
+  status: AtelierPipelineStatus | string | null | undefined,
+): AtelierPipelineStatus | null {
+  if (status === 'cut') return 'sent_to_contractor';
+  if (status === 'sent_to_contractor') return 'realized';
+  if (status === 'realized') return 'received_at_factory';
+  return null;
 }
 
 /** Componentes que podem ir no kit do lote (nomes do motor de consumo). */

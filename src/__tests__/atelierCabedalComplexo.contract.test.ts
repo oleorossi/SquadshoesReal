@@ -51,7 +51,9 @@ describe('Ateliê cabedal complexo — contratos', () => {
     expect(ATELIER_SECTORS).toEqual(['corte_cabedal', 'costura_cabedal', 'aviamento']);
     expect(atelierKanbanBadgeLabel('sent_to_contractor')).toMatch(/prestador/i);
     expect(atelierKanbanBadgeLabel('awaiting_cut')).toMatch(/aguardando corte/i);
+    expect(atelierKanbanBadgeLabel('realized')).toMatch(/realizado/i);
     expect(atelierBlocksKanbanPointing('sent_to_contractor')).toBe(true);
+    expect(atelierBlocksKanbanPointing('realized')).toBe(true);
     expect(atelierBlocksKanbanPointing('debited')).toBe(false);
   });
 });

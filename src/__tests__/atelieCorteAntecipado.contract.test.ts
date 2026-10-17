@@ -67,6 +67,7 @@ describe('Ateliê v2 — corte antecipado em lote', () => {
     expect(atelierLotColumn('cut', ['sent_to_contractor', 'cut'])).toBe('cut');
     expect(atelierLotColumn('cut', ['received_at_factory', 'received_at_factory'])).toBe('received_at_factory');
     expect(atelierLotColumn('cut', ['received_at_factory', 'cancelled'])).toBe('received_at_factory');
+    expect(atelierLotColumn('cut', ['realized', 'sent_to_contractor'])).toBe('sent_to_contractor');
   });
 
   it('sequência e Kanban falam o pipeline novo', () => {

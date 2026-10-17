@@ -19,6 +19,7 @@ import {
   ATELIER_KIT_COMPONENTS,
   ATELIER_SECTOR_LABEL,
   ATELIER_SECTOR_STAGE,
+  ATELIER_SECTORS,
   ATELIER_STREET_SECTORS,
   atelierDefaultKit,
   atelierSheetSupport,
@@ -33,32 +34,60 @@ import {
   type AtelierReferenceSectorRow,
 } from '@/hooks/useAtelier';
 import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/ReferenceTerceirizacoesPanel';
+import { GroupMaterialSelect } from '@/components/technical-sheets/sheetSelectors';
+
+interface MaterialDraft {
+  upper_material?: string | null;
+  upper_material_group_id?: string | null;
+  upper_consumption?: number | string | null;
+  upper_corte_a_fio?: boolean | null;
+  has_straps?: boolean | null;
+}
 
 interface Props {
   /** Ficha SALVA — o cadastro do Ateliê é validado no banco contra ela. */
   sheet: AtelierSheetFields & { id: string; production_sectors?: string[] | null };
+  /** Rascunho do formulário (materiais) — edita junto com o Ateliê. */
+  draft?: MaterialDraft;
+  onDraftChange?: (patch: Partial<MaterialDraft>) => void;
   /** Há alteração não salva na ficha (material/aviamento podem mudar a validação). */
   dirty?: boolean;
   onGoToMaterials?: () => void;
+  onSaveSheet?: () => void;
 }
 
 const SECTOR_HINT: Record<AtelierSector, string> = {
-  corte_cabedal: '',
-  costura_cabedal: 'O cabedal é cortado na fila do Ateliê e costurado pelo prestador.',
-  aviamento: 'O aviamento é feito pelo prestador antes da montagem. A tira continua com o Hub de Tiras.',
+  corte_cabedal: 'Corte na fábrica, na fila do Ateliê — sem envio ao prestador.',
+  costura_cabedal: 'Depois do corte: enviado ao prestador → realizado → recebido e conferido.',
+  aviamento: 'Depois do corte: enviado ao prestador → realizado → recebido e conferido.',
 };
 
 /**
- * Aba "Ateliê" da ficha técnica: onde a referência é marcada como complexa,
- * setor por setor. A rota mostra o desvio pela rua; cada setor diz por que
- * está indisponível quando a ficha não sustenta (mesma regra do gatilho
- * `trg_atelier_catalog_validate`).
+ * Aba "Ateliê" da ficha técnica: marca quais etapas o cabedal complexo tem
+ * (Corte / Costura / Aviamento), preenche o material necessário e explica o
+ * fluxo de cada setor.
  */
-export function AtelierReferencePanel({ sheet, dirty, onGoToMaterials }: Props) {
+export function AtelierReferencePanel({
+  sheet,
+  draft,
+  onDraftChange,
+  dirty,
+  onGoToMaterials,
+  onSaveSheet,
+}: Props) {
   const { data: config, isLoading } = useAtelierReferenceConfig(sheet.id);
   const rows = useMemo(() => config?.rows ?? [], [config]);
   const hasKitColumns = !!config?.hasKitColumns;
   const { data: lots = [] } = useAtelierLots();
+
+  const liveSheet: AtelierSheetFields = {
+    ...sheet,
+    upper_material: draft?.upper_material ?? sheet.upper_material,
+    upper_material_group_id: draft?.upper_material_group_id ?? sheet.upper_material_group_id,
+    upper_consumption: draft?.upper_consumption ?? sheet.upper_consumption,
+    upper_corte_a_fio: draft?.upper_corte_a_fio ?? sheet.upper_corte_a_fio,
+    has_straps: draft?.has_straps ?? sheet.has_straps,
+  };
 
   const bySector = useMemo(() => {
     const m = new Map<AtelierSector, AtelierReferenceSectorRow>();
@@ -66,14 +95,17 @@ export function AtelierReferencePanel({ sheet, dirty, onGoToMaterials }: Props) 
     return m;
   }, [rows]);
 
-  const streetActive = useMemo(
+  const activeSectors = useMemo(
     () =>
       new Set(
-        ATELIER_STREET_SECTORS.filter(
-          (s) => bySector.get(s)?.active && atelierSheetSupport(sheet, s).ok,
-        ),
+        ATELIER_SECTORS.filter((s) => bySector.get(s)?.active && atelierSheetSupport(liveSheet, s).ok),
       ),
-    [bySector, sheet],
+    [bySector, liveSheet],
+  );
+
+  const streetActive = useMemo(
+    () => new Set(ATELIER_STREET_SECTORS.filter((s) => activeSectors.has(s))),
+    [activeSectors],
   );
 
   const myLots = useMemo(
@@ -81,35 +113,59 @@ export function AtelierReferencePanel({ sheet, dirty, onGoToMaterials }: Props) 
     [lots, sheet.id],
   );
 
+  const needsCabedal =
+    activeSectors.has('corte_cabedal') ||
+    activeSectors.has('costura_cabedal') ||
+    bySector.get('corte_cabedal')?.active ||
+    bySector.get('costura_cabedal')?.active;
+
   return (
     <div className="space-y-5">
       <header className="max-w-3xl space-y-1">
         <h3 className="text-base font-bold text-foreground">
-          {streetActive.size > 0
-            ? 'Esta referência é preparada no Ateliê antes da produção'
-            : 'Esta referência é feita inteira na fábrica'}
+          {activeSectors.size > 0
+            ? 'Cabedal complexo — preparado no Ateliê antes da OP'
+            : 'Esta referência ainda não é Ateliê'}
         </h3>
         <p className="text-sm text-muted-foreground">
-          Quando um pedido é aprovado, cada cor entra num lote do Ateliê. O lote é cortado aqui,
-          vai ao prestador e, quando volta, a OP nasce com essas etapas já feitas.
+          Marque só as etapas que este modelo tem. Corte acontece na fábrica. Costura e Aviamento
+          vão ao prestador e só liberam a produção depois de recebido e conferido.
         </p>
       </header>
 
       {dirty && (
         <p className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
           <Warning className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Há alterações não salvas na ficha. O Ateliê confere a ficha salva — salve antes de mudar os setores.
+          <span className="flex-1">
+            Há alterações não salvas na ficha. O Ateliê confere a ficha salva — salve antes de ligar setores.
+          </span>
+          {onSaveSheet && (
+            <Button size="sm" variant="outline" className="h-7 shrink-0" onClick={onSaveSheet}>
+              Salvar ficha
+            </Button>
+          )}
         </p>
       )}
 
+      <Checklist
+        sheet={liveSheet}
+        bySector={bySector}
+        activeSectors={activeSectors}
+        onGoToMaterials={onGoToMaterials}
+      />
+
       <RouteRail stages={sheet.production_sectors ?? []} streetActive={streetActive} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {ATELIER_STREET_SECTORS.map((sector) => (
+      {needsCabedal && onDraftChange && (
+        <CabedalMaterialsBlock draft={liveSheet} onDraftChange={onDraftChange} />
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {ATELIER_SECTORS.map((sector) => (
           <SectorCard
             key={sector}
             sector={sector}
-            sheet={sheet}
+            sheet={{ ...liveSheet, id: sheet.id }}
             row={bySector.get(sector) ?? null}
             loading={isLoading}
             disabled={!!dirty}
@@ -119,7 +175,7 @@ export function AtelierReferencePanel({ sheet, dirty, onGoToMaterials }: Props) 
         ))}
       </div>
 
-      <LotsSection lots={myLots} active={streetActive.size > 0} />
+      <LotsSection lots={myLots} active={activeSectors.size > 0} />
 
       <Collapsible className="rounded-lg border border-border bg-card">
         <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -137,6 +193,127 @@ export function AtelierReferencePanel({ sheet, dirty, onGoToMaterials }: Props) 
         </CollapsibleContent>
       </Collapsible>
     </div>
+  );
+}
+
+function Checklist({
+  sheet,
+  bySector,
+  activeSectors,
+  onGoToMaterials,
+}: {
+  sheet: AtelierSheetFields;
+  bySector: Map<AtelierSector, AtelierReferenceSectorRow>;
+  activeSectors: Set<AtelierSector>;
+  onGoToMaterials?: () => void;
+}) {
+  const items: { ok: boolean; label: string; fix?: () => void }[] = [];
+  for (const sector of ATELIER_SECTORS) {
+    const row = bySector.get(sector);
+    if (!row?.active) continue;
+    const support = atelierSheetSupport(sheet, sector);
+    items.push({
+      ok: support.ok,
+      label: support.ok
+        ? `${ATELIER_SECTOR_LABEL[sector]} pronto`
+        : `${ATELIER_SECTOR_LABEL[sector]}: ${support.reason}`,
+      fix: !support.ok && (sector === 'costura_cabedal' || sector === 'corte_cabedal')
+        ? onGoToMaterials
+        : undefined,
+    });
+  }
+  if (items.length === 0) {
+    return (
+      <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+        Nenhuma etapa ligada. Escolha Corte, Costura e/ou Aviamento nos cartões abaixo.
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-1.5 rounded-lg border border-border bg-card p-3">
+      {items.map((item) => (
+        <li key={item.label} className="flex items-start gap-2 text-xs">
+          {item.ok ? (
+            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground" weight="bold" />
+          ) : (
+            <Warning className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+          )}
+          <span className={cn('flex-1', item.ok ? 'text-foreground' : 'text-amber-700 dark:text-amber-400')}>
+            {item.label}
+            {!item.ok && item.fix && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  onClick={item.fix}
+                  className="font-medium underline underline-offset-2 hover:text-primary"
+                >
+                  Abrir materiais
+                </button>
+              </>
+            )}
+          </span>
+        </li>
+      ))}
+      {activeSectors.size > 0 && (
+        <li className="pt-1 text-[11px] text-muted-foreground">
+          {activeSectors.has('corte_cabedal') && 'Corte: OK só na fábrica. '}
+          {(activeSectors.has('costura_cabedal') || activeSectors.has('aviamento')) &&
+            'Costura/Aviamento: enviado → realizado → recebido e conferido.'}
+        </li>
+      )}
+    </ul>
+  );
+}
+
+function CabedalMaterialsBlock({
+  draft,
+  onDraftChange,
+}: {
+  draft: AtelierSheetFields;
+  onDraftChange: (patch: Partial<MaterialDraft>) => void;
+}) {
+  return (
+    <section className="space-y-3 rounded-lg border border-border bg-card p-4">
+      <header className="space-y-0.5">
+        <h4 className="text-sm font-bold text-foreground">Material do cabedal</h4>
+        <p className="text-xs text-muted-foreground">
+          Preencha aqui o que o Ateliê precisa para ligar Corte/Costura. Salve a ficha depois.
+        </p>
+      </header>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <GroupMaterialSelect
+          label="Grupo de cabedal"
+          value={String(draft.upper_material ?? '')}
+          onChange={(name) => onDraftChange({ upper_material: name || null })}
+          onGroupSelect={(g) =>
+            onDraftChange({
+              upper_material: g.name,
+              upper_material_group_id: g.id,
+            })
+          }
+          sector="Cabedal"
+        />
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Consumo por par (dm²)</Label>
+          <NumberInput
+            value={draft.upper_consumption == null ? null : Number(draft.upper_consumption)}
+            onChange={(v) => onDraftChange({ upper_consumption: Number.isFinite(v) ? v : null })}
+            decimals={4}
+            step="0.01"
+            className="h-9"
+            placeholder="0"
+          />
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-foreground">
+        <Switch
+          checked={!!draft.upper_corte_a_fio}
+          onCheckedChange={(v) => onDraftChange({ upper_corte_a_fio: v })}
+        />
+        Corte a fio (não passa por Costura)
+      </label>
+    </section>
   );
 }
 
@@ -166,7 +343,6 @@ function RouteRail({ stages, streetActive }: { stages: string[]; streetActive: S
               )}
               <span className="relative flex flex-col items-center">
                 {onStreet && (
-                  // A linha da fábrica pula esta etapa: tracejado no lugar do posto.
                   <span aria-hidden className="absolute inset-x-0 top-[13px] border-t border-dashed border-primary/60" />
                 )}
                 <span
@@ -192,7 +368,7 @@ function RouteRail({ stages, streetActive }: { stages: string[]; streetActive: S
   );
 }
 
-/* ── Cartão por setor de rua ───────────────────────────────────────────────── */
+/* ── Cartão por setor ─────────────────────────────────────────────────────── */
 function SectorCard({
   sector,
   sheet,
@@ -203,7 +379,7 @@ function SectorCard({
   onGoToMaterials,
 }: {
   sector: AtelierSector;
-  sheet: AtelierSheetFields & { id: string };
+  sheet: AtelierSheetFields & { id?: string };
   row: AtelierReferenceSectorRow | null;
   loading: boolean;
   disabled: boolean;
@@ -214,23 +390,34 @@ function SectorCard({
   const support = atelierSheetSupport(sheet, sector);
   const active = !!row?.active;
   const orphan = active && !support.ok;
-  const kit = row?.material_components?.length ? row.material_components : atelierDefaultKit(sector);
-
+  const [kit, setKit] = useState<string[]>(
+    row?.material_components?.length ? row.material_components : atelierDefaultKit(sector),
+  );
   const [price, setPrice] = useState<number | null>(row?.value_per_pair ?? null);
+
+  useEffect(() => {
+    setKit(row?.material_components?.length ? row.material_components : atelierDefaultKit(sector));
+  }, [row?.material_components, sector]);
   useEffect(() => setPrice(row?.value_per_pair ?? null), [row?.value_per_pair]);
 
   const busy = save.isPending;
   const id = `atelie-${sector}`;
+  const isStreet = ATELIER_STREET_SECTORS.includes(sector);
 
-  const toggle = (next: boolean) =>
+  const toggle = (next: boolean) => {
+    if (!sheet.id) return;
     save.mutate({ referenceId: sheet.id, sector, active: next });
+  };
 
   const toggleKit = (c: string) => {
+    if (!sheet.id) return;
     const next = kit.includes(c) ? kit.filter((k) => k !== c) : [...kit, c];
+    setKit(next);
     save.mutate({ referenceId: sheet.id, sector, active: true, materialComponents: next });
   };
 
   const savePrice = () => {
+    if (!sheet.id) return;
     const current = row?.value_per_pair ?? null;
     if (price === current) return;
     save.mutate({ referenceId: sheet.id, sector, active: true, valuePerPair: price });
@@ -246,7 +433,12 @@ function SectorCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h4 id={`${id}-title`} className="text-sm font-bold text-foreground">
+          <h4 id={`${id}-title`} className="flex items-center gap-1.5 text-sm font-bold text-foreground">
+            {sector === 'corte_cabedal' ? (
+              <Scissors className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <Truck className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
             {ATELIER_SECTOR_LABEL[sector]}
           </h4>
           <p className="mt-0.5 text-xs text-muted-foreground">{SECTOR_HINT[sector]}</p>
@@ -254,14 +446,12 @@ function SectorCard({
         <div className="flex items-center gap-2">
           {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           <Label htmlFor={`${id}-switch`} className="sr-only">
-            Mandar {ATELIER_SECTOR_LABEL[sector]} para o Ateliê
+            Incluir {ATELIER_SECTOR_LABEL[sector]} no Ateliê
           </Label>
           <Switch
             id={`${id}-switch`}
             checked={active}
-            // Antes da Fase 1 no banco, ligar um setor recriaria o travamento
-            // da regra antiga (OP só após retorno × job só após OP). Só desliga.
-            disabled={loading || busy || disabled || (!active && (!support.ok || !hasKitColumns))}
+            disabled={loading || busy || disabled || (!active && (!support.ok || (isStreet && !hasKitColumns)))}
             onCheckedChange={toggle}
           />
         </div>
@@ -276,7 +466,7 @@ function SectorCard({
                 ? `Está ligado, mas não gera lote: ${support.reason?.charAt(0).toLowerCase()}${support.reason?.slice(1)}`
                 : support.reason}
             </p>
-            {sector === 'costura_cabedal' && onGoToMaterials && (
+            {(sector === 'costura_cabedal' || sector === 'corte_cabedal') && onGoToMaterials && (
               <button
                 type="button"
                 onClick={onGoToMaterials}
@@ -289,15 +479,19 @@ function SectorCard({
         </div>
       )}
 
-      {support.ok && !hasKitColumns && !loading && (
-        <p className="mt-3 text-xs text-muted-foreground">
-          {active
-            ? 'Valor por par e kit do lote ficam disponíveis quando o corte em lote do Ateliê for ativado.'
-            : 'Ligar este setor fica disponível quando o corte em lote do Ateliê for ativado.'}
+      {sector === 'corte_cabedal' && active && support.ok && (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Quando o pedido for aprovado, a cor entra no lote. O OK de corte é na fila/relatório do Ateliê — não vai ao prestador.
         </p>
       )}
 
-      {active && support.ok && hasKitColumns && (
+      {isStreet && support.ok && !hasKitColumns && !loading && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Valor por par e kit do lote ficam disponíveis quando o corte em lote do Ateliê estiver ativo no banco.
+        </p>
+      )}
+
+      {isStreet && active && support.ok && hasKitColumns && (
         <div className="mt-4 space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-price`} className="text-xs">Valor pago ao prestador por par</Label>
@@ -313,7 +507,6 @@ function SectorCard({
                 className="h-9 w-32"
                 disabled={busy || disabled}
               />
-              <span className="text-xs text-muted-foreground">sugerido no envio</span>
             </div>
           </div>
 
@@ -343,11 +536,9 @@ function SectorCard({
               })}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Esses materiais saem do estoque quando o lote é cortado. O resto é debitado pela OP.
+              Esses materiais saem do estoque no corte do lote. O resto vai na OP.
             </p>
           </fieldset>
-
-          <p className="text-[11px] text-muted-foreground">O prestador é escolhido em cada envio.</p>
         </div>
       )}
     </section>
@@ -358,8 +549,9 @@ function SectorCard({
 function lotStage(lot: AtelierLotRow): string {
   if (lot.status === 'open') return 'Aguardando corte';
   const st = lot.jobs.map((j) => j.pipeline_status);
-  if (st.length && st.every((s) => s === 'received_at_factory')) return 'Voltou do prestador';
-  if (st.some((s) => s === 'sent_to_contractor')) return 'No prestador';
+  if (st.length && st.every((s) => s === 'received_at_factory')) return 'Recebido e conferido';
+  if (st.some((s) => s === 'realized')) return 'Realizado no prestador';
+  if (st.some((s) => s === 'sent_to_contractor')) return 'Enviado ao prestador';
   return 'Cortado, pronto para envio';
 }
 
@@ -370,7 +562,7 @@ function LotsSection({ lots, active }: { lots: AtelierLotRow[]; active: boolean 
       <div className="flex items-baseline justify-between gap-3">
         <h4 id="atelie-lotes" className="text-sm font-bold text-foreground">Lotes desta referência</h4>
         <Button asChild variant="link" size="sm" className="h-auto p-0 text-xs">
-          <Link to="/atelie?view=fila">Abrir fila do Ateliê</Link>
+          <Link to="/atelie?view=relatorio">Abrir relatório do Ateliê</Link>
         </Button>
       </div>
       {lots.length === 0 ? (
@@ -378,24 +570,14 @@ function LotsSection({ lots, active }: { lots: AtelierLotRow[]; active: boolean 
           Nenhum lote ainda. Quando um pedido desta referência for aprovado, cada cor entra num lote.
         </p>
       ) : (
-        <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+        <ul className="divide-y divide-border/60 rounded-lg border border-border/70">
           {lots.map((lot) => (
-            <li key={lot.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
-              <span className="font-mono text-xs text-muted-foreground">{lot.lot_number}</span>
-              <span className="font-semibold text-foreground">{lot.color || 'Sem cor'}</span>
-              <span className="tabular-nums text-muted-foreground">{lot.pairs} pares</span>
-              <span className="text-xs text-muted-foreground">
-                {lot.orders.map((o) => o.order_number).join(', ')}
+            <li key={lot.id} className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2 text-xs">
+              <span className="font-medium text-foreground">
+                {lot.lot_number} · {lot.color ?? 'Sem cor'}
               </span>
-              <span
-                className={cn(
-                  'ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs',
-                  lot.status === 'open' ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary',
-                )}
-              >
-                {lot.status === 'open' ? <Scissors className="h-3 w-3" /> : <Truck className="h-3 w-3" />}
-                {lotStage(lot)}
-              </span>
+              <span className="text-muted-foreground">{lotStage(lot)}</span>
+              <span className="font-mono tabular-nums text-foreground">{Number(lot.pairs)} pares</span>
             </li>
           ))}
         </ul>

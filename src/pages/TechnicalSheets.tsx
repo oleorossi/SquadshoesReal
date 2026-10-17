@@ -4779,6 +4779,26 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           <AtelierReferencePanel
             sheet={sheet}
             dirty={dirty}
+            draft={{
+              upper_material: form.upper_material,
+              upper_material_group_id: form.upper_material_group_id,
+              upper_consumption: form.upper_consumption,
+              upper_corte_a_fio: form.upper_corte_a_fio,
+              has_straps: form.has_straps,
+            }}
+            onDraftChange={(patch) => {
+              if (patch.upper_material !== undefined) updateField('upper_material', patch.upper_material);
+              if (patch.upper_material_group_id !== undefined) {
+                updateField('upper_material_group_id', patch.upper_material_group_id);
+              }
+              if (patch.upper_consumption !== undefined) {
+                updateField('upper_consumption', patch.upper_consumption);
+              }
+              if (patch.upper_corte_a_fio !== undefined) {
+                updateField('upper_corte_a_fio', patch.upper_corte_a_fio);
+              }
+              if (patch.has_straps !== undefined) updateField('has_straps', patch.has_straps);
+            }}
             onGoToMaterials={() => setAbaAtiva('engineering')}
           />
         </TabsContent>
