@@ -74,7 +74,7 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
   if (!color || !spec.groupId) return res;
 
   const { data: group } = await (supabase as any).from('product_groups')
-    .select('is_artisanal_strap, is_family, shared_specs, is_bom_color_source, is_color_agnostic, sector, consumption_unit, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit')
+    .select('is_artisanal_strap, is_family, shared_specs, is_bom_color_source, is_color_agnostic, sector, consumption_unit, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit, default_unit_price')
     .eq('id', spec.groupId)
     .maybeSingle();
   const strapLikeName = /tira|elastic|tranç/i.test(spec.groupName || '');
@@ -180,7 +180,10 @@ export async function createGroupColorProduct(spec: GroupColorSpec): Promise<Cre
     color,
     unit: defaultUnit,
     consumption_unit: consumptionUnit,
-    unit_price: last?.unit_price || 0,
+    // Preço: herda do SKU-modelo; senão usa default_unit_price da folha (bitola).
+    unit_price: last?.unit_price != null && Number(last.unit_price) > 0
+      ? Number(last.unit_price)
+      : (Number(group?.default_unit_price) > 0 ? Number(group.default_unit_price) : 0),
     technical_name: last?.technical_name || '',
     supplier_id: last?.supplier_id || null,
     supplier_lead_time_days: last?.supplier_lead_time_days || 0,

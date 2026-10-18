@@ -16,6 +16,8 @@ export type ProductGroup = {
   package_weight_kg: number;
   unit_weight_kg: number;
   package_price: number;
+  /** Preço padrão da bitola/folha (R$); cores novas herdam; SKU pode sobrescrever. */
+  default_unit_price?: number | null;
   calculation_method: 'weight' | 'meter';
   parent_group_id: string | null;
   /** Família técnica explícita. Diferente de grupo/linha mesmo quando ainda

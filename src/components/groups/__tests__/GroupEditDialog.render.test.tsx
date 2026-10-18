@@ -83,10 +83,10 @@ vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), err
 const { default: GroupEditDialog } = await import('@/components/groups/GroupEditDialog');
 import type { GroupEditTab } from '@/components/groups/GroupEditDialog';
 
-/** Cada aba tem título + sublabel; o sublabel de "Em massa" contém "cores" e
- *  casaria no seletor da aba Cores. Ancora no TÍTULO, que é o primeiro nó. */
+/** Abas densas: ícone + título numa linha (sem sublabel). O nome acessível do
+ *  tab é o título — `getByRole` com name exato evita colisão com outros botões. */
 const aberturaDaAba = (titulo: string) =>
-  screen.getAllByRole('tab').find(tab => tab.querySelector('span > span')?.textContent === titulo)!;
+  screen.queryByRole('tab', { name: new RegExp(`^${titulo}$`, 'i') }) ?? undefined;
 
 const renderDialog = (initialTab?: GroupEditTab) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

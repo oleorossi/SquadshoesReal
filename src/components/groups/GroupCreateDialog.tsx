@@ -285,19 +285,19 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         onOpenChange(v);
       }}
     >
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{titleText ?? 'Novo Grupo de Material'}</DialogTitle>
-        <DialogDescription>
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="shrink-0 space-y-1 border-b border-foreground/10 px-6 pb-3 pt-5">
+          <DialogTitle className="text-base">{titleText ?? 'Novo Grupo de Material'}</DialogTitle>
+        <DialogDescription className="text-xs">
           {isFamilyCreation
             ? 'A família técnica organiza grupos da mesma natureza dentro deste setor e não recebe itens diretamente.'
             : 'Classifique o material por aplicação, família técnica e grupo/linha.'}
         </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <div className="space-y-3">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-3">
             {isFamilyCreation && sectorGuide && (
-              <div className="border-y border-foreground/15 bg-muted/20 px-3 py-3">
+              <div className="border border-foreground/15 bg-muted/20 px-3 py-2">
                 <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-primary">
                   Famílias usuais em {sectorGuide.label}
                 </p>
@@ -557,65 +557,64 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 A família descreve a natureza do material; o grupo descreve a linha técnica/comercial.
               </p>
             </div>}
+
+            {!isFamilyCreation && <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+              <Switch
+                id="is-artisanal-strap"
+                checked={form.is_artisanal_strap}
+                onCheckedChange={(v) => setForm((f) => ({
+                  ...f,
+                  is_artisanal_strap: v,
+                  auto_component_sheet: v ? false : f.auto_component_sheet,
+                }))}
+              />
+              <Label htmlFor="is-artisanal-strap" className="cursor-pointer text-sm">
+                Tira acabada (Hub) — não é a napa de origem. Desliga a ficha de componente automática.
+                {form.sector === MATERIAL_BASE_SECTOR
+                  ? ' Obrigatória neste setor: a napa (Soft vs Madrid) é escolhida pela variante da ficha.'
+                  : ' Tira comprada pronta (STRASS) fica em Componentes; tira cortada de napa vai em Material Base.'}
+              </Label>
+            </div>}
+
+            {!isFamilyCreation && <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+              <Switch
+                id="auto-bom-create"
+                checked={form.auto_component_sheet}
+                disabled={form.is_artisanal_strap}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, auto_component_sheet: v }))}
+              />
+              <Label htmlFor="auto-bom-create" className="cursor-pointer text-sm">
+                Ficha de Componente (BOM) — itens deste grupo entram automaticamente
+              </Label>
+            </div>}
+
+            {/* Grupo de solado nasce vazio; a configuração tem porta única no
+                setor de Embalagens e nunca é herdada em silêncio. */}
+            {!isFamilyCreation && <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
+              <Package className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-foreground">Embalagem</p>
+                <p>
+                  Grupo de solado nasce <strong>sem caixa</strong>. Configure os três modos
+                  (Tradicional, Amarrado e Colméia) em <strong>Embalagens → Configuração por Solado</strong> —
+                  enquanto não configurar, o pedido entra mas nenhuma caixa é debitada.
+                </p>
+              </div>
+            </div>}
+
+            {!isFamilyCreation && <div className="flex items-start gap-2 rounded-md border border-dashed bg-muted/20 p-2.5 text-xs text-muted-foreground">
+              <Truck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <p className="font-medium text-foreground">Fornecedores</p>
+                <p>
+                  Depois de criar, abra o grupo e use a aba <strong>Fornecedores</strong>
+                  (também resumida em Geral → Compras e abastecimento).
+                </p>
+              </div>
+            </div>}
           </div>
 
-          {!isFamilyCreation && <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
-            <Switch
-              id="is-artisanal-strap"
-              checked={form.is_artisanal_strap}
-              onCheckedChange={(v) => setForm((f) => ({
-                ...f,
-                is_artisanal_strap: v,
-                auto_component_sheet: v ? false : f.auto_component_sheet,
-              }))}
-            />
-            <Label htmlFor="is-artisanal-strap" className="cursor-pointer text-sm">
-              Tira acabada (Hub) — não é a napa de origem. Desliga a ficha de componente automática.
-              {form.sector === MATERIAL_BASE_SECTOR
-                ? ' Obrigatória neste setor: a napa (Soft vs Madrid) é escolhida pela variante da ficha.'
-                : ' Tira comprada pronta (STRASS) fica em Componentes; tira cortada de napa vai em Material Base.'}
-            </Label>
-          </div>}
-
-          {!isFamilyCreation && <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
-            <Switch
-              id="auto-bom-create"
-              checked={form.auto_component_sheet}
-              disabled={form.is_artisanal_strap}
-              onCheckedChange={(v) => setForm((f) => ({ ...f, auto_component_sheet: v }))}
-            />
-            <Label htmlFor="auto-bom-create" className="cursor-pointer text-sm">
-              Ficha de Componente (BOM) — itens deste grupo entram automaticamente
-            </Label>
-          </div>}
-
-          {/* Grupo de solado nasce vazio; a configuração tem porta única no
-              setor de Embalagens e nunca é herdada em silêncio. */}
-          {!isFamilyCreation && <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
-            <Package className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-foreground">Embalagem</p>
-              <p>
-                Grupo de solado nasce <strong>sem caixa</strong>. Configure os três modos
-                (Tradicional, Amarrado e Colméia) em <strong>Embalagens → Configuração por Solado</strong> —
-                enquanto não configurar, o pedido entra mas nenhuma caixa é debitada.
-              </p>
-            </div>
-          </div>}
-
-          {!isFamilyCreation && <div className="rounded-md border border-dashed bg-muted/20 p-3 flex items-start gap-2 text-xs text-muted-foreground">
-            <Truck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-foreground">Fornecedores</p>
-              <p>
-                Depois de criar, abra o grupo e use a aba <strong>Fornecedores</strong>
-                (também resumida em Geral → Compras e abastecimento). Cada grupo aceita
-                múltiplos fornecedores com preço, prazo e condição de pagamento próprios.
-              </p>
-            </div>
-          </div>}
-
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-foreground/10 px-6 py-3">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
@@ -644,7 +643,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             </Button>
           </DialogFooter>
           {colorBlocker && form.sector && (
-            <p className="text-right text-xs text-muted-foreground">{colorBlocker}</p>
+            <p className="px-6 pb-3 text-right text-xs text-muted-foreground">{colorBlocker}</p>
           )}
         </form>
       </DialogContent>

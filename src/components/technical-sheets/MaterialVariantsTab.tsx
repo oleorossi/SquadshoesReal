@@ -171,19 +171,40 @@ function GroupCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [browseFamilyLabel, setBrowseFamilyLabel] = useState<string | null>(null);
   const selected = value ? groups.find(g => g.id === value) : null;
   const unavailableSelected = value && !selected ? allGroups.find(g => g.id === value) : null;
   const unavailableIsContainer = !!unavailableSelected
     && allGroups.some(group => group.parent_group_id === unavailableSelected.id);
+  const familyLabels = useMemo(() => {
+    const labels = new Set<string>();
+    for (const group of groups) {
+      if (group.familyLabel) labels.add(group.familyLabel);
+    }
+    return Array.from(labels).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [groups]);
   const sections = useMemo(() => {
+    const base = browseFamilyLabel
+      ? groups.filter((g) => g.familyLabel === browseFamilyLabel)
+      : (search.trim() ? groups : groups.filter((g) => !g.familyLabel));
+    const pool = !search.trim()
+      ? base
+      : base.filter((g) => {
+          const sub = describe?.(g.id);
+          const q = search.toLowerCase();
+          return g.pathLabel.toLowerCase().includes(q)
+            || g.name.toLowerCase().includes(q)
+            || (sub || '').toLowerCase().includes(q)
+            || (g.familyLabel || '').toLowerCase().includes(q);
+        });
     const byFamily = new Map<string, {
       label: string;
       options: Array<ProductGroup & { pathLabel: string; familyLabel: string | null }>;
     }>();
-    for (const group of groups) {
-      const key = group.familyLabel || '__SEM_FAMILIA__';
+    for (const group of pool) {
+      const key = browseFamilyLabel || group.familyLabel || '__SEM_FAMILIA__';
       const section = byFamily.get(key) || {
-        label: group.familyLabel || 'Grupos sem família',
+        label: browseFamilyLabel || group.familyLabel || 'Grupos sem família',
         options: [],
       };
       section.options.push(group);
@@ -196,11 +217,14 @@ function GroupCombobox({
         if (b.key === '__SEM_FAMILIA__') return -1;
         return a.label.localeCompare(b.label, 'pt-BR');
       });
-  }, [groups]);
+  }, [groups, browseFamilyLabel, search, describe]);
 
   return (
     <div>
-      <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setSearch(''); }}>
+      <Popover open={open} onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) { setSearch(''); setBrowseFamilyLabel(null); }
+      }}>
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -224,11 +248,22 @@ function GroupCombobox({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[300px] max-w-[calc(100vw-2rem)] p-0" align="start">
-          <Command>
+          <Command shouldFilter={false}>
+            {browseFamilyLabel && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 border-b border-foreground/10 px-3 py-2 text-left text-xs font-semibold hover:bg-muted/40"
+                onClick={() => { setBrowseFamilyLabel(null); setSearch(''); }}
+              >
+                <ChevronsUpDown className="h-3.5 w-3.5 rotate-90 opacity-60" />
+                {browseFamilyLabel}
+                <span className="ml-auto font-normal text-muted-foreground">voltar</span>
+              </button>
+            )}
             <CommandInput placeholder="Buscar família, grupo, SKU ou cor…" className="h-9" value={search} onValueChange={setSearch} />
             <CommandList>
               <CommandEmpty>Nenhum grupo-folha encontrado.</CommandEmpty>
-              {allowInherit && (
+              {allowInherit && !browseFamilyLabel && (
                 <CommandGroup heading="Comportamento">
                 <CommandItem value="__herda__" onSelect={() => { onChange(null); setOpen(false); }} className="text-sm py-2">
                   <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
@@ -236,12 +271,29 @@ function GroupCombobox({
                 </CommandItem>
                 </CommandGroup>
               )}
+              {!browseFamilyLabel && !search.trim() && familyLabels.length > 0 && (
+                <CommandGroup heading="Famílias · escolha para ver as larguras">
+                  {familyLabels.map((label) => (
+                    <CommandItem
+                      key={label}
+                      value={`__familia__${label}`}
+                      onSelect={() => { setBrowseFamilyLabel(label); setSearch(''); }}
+                      className="text-sm py-2"
+                    >
+                      <ChevronsUpDown className="mr-2 h-4 w-4 -rotate-90 opacity-50" />
+                      <span className="font-medium">{label}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
               {sections.map(section => (
                 <CommandGroup
                   key={section.key}
-                  heading={section.key === '__SEM_FAMILIA__'
-                    ? section.label
-                    : `${section.label} · família`}
+                  heading={browseFamilyLabel
+                    ? 'Larguras / grupos desta família'
+                    : section.key === '__SEM_FAMILIA__'
+                      ? section.label
+                      : `${section.label} · família`}
                 >
                   {section.options.map(group => {
                     const sub = describe?.(group.id);
@@ -250,12 +302,12 @@ function GroupCombobox({
                         key={group.id}
                         value={group.pathLabel}
                         keywords={sub ? [group.name, sub] : [group.name]}
-                        onSelect={() => { onChange(group.id); setOpen(false); }}
+                        onSelect={() => { onChange(group.id); setOpen(false); setBrowseFamilyLabel(null); }}
                         className="text-sm py-2"
                       >
                         <Check className={cn('mr-2 h-4 w-4', value === group.id ? 'opacity-100' : 'opacity-0')} />
                         <div className="flex flex-col min-w-0">
-                          <span className="font-medium truncate"><HighlightMatch text={group.pathLabel} term={search} /></span>
+                          <span className="font-medium truncate"><HighlightMatch text={browseFamilyLabel ? group.name : group.pathLabel} term={search} /></span>
                           {sub && <span className="text-xs text-muted-foreground font-mono truncate"><HighlightMatch text={sub} term={search} /></span>}
                         </div>
                       </CommandItem>

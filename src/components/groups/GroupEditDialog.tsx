@@ -45,6 +45,7 @@ import { isHeterogeneousGroup } from '@/lib/materialIdentity';
 import { applyUnitAndPriceToGroupItems, commonProductField } from '@/lib/applyGroupItemUnitPrice';
 import { assertAreaGeometry, isAreaStockUnit } from '@/lib/areaGeometry';
 import { UNITS, UNIT_LABELS } from '@/types/inventory';
+import { createWidthLeafGroup, parseWidthMm, widthLeafName } from '@/lib/createWidthLeafGroup';
 
 /** Abas da janela de grupo. `bulk` e `items` chegaram aqui em 22/08/2026, quando
  *  o `MasterVariantDialog` deixou de ser um segundo diálogo e virou painel.
@@ -381,7 +382,7 @@ function GroupDimensionsEditor({ group }: { group: ProductGroup }) {
       </div>
 
       <Card className="border-foreground/20">
-        <CardHeader className="pb-3">
+        <CardHeader className="px-3 py-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Ruler className="h-4 w-4" />
             Geometria de compra e consumo
@@ -594,6 +595,16 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
   const [itemUnitDirty, setItemUnitDirty] = useState(false);
   const [itemPriceDirty, setItemPriceDirty] = useState(false);
   const [confirmApplyItemsOpen, setConfirmApplyItemsOpen] = useState(false);
+  /** Preço padrão da bitola (folha) — cores novas herdam; SKU pode divergir. */
+  const [defaultUnitPrice, setDefaultUnitPrice] = useState<number | null>(
+    () => (group as any).default_unit_price != null ? Number((group as any).default_unit_price) : null,
+  );
+  const [newWidthOpen, setNewWidthOpen] = useState(false);
+  const [newWidthMm, setNewWidthMm] = useState('');
+  const [newWidthPrice, setNewWidthPrice] = useState<number | null>(null);
+  const [newWidthClone, setNewWidthClone] = useState(false);
+  const [newWidthCloneFrom, setNewWidthCloneFrom] = useState<string>('');
+  const [newWidthSaving, setNewWidthSaving] = useState(false);
 
   // Fornecedores do grupo (group_suppliers) — sumiram da UI no refactor da árvore
   // de estoque (1401c9db) e nunca voltaram ao dialog. OC automática e lead time
@@ -668,10 +679,18 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
     setUnitWeightKg(group.unit_weight_kg || 0);
     setPurchaseMultiple((group as any).purchase_multiple || 0);
     setIsArtisanalStrap(group.is_artisanal_strap === true);
+    setDefaultUnitPrice(
+      (group as any).default_unit_price != null ? Number((group as any).default_unit_price) : null,
+    );
     setActiveTab(initialTab ?? 'general');
     setItemUnitDirty(false);
     setItemPriceDirty(false);
     setConfirmApplyItemsOpen(false);
+    setNewWidthOpen(false);
+    setNewWidthMm('');
+    setNewWidthPrice(null);
+    setNewWidthClone(false);
+    setNewWidthCloneFrom('');
     // A hidratação pertence à abertura/troca do cadastro. Mudanças nas queries
     // de filhos ou itens não podem apagar campos ainda não salvos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -688,7 +707,11 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
     const commonUnit = commonProductField(products as any[], 'unit', (v) => String(v || ''));
     const commonPrice = commonProductField(products as any[], 'unit_price', (v) => Number(v) || 0);
     setItemUnit(commonUnit || '');
-    setItemUnitPrice(commonPrice);
+    // Prefere o preço comum das cores; se vazio/divergente, cai no default da bitola.
+    const fallbackDefault = (group as any).default_unit_price != null
+      ? Number((group as any).default_unit_price)
+      : null;
+    setItemUnitPrice(commonPrice != null ? commonPrice : fallbackDefault);
     setItemUnitDirty(false);
     setItemPriceDirty(false);
     // Só reidrata quando a composição/valores dos itens mudam de verdade.
@@ -786,6 +809,9 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
           unit_weight_kg: unitWeightKg,
           purchase_multiple: purchaseMultiple > 0 ? purchaseMultiple : null,
           is_artisanal_strap: isContainer ? false : isArtisanalStrap,
+          default_unit_price: isContainer
+            ? null
+            : (defaultUnitPrice != null && Number.isFinite(defaultUnitPrice) ? defaultUnitPrice : null),
           // ⚠ Embalagem NÃO entra mais neste payload (02/08/2026). Este diálogo
           // hidratava os slots no mount e os regravava a cada save — depois que
           // Solados virou a porta de edição, isso reescreveria com valor velho o
@@ -863,17 +889,17 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-6xl max-h-[95vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
+          <DialogHeader className="shrink-0 space-y-2 border-b border-foreground/10 px-6 pb-3 pt-5">
             <div className="flex items-start justify-between gap-3 pr-6">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-foreground text-background">
-                  <Rows className="h-5 w-5" weight="bold" />
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-foreground text-background">
+                  <Rows className="h-4 w-4" weight="bold" />
                 </div>
                 <div className="min-w-0">
-                  <DialogTitle className="truncate text-lg font-bold leading-tight">{group.name}</DialogTitle>
+                  <DialogTitle className="truncate text-base font-bold leading-tight">{group.name}</DialogTitle>
                   <DialogDescription className="sr-only">Edite setor, hierarquia, fornecedores, especificações e itens do grupo.</DialogDescription>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                     <Badge variant="outline" className="h-5 gap-1 px-2 font-medium">
                       {isContainer ? `família · ${childrenGroups.length} subgrupo(s)` : 'grupo-folha'}
                     </Badge>
@@ -885,97 +911,91 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                 <Button
                   variant="outline"
                   size="sm"
-                  className="shrink-0 gap-1.5"
-                  onClick={() => setActiveTab('items')}
+                  className="h-8 shrink-0 gap-1.5"
+                  onClick={() => setActiveTab('bulk')}
                 >
                   <Palette className="h-3.5 w-3.5" />
-                  Variantes de cor
+                  Em massa
                 </Button>
               )}
             </div>
+
+            <MaterialClassificationRail
+              sector={sector}
+              family={isContainer ? name : selectedFamily?.name || parentGroup?.name}
+              group={isContainer ? null : name}
+              compact
+              className="mt-1"
+            />
+
+            {isContainer && (
+              <div className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>Família (container) — itens ficam nos grupos-folha (aba Hierarquia).</span>
+              </div>
+            )}
           </DialogHeader>
 
-          <MaterialClassificationRail
-            sector={sector}
-            family={isContainer ? name : selectedFamily?.name || parentGroup?.name}
-            group={isContainer ? null : name}
-            compact
-            className="mt-2"
-          />
-
-          {isContainer && (
-            <div className="mt-2 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <span>Esta é uma <strong className="text-foreground">família (container)</strong> — ela <strong className="text-foreground">não recebe itens diretamente</strong>. Os itens vivem nos grupos-folha dela (aba Hierarquia).</span>
-            </div>
-          )}
-
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as GroupEditTab)} className="mt-2">
-            <TabsList indicator="none" className="h-auto w-full justify-start gap-1 overflow-x-auto border-y border-foreground/15 bg-muted/20 p-1">
-              <TabsTrigger value="general" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <SquaresFour className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Geral</span><span className="block text-[9px] font-normal text-muted-foreground">identidade e regras</span></span>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as GroupEditTab)} className="flex min-h-0 flex-1 flex-col">
+            <TabsList indicator="none" className="h-auto w-full shrink-0 justify-start gap-0.5 overflow-x-auto border-b border-foreground/15 bg-muted/20 px-2 py-1">
+              <TabsTrigger value="general" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <SquaresFour className="h-3.5 w-3.5 shrink-0" />
+                Geral
               </TabsTrigger>
-              <TabsTrigger value="hierarchy" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Factory className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Hierarquia</span><span className="block text-[9px] font-normal text-muted-foreground">setor e família</span></span>
+              <TabsTrigger value="hierarchy" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Factory className="h-3.5 w-3.5 shrink-0" />
+                Hierarquia
               </TabsTrigger>
-              {!isContainer && showDimensionsTab && <TabsTrigger value="specs" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Ruler className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Dimensões</span><span className="block text-[9px] font-normal text-muted-foreground">conversão física</span></span>
+              {!isContainer && showDimensionsTab && <TabsTrigger value="specs" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Ruler className="h-3.5 w-3.5 shrink-0" />
+                Dimensões
               </TabsTrigger>}
-              {!isContainer && show.packaging && <TabsTrigger value="packaging" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Package className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Embalagem</span><span className="block text-[9px] font-normal text-muted-foreground">caixas do solado</span></span>
+              {!isContainer && show.packaging && <TabsTrigger value="packaging" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Package className="h-3.5 w-3.5 shrink-0" />
+                Embalagem
               </TabsTrigger>}
-              {isCompositeMaterial && <TabsTrigger value="composition" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Layers className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Composição</span><span className="block text-[9px] font-normal text-muted-foreground">camadas da dublagem</span></span>
+              {isCompositeMaterial && <TabsTrigger value="composition" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Layers className="h-3.5 w-3.5 shrink-0" />
+                Composição
               </TabsTrigger>}
-              {!isContainer && <TabsTrigger value="colors" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Palette className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Cores</span><span className="block text-[9px] font-normal text-muted-foreground">catálogo e duplicatas</span></span>
+              {!isContainer && <TabsTrigger value="colors" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Palette className="h-3.5 w-3.5 shrink-0" />
+                Cores
               </TabsTrigger>}
-              {!isContainer && <TabsTrigger value="suppliers" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Truck className="h-4 w-4 shrink-0" />
-                <span>
-                  <span className="block text-xs font-semibold">Fornecedores</span>
-                  <span className="block text-[9px] font-normal text-muted-foreground">
-                    {groupSuppliers.length === 0
-                      ? 'não cadastrado'
-                      : `${groupSuppliers.length} vínculo(s)`}
-                  </span>
-                </span>
+              {!isContainer && <TabsTrigger value="suppliers" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Truck className="h-3.5 w-3.5 shrink-0" />
+                Fornecedores
               </TabsTrigger>}
-              {!isContainer && <TabsTrigger value="items" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Rows className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Itens</span><span className="block text-[9px] font-normal text-muted-foreground">{products.length} variante(s)</span></span>
+              {!isContainer && <TabsTrigger value="items" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Rows className="h-3.5 w-3.5 shrink-0" />
+                Itens
               </TabsTrigger>}
               {/* Edição em massa dos campos de `products`. Era a aba "Aplicar a
                   todas as cores" de um SEGUNDO diálogo, que o botão "Editar N
                   itens" da lista de estoque abria no lugar desta janela. */}
-              {!isContainer && <TabsTrigger value="bulk" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <ArrowsLeftRight className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Em massa</span><span className="block text-[9px] font-normal text-muted-foreground">aplicar a todas as cores</span></span>
+              {!isContainer && <TabsTrigger value="bulk" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <ArrowsLeftRight className="h-3.5 w-3.5 shrink-0" />
+                Em massa
               </TabsTrigger>}
               {/* Rastreio: entradas do grupo e o rateio de cada uma para os PVs
                   em falta (spec integracao-estoque-pv-compras, Q20). */}
-              {!isContainer && <TabsTrigger value="rastreio" className="min-w-[132px] flex-1 justify-start gap-2 rounded-sm border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <ClockCounterClockwise className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold">Rastreio</span><span className="block text-[9px] font-normal text-muted-foreground">entradas e rateio p/ PV</span></span>
+              {!isContainer && <TabsTrigger value="rastreio" className="h-8 min-w-0 flex-1 justify-center gap-1.5 rounded-sm border border-transparent px-2.5 py-1.5 text-xs font-semibold font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <ClockCounterClockwise className="h-3.5 w-3.5 shrink-0" />
+                Rastreio
               </TabsTrigger>}
             </TabsList>
 
             {/* Tab: General */}
-            <TabsContent value="general" className="mt-4 space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-3">
+            <TabsContent value="general" className="mt-0 space-y-3">
               <Card className="border-foreground/20">
-                <CardHeader className="pb-3">
+                <CardHeader className="px-3 py-2">
                   <CardTitle className="flex items-center gap-2 text-sm font-bold">
                     <Rows className="h-4 w-4 text-primary" />
                     {isContainer ? 'Identidade da família' : 'Identidade do grupo / linha'}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
+                <CardContent className="grid gap-3 px-3 pb-3 sm:grid-cols-2">
                   <div className="sm:col-span-2">
                     <Label htmlFor="edit-group-name">{isContainer ? 'Nome da família *' : 'Nome do grupo / linha *'}</Label>
                     <Input
@@ -1020,7 +1040,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
               ) : (
                 <>
                   <Card className="border-foreground/20">
-                    <CardHeader className="pb-3">
+                    <CardHeader className="px-3 py-2">
                       <CardTitle className="flex items-center justify-between gap-3 text-sm font-bold">
                         <span className="flex items-center gap-2">
                           <Truck className="h-4 w-4 text-primary" />
@@ -1037,7 +1057,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                         )}
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-3 px-3 pb-3">
                       <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px] sm:items-start">
                         <div className="space-y-2">
                           <Label className="text-xs font-semibold">Fornecedores do grupo</Label>
@@ -1118,22 +1138,22 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                         </div>
                         <div>
                           <Label className="text-xs font-semibold">
-                            Valor do material por {itemUnit || 'unidade'} (R$)
+                            Valor padrão por {itemUnit || 'unidade'} (R$)
                           </Label>
                           <NumberInput
-                            value={itemUnitPrice ?? undefined}
+                            value={defaultUnitPrice ?? itemUnitPrice ?? undefined}
                             onChange={(value) => {
+                              setDefaultUnitPrice(value);
                               setItemUnitPrice(value);
-                              setItemPriceDirty(true);
+                              if (products.length > 0) setItemPriceDirty(true);
                             }}
                             min={0}
                             step="0.0001"
-                            placeholder={products.length === 0 ? 'Sem itens' : 'Custos divergentes — informe para unificar'}
+                            placeholder="Ex.: 2,90"
                             className="mt-1 h-9"
-                            disabled={products.length === 0}
                           />
                           <p className="mt-1 text-[10px] text-muted-foreground">
-                            Custo unitário aplicado a todos os itens ao confirmar o save.
+                            Padrão da bitola para cores novas. Se alterar com itens, o save pergunta se aplica a todas (cor pode ficar diferente do padrão).
                           </p>
                         </div>
                       </div>
@@ -1158,12 +1178,12 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   </Card>
 
                   <Card className="border-foreground/20">
-                    <CardHeader className="pb-3">
+                    <CardHeader className="px-3 py-2">
                       <CardTitle className="flex items-center gap-2 text-sm font-bold">
                         <Palette className="h-4 w-4 text-primary" /> Como os itens variam
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-5">
+                    <CardContent className="space-y-3 px-3 pb-3">
                       <div>
                         <Label className="text-xs">Regra de cor</Label>
                         <div role="radiogroup" aria-label="Regra de cor do grupo" className="mt-2 grid gap-2 sm:grid-cols-3">
@@ -1188,7 +1208,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                                   else if (option.value === 'bom-source') { setIsColorAgnostic(false); setIsBomColorSource(true); }
                                   else { setIsColorAgnostic(false); setIsBomColorSource(false); }
                                 }}
-                                className={`border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${selected ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background hover:border-foreground/40'}`}
+                                className={`border px-2.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${selected ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background hover:border-foreground/40'}`}
                               >
                                 <span className="flex items-center justify-between gap-2 text-xs font-semibold">
                                   {option.title}{selected && <Check className="h-3.5 w-3.5 text-primary" weight="bold" />}
@@ -1209,7 +1229,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                               role="radio"
                               aria-checked={sharedSpecs}
                               onClick={() => setSharedSpecs(true)}
-                              className={`border px-3 py-3 text-left ${sharedSpecs ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'}`}
+                              className={`border px-2.5 py-2 text-left ${sharedSpecs ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'}`}
                             >
                               <span className="flex items-center justify-between text-xs font-semibold">Linha com variantes {sharedSpecs && <Check className="h-3.5 w-3.5 text-primary" />}</span>
                               <span className="mt-1 block text-[10px] text-muted-foreground">Cores compartilham composição, unidade e comportamento técnico.</span>
@@ -1219,7 +1239,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                               role="radio"
                               aria-checked={!sharedSpecs}
                               onClick={() => setSharedSpecs(false)}
-                              className={`border px-3 py-3 text-left ${!sharedSpecs ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'}`}
+                              className={`border px-2.5 py-2 text-left ${!sharedSpecs ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background'}`}
                             >
                               <span className="flex items-center justify-between text-xs font-semibold">Coleção de itens { !sharedSpecs && <Check className="h-3.5 w-3.5 text-primary" />}</span>
                               <span className="mt-1 block text-[10px] text-muted-foreground">Itens independentes; use somente como pasta organizacional.</span>
@@ -1296,9 +1316,9 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
             </TabsContent>
 
             {/* Tab: Hierarquia — Setor de aplicação → Família técnica → Grupo. */}
-            <TabsContent value="hierarchy" className="mt-4 space-y-4">
+            <TabsContent value="hierarchy" className="mt-0 space-y-3">
               <Card className="border-foreground/20">
-                <CardHeader className="pb-3">
+                <CardHeader className="px-3 py-2">
                   <CardTitle className="flex items-center justify-between gap-3 text-sm">
                     <span className="flex items-center gap-2"><Factory className="h-4 w-4 text-primary" /> 1. Setor de aplicação</span>
                     <Badge variant="outline" className="font-mono text-[9px] uppercase">onde é usado</Badge>
@@ -1343,13 +1363,13 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
               )}
 
               <Card className="border-foreground/20">
-                <CardHeader className="pb-3">
+                <CardHeader className="px-3 py-2">
                   <CardTitle className="flex items-center justify-between gap-3 text-sm">
                     <span className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> 2. Família técnica</span>
                     <Badge variant="outline" className="font-mono text-[9px] uppercase">o que o material é</Badge>
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-3 px-3 pb-3">
                   {isContainer ? (
                     <div className="border-l-2 border-primary bg-muted/20 px-3 py-2.5">
                       <p className="text-xs font-semibold">{name}</p>
@@ -1428,9 +1448,26 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
 
               {isContainer && (
                 <Card className="border-foreground/20">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="px-3 py-2">
                     <CardTitle className="flex items-center justify-between gap-3 text-sm">
                       <span className="flex items-center gap-2"><Rows className="h-4 w-4 text-primary" /> 3. Grupos / linhas ({childrenGroups.length})</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="default"
+                          disabled={!isFamilyPersisted || sectorChanged}
+                          className="h-8 gap-1.5 text-xs"
+                          onClick={() => {
+                            setNewWidthMm('');
+                            setNewWidthPrice(null);
+                            setNewWidthClone(false);
+                            setNewWidthCloneFrom(childrenGroups[0]?.id || '');
+                            setNewWidthOpen(true);
+                          }}
+                        >
+                          <Ruler className="h-3.5 w-3.5" /> Nova largura
+                        </Button>
                       <Popover open={linkChildOpen} onOpenChange={(o) => { setLinkChildOpen(o); if (!o) setLinkChildSearch(''); }}>
                         <PopoverTrigger asChild>
                           <Button type="button" size="sm" variant="outline" disabled={!isFamilyPersisted || sectorChanged} className="h-8 gap-1.5 text-xs"><Link2 className="h-3.5 w-3.5" /> Vincular grupo existente</Button>
@@ -1487,11 +1524,12 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                           </Command>
                         </PopoverContent>
                       </Popover>
+                      </div>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {childrenGroups.length === 0 ? (
-                      <div className="border border-dashed border-foreground/20 px-3 py-5 text-center text-xs text-muted-foreground">Família vazia. Vincule um grupo/linha do mesmo setor para começar.</div>
+                      <div className="border border-dashed border-foreground/20 px-3 py-5 text-center text-xs text-muted-foreground">Família vazia. Crie uma largura (mm) ou vincule um grupo/linha do mesmo setor.</div>
                     ) : (
                       <div className="divide-y divide-foreground/10 border-y border-foreground/15">
                         {childrenGroups.map((child) => (
@@ -1499,6 +1537,11 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                             <div className="flex min-w-0 items-center gap-2">
                               <Rows className="h-4 w-4 shrink-0 text-muted-foreground" />
                               <span className="truncate text-xs font-semibold">{child.name}</span>
+                              {Number((child as any).dimensions_width) > 0 && (
+                                <Badge variant="outline" className="h-4 shrink-0 font-mono text-[8px]">
+                                  {Number((child as any).dimensions_width)} {(child as any).dimensions_unit || 'mm'}
+                                </Badge>
+                              )}
                               <Badge variant="secondary" className="h-4 shrink-0 font-mono text-[8px]">{itemCountByGroup.get(child.id) || 0} itens</Badge>
                             </div>
                             <Button
@@ -1524,7 +1567,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
 
             {/* Tab: Dimensões — uma fonte no grupo, sincronizada com as fichas. */}
             {!isContainer && showDimensionsTab && (
-              <TabsContent value="specs" className="mt-4">
+              <TabsContent value="specs" className="mt-0">
                 <GroupDimensionsEditor group={group} />
               </TabsContent>
             )}
@@ -1535,7 +1578,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                 os dois editando repetiria o padrão de "dois donos do mesmo dado"
                 que já custou caro em consumo de solado. Aqui fica só o ponteiro. */}
             {!isContainer && show.packaging && (
-              <TabsContent value="packaging" className="space-y-4 mt-4">
+              <TabsContent value="packaging" className="mt-0 space-y-3">
                 <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/[0.03] p-3 text-sm text-muted-foreground">
                   <Package className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <div className="space-y-1">
@@ -1561,7 +1604,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
             )}
 
             {isCompositeMaterial && (
-              <TabsContent value="composition" className="space-y-4 mt-4">
+              <TabsContent value="composition" className="mt-0 space-y-3">
                 <GroupCompositionTab
                   groupId={group.id}
                   groupName={group.name}
@@ -1573,7 +1616,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
 
             {/* Tab: Cores — único lugar que vê as cores do grupo como CONJUNTO
                 (duplicata, typo, largura divergente) e permite fundir. */}
-            {!isContainer && <TabsContent value="colors" className="space-y-4 mt-4">
+            {!isContainer && <TabsContent value="colors" className="mt-0 space-y-3">
               {isColorAgnostic && (
                 <div className="flex items-start justify-between gap-3 border border-foreground/20 bg-muted/20 px-3 py-3">
                   <div className="flex items-start gap-2">
@@ -1626,6 +1669,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   groupName={group.name}
                   products={products.filter(product => product.active !== false)}
                   groupWidth={(group as any).dimensions_width}
+                  defaultUnitPrice={defaultUnitPrice}
                   willBecomeVariantLine={!sharedSpecs && !isBomColorSource && products.length === 0}
                   onConvertedToVariantLine={(unit) => {
                     setSharedSpecs(true);
@@ -1638,9 +1682,9 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
             {/* Tab: Fornecedores — group_suppliers (comercial do grupo). Órfão desde
                 o refactor da árvore em 1401c9db; OC automática e lead time leem daqui. */}
             {!isContainer && (
-              <TabsContent value="suppliers" className="mt-4 space-y-4">
+              <TabsContent value="suppliers" className="mt-0 space-y-3">
                 <Card className="border-foreground/20">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="px-3 py-2">
                     <CardTitle className="flex items-center gap-2 text-sm font-bold">
                       <Truck className="h-4 w-4 text-primary" />
                       Fornecedores deste grupo
@@ -1658,7 +1702,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
             )}
 
             {/* Tab: Items */}
-            {!isContainer && <TabsContent value="items" className="space-y-4 mt-4">
+            {!isContainer && <TabsContent value="items" className="mt-0 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label className="flex items-center gap-2 text-sm font-semibold">
                   <Package className="h-4 w-4" />
@@ -1715,13 +1759,14 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
 
             {/* Tab: Em massa — porta única dos campos que só existem em
                 `products` (R2.12). Os de `product_groups` ficam nas outras abas. */}
-            {!isContainer && <TabsContent value="bulk" className="space-y-4 mt-4">
+            {!isContainer && <TabsContent value="bulk" className="mt-0 space-y-3">
               {products.length === 0 ? (
                 <p className="py-6 text-center text-xs text-muted-foreground">Nenhum item neste grupo para editar em massa.</p>
               ) : (
                 <VariantBulkEditPanel
+                  key={`bulk-${productsSignature}`}
                   variants={products}
-                  onCancel={() => setActiveTab('items')}
+                  onCancel={() => setActiveTab('general')}
                   onOpenGroupSpecs={() => setActiveTab(showDimensionsTab ? 'specs' : 'general')}
                 />
               )}
@@ -1729,19 +1774,20 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
 
             {/* Tab: Rastreio — só lê; a RPC pode não existir ainda e o painel
                 degrada sozinho para "Rastreio indisponível". */}
-            {!isContainer && <TabsContent value="rastreio" className="space-y-4 mt-4">
+            {!isContainer && <TabsContent value="rastreio" className="mt-0 space-y-3">
               <GroupStockTrackingPanel
                 groupId={group.id}
                 products={products}
                 onNavigate={() => onOpenChange(false)}
               />
             </TabsContent>}
+            </div>
           </Tabs>
 
           {/* Footer global do dialog — Salvar visível em TODAS as abas (antes
               vivia num CardFooter da aba Geral; nas outras abas não tinha como
               salvar/cancelar). */}
-          <DialogFooter className="mt-4 border-t pt-4">
+          <DialogFooter className="shrink-0 border-t border-foreground/10 px-6 py-3">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Cancelar
             </Button>
@@ -1794,6 +1840,115 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={newWidthOpen} onOpenChange={setNewWidthOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nova largura</DialogTitle>
+            <DialogDescription>
+              Cria um grupo-folha <span className="font-mono">NNMM</span> sob {name}, com largura técnica e preço padrão opcional.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="new-width-mm">Largura (mm)</Label>
+              <Input
+                id="new-width-mm"
+                type="number"
+                min={1}
+                step={1}
+                value={newWidthMm}
+                onChange={(e) => setNewWidthMm(e.target.value)}
+                placeholder="Ex.: 20"
+                className="mt-1 h-9"
+              />
+              {parseWidthMm(newWidthMm) != null && (
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Nome do grupo: <span className="font-mono font-semibold">{widthLeafName(parseWidthMm(newWidthMm)!)}</span>
+                </p>
+              )}
+            </div>
+            <div>
+              <Label>Preço padrão (R$ / m)</Label>
+              <NumberInput
+                value={newWidthPrice ?? undefined}
+                onChange={setNewWidthPrice}
+                min={0}
+                step="0.0001"
+                placeholder="Opcional"
+                className="mt-1 h-9"
+              />
+            </div>
+            <label className="flex items-start gap-2 border border-foreground/15 px-3 py-2.5 text-xs">
+              <Checkbox
+                checked={newWidthClone}
+                onCheckedChange={(v) => setNewWidthClone(v === true)}
+                disabled={childrenGroups.length === 0}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block font-semibold">Clonar cores de outra largura</span>
+                <span className="mt-0.5 block text-muted-foreground">Saldo 0; preço = padrão desta largura (ou da origem se vazio).</span>
+              </span>
+            </label>
+            {newWidthClone && (
+              <div>
+                <Label>Largura de origem</Label>
+                <Select value={newWidthCloneFrom || undefined} onValueChange={setNewWidthCloneFrom}>
+                  <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha a bitola" /></SelectTrigger>
+                  <SelectContent>
+                    {childrenGroups.map((child) => (
+                      <SelectItem key={child.id} value={child.id}>
+                        {child.name} · {itemCountByGroup.get(child.id) || 0} cor(es)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setNewWidthOpen(false)} disabled={newWidthSaving}>Cancelar</Button>
+            <Button
+              type="button"
+              disabled={newWidthSaving || parseWidthMm(newWidthMm) == null}
+              onClick={async () => {
+                const mm = parseWidthMm(newWidthMm);
+                if (mm == null) return;
+                setNewWidthSaving(true);
+                try {
+                  const result = await createWidthLeafGroup({
+                    familyId: group.id,
+                    widthMm: mm,
+                    defaultUnitPrice: newWidthPrice,
+                    cloneColors: newWidthClone,
+                    cloneFromLeafId: newWidthClone ? newWidthCloneFrom : null,
+                  });
+                  if (!result.ok) {
+                    toast.error(result.error || 'Falha ao criar largura');
+                    return;
+                  }
+                  queryClient.invalidateQueries({ queryKey: ['product_groups'] });
+                  queryClient.invalidateQueries({ queryKey: ['products'] });
+                  const cloneMsg = result.cloned
+                    ? ` · ${result.cloned} cor(es) clonada(s)`
+                    : '';
+                  toast.success(`Largura ${result.leafName} criada${cloneMsg}`);
+                  if (result.cloneErrors?.length) {
+                    toast.warning(result.cloneErrors.slice(0, 3).join(' · '));
+                  }
+                  setNewWidthOpen(false);
+                } finally {
+                  setNewWidthSaving(false);
+                }
+              }}
+            >
+              {newWidthSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ruler className="mr-2 h-4 w-4" />}
+              Criar largura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {forceDeleteFlow.dialog}
     </>

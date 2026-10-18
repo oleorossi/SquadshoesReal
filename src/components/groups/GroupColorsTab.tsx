@@ -24,6 +24,8 @@ interface Props {
   products: Product[];
   /** Largura canônica do grupo (mm) — o item herda e só diverge de propósito. */
   groupWidth?: number | null;
+  /** Preço padrão da bitola — marca na lista cores com custo diferente. */
+  defaultUnitPrice?: number | null;
   /** Grupo vazio em "Coleção de itens": a 1ª cor o converte em "Linha com
    *  variantes" (spec grupo-cor-obrigatoria.md, D6). Só muda o texto da tela. */
   willBecomeVariantLine?: boolean;
@@ -48,7 +50,7 @@ type StockFilter = 'all' | 'available' | 'zero' | 'review';
  * CAPUCCINO × CAPPUCCINO convivendo no NAPA SOFT, com o débito escolhendo por
  * "maior estoque".
  */
-export default function GroupColorsTab({ groupId, groupName, products, groupWidth, willBecomeVariantLine, onConvertedToVariantLine }: Props) {
+export default function GroupColorsTab({ groupId, groupName, products, groupWidth, defaultUnitPrice, willBecomeVariantLine, onConvertedToVariantLine }: Props) {
   const qc = useQueryClient();
 
   // Largura POR ITEM: a query do dialog pai busca por group_id e não distingue
@@ -453,6 +455,10 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
             ) : visibleColored.map(p => {
               const w = widthByProductId?.get(p.id);
               const diverge = groupWidth && w != null && Number(w) > 0 && Number(w) !== Number(groupWidth);
+              const price = Number(p.unit_price || 0);
+              const priceDiverges = defaultUnitPrice != null
+                && Number.isFinite(Number(defaultUnitPrice))
+                && Math.abs(price - Number(defaultUnitPrice)) > 1e-9;
               const quantity = Number(p.quantity || 0);
               const reserved = Number(p.reserved_stock || 0);
               const available = quantity - reserved;
@@ -478,7 +484,12 @@ export default function GroupColorsTab({ groupId, groupName, products, groupWidt
                       {!p.active ? 'inativa' : 'ativa'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right font-mono text-xs">{Number(p.unit_price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 4 })}</TableCell>
+                  <TableCell className={`text-right font-mono text-xs ${priceDiverges ? 'text-warning' : ''}`}>
+                    {price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 4 })}
+                    {priceDiverges && (
+                      <span className="mt-0.5 block text-[9px] font-sans text-muted-foreground">≠ padrão</span>
+                    )}
+                  </TableCell>
                   <TableCell className={`text-xs text-right font-mono ${diverge ? 'text-destructive' : 'text-muted-foreground'}`}>
                     {w != null && Number(w) > 0 ? `${w} mm` : '—'}
                   </TableCell>

@@ -208,15 +208,101 @@ export function GroupMaterialSelect({
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  /** Cascata: null = lista famílias + folhas soltas; uuid = filhos da família. */
+  const [browseFamilyId, setBrowseFamilyId] = useState<string | null>(null);
+
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, ProductGroup[]>();
+    for (const group of groups) {
+      if (!group.parent_group_id) continue;
+      const list = map.get(group.parent_group_id) || [];
+      list.push(group);
+      map.set(group.parent_group_id, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    }
+    return map;
+  }, [groups]);
+
+  const familyRoots = useMemo(() => {
+    const ids = new Set<string>();
+    for (const option of selectableGroups) {
+      if (option.group.parent_group_id) ids.add(option.group.parent_group_id);
+    }
+    for (const option of emptyGroups) {
+      if (option.group.parent_group_id) ids.add(option.group.parent_group_id);
+    }
+    return groups
+      .filter((group) => ids.has(group.id) || (group.is_family === true && (!sector || sectorOfGroup(group) === sector)))
+      .filter((group, index, arr) => arr.findIndex((g) => g.id === group.id) === index)
+      .filter((group) => ids.has(group.id))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [groups, selectableGroups, emptyGroups, sector]);
+
+  const orphanLeaves = useMemo(
+    () => selectableGroups.filter((option) => !option.group.parent_group_id),
+    [selectableGroups],
+  );
+  const orphanEmpty = useMemo(
+    () => emptyGroups.filter((option) => !option.group.parent_group_id),
+    [emptyGroups],
+  );
+
+  const browseFamily = useMemo(
+    () => (browseFamilyId ? groups.find((g) => g.id === browseFamilyId) ?? null : null),
+    [browseFamilyId, groups],
+  );
+
+  const familyLeafOptions = useMemo(() => {
+    if (!browseFamilyId) return [] as GroupSelectOption[];
+    const kids = childrenByParent.get(browseFamilyId) || [];
+    return kids
+      .filter((group) => (groupIndex[group.id]?.count || 0) > 0)
+      .filter((group) => !sector || sectorOfGroup(group) === sector)
+      .map((group) => {
+        const path = getGroupPath(groups, group.id);
+        return {
+          group,
+          pathLabel: path.map((node) => node.name).join(' › ') || group.name,
+          familyLabel: browseFamily?.name || null,
+        };
+      })
+      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR'));
+  }, [browseFamilyId, childrenByParent, groupIndex, sector, groups, browseFamily]);
+
+  const familyEmptyOptions = useMemo(() => {
+    if (!browseFamilyId) return [] as GroupSelectOption[];
+    const kids = childrenByParent.get(browseFamilyId) || [];
+    return kids
+      .filter((group) => group.is_family !== true)
+      .filter((group) => (groupIndex[group.id]?.count || 0) === 0)
+      .filter((group) => !sector || sectorOfGroup(group) === sector)
+      .map((group) => {
+        const path = getGroupPath(groups, group.id);
+        return {
+          group,
+          pathLabel: path.map((node) => node.name).join(' › ') || group.name,
+          familyLabel: browseFamily?.name || null,
+        };
+      })
+      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR'));
+  }, [browseFamilyId, childrenByParent, groupIndex, sector, groups, browseFamily]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return selectableGroups;
-    const hits = selectableGroups.filter(({ group, pathLabel }) =>
+    // Com família aberta: só os filhos. Na raiz com busca: todas as folhas (atalho).
+    // Na raiz sem busca: famílias + órfãos (montado no JSX).
+    const source = browseFamilyId
+      ? familyLeafOptions
+      : (search.trim() ? selectableGroups : orphanLeaves);
+    if (!search.trim()) return source;
+    const hits = source.filter(({ group, pathLabel }) =>
       searchMatchesAllTerms(
         search,
         pathLabel,
         group.description,
         groupIndex[group.id]?.searchBlob,
+        browseFamily?.name,
       ));
     return rankBySearchScore(
       hits,
@@ -225,35 +311,52 @@ export function GroupMaterialSelect({
       ({ group }) => group.description,
       ({ group }) => groupIndex[group.id]?.searchBlob,
     );
-  }, [selectableGroups, search, groupIndex]);
+  }, [browseFamilyId, familyLeafOptions, orphanLeaves, selectableGroups, search, groupIndex, browseFamily]);
 
   const { visible: visibleOptions, capped, totalMatched, cap } = useMemo(
     () => capSearchResults(filtered, SEARCH_RENDER_CAP),
     [filtered],
   );
-  const filteredEmpty = useMemo(() => (search.trim()
-    ? emptyGroups.filter(({ group, pathLabel }) => searchMatchesAllTerms(search, pathLabel, group.description))
-    : emptyGroups), [emptyGroups, search]);
+  const filteredEmpty = useMemo(() => {
+    const pool = browseFamilyId ? familyEmptyOptions : orphanEmpty;
+    return search.trim()
+      ? pool.filter(({ group, pathLabel }) => searchMatchesAllTerms(search, pathLabel, group.description, browseFamily?.name))
+      : pool;
+  }, [browseFamilyId, familyEmptyOptions, orphanEmpty, search, browseFamily]);
+
+  const filteredFamilies = useMemo(() => {
+    if (browseFamilyId || search.trim()) return [] as ProductGroup[];
+    return familyRoots;
+  }, [browseFamilyId, search, familyRoots]);
 
   const sections = useMemo(() => {
-    const byFamily = new Map<string, { label: string; options: GroupSelectOption[] }>();
-    for (const option of visibleOptions) {
-      const key = option.familyLabel || '__SEM_FAMILIA__';
-      const section = byFamily.get(key) || {
-        label: option.familyLabel || 'Grupos sem família',
-        options: [],
-      };
-      section.options.push(option);
-      byFamily.set(key, section);
+    // Cascata: na raiz sem busca as folhas órfãs ficam numa seção; com busca
+    // (ou dentro da família) as opções já vêm filtradas.
+    if (browseFamilyId) {
+      return [{ key: browseFamilyId, label: browseFamily?.name || 'Larguras', options: visibleOptions }];
     }
-    return Array.from(byFamily.entries())
-      .map(([key, section]) => ({ key, ...section }))
-      .sort((a, b) => {
-        if (a.key === '__SEM_FAMILIA__') return 1;
-        if (b.key === '__SEM_FAMILIA__') return -1;
-        return a.label.localeCompare(b.label, 'pt-BR');
-      });
-  }, [visibleOptions]);
+    if (search.trim()) {
+      const byFamily = new Map<string, { label: string; options: GroupSelectOption[] }>();
+      for (const option of visibleOptions) {
+        const key = option.familyLabel || '__SEM_FAMILIA__';
+        const section = byFamily.get(key) || {
+          label: option.familyLabel || 'Grupos sem família',
+          options: [],
+        };
+        section.options.push(option);
+        byFamily.set(key, section);
+      }
+      return Array.from(byFamily.entries())
+        .map(([key, section]) => ({ key, ...section }))
+        .sort((a, b) => {
+          if (a.key === '__SEM_FAMILIA__') return 1;
+          if (b.key === '__SEM_FAMILIA__') return -1;
+          return a.label.localeCompare(b.label, 'pt-BR');
+        });
+    }
+    if (visibleOptions.length === 0) return [];
+    return [{ key: '__SEM_FAMILIA__', label: 'Grupos sem família', options: visibleOptions }];
+  }, [browseFamilyId, browseFamily, visibleOptions, search]);
 
   const selectedGroup = useMemo(() => groups.find(group =>
     group.name.trim().localeCompare(value.trim(), 'pt-BR', { sensitivity: 'base' }) === 0), [groups, value]);
@@ -271,19 +374,28 @@ export function GroupMaterialSelect({
     onGroupSelect?.(group);
     setOpen(false);
     setSearch('');
+    setBrowseFamilyId(null);
   };
+
+  const selectedPathLabel = selectedOption?.pathLabel
+    || (selectedGroup
+      ? getGroupPath(groups, selectedGroup.id).map((n) => n.name).join(' › ')
+      : '');
 
   return (
     <div>
       <Label className="text-xs text-muted-foreground">{label}</Label>
       <Popover open={open} onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
-        if (!nextOpen) setSearch('');
+        if (!nextOpen) {
+          setSearch('');
+          setBrowseFamilyId(null);
+        }
       }}>
         <PopoverTrigger asChild>
           <Button variant="outline" role="combobox" aria-expanded={open} className="mt-1 h-9 w-full justify-between text-sm font-normal">
             <span className={cn('min-w-0 truncate text-left', !value && 'text-muted-foreground')}>
-              {selectedOption?.pathLabel || value || 'Selecionar material...'}
+              {selectedPathLabel || value || 'Selecionar material...'}
             </span>
             {selectedIsContainer && (
               <Badge variant="outline" className="ml-auto mr-2 h-5 shrink-0 text-[10px] text-warning">
@@ -297,10 +409,21 @@ export function GroupMaterialSelect({
           <Command shouldFilter={false} label="Buscar família, grupo, SKU ou cor...">
             <SearchLocatorStrip
               label="Localizar material"
-              matchedCount={totalMatched}
+              matchedCount={browseFamilyId ? totalMatched : (search.trim() ? totalMatched : familyRoots.length + orphanLeaves.length)}
               totalCount={selectableGroups.length}
               hasQuery={!!search.trim()}
             />
+            {browseFamily && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 border-b border-foreground/10 px-3 py-2 text-left text-xs font-semibold hover:bg-muted/40"
+                onClick={() => { setBrowseFamilyId(null); setSearch(''); }}
+              >
+                <ChevronsUpDown className="h-3.5 w-3.5 rotate-90 opacity-60" />
+                {browseFamily.name}
+                <span className="ml-auto font-normal text-muted-foreground">voltar · escolher largura</span>
+              </button>
+            )}
             <CommandInput placeholder="Buscar família, grupo, SKU ou cor..." value={search} onValueChange={setSearch} />
             <CommandList>
               <CommandEmpty>
@@ -309,20 +432,50 @@ export function GroupMaterialSelect({
                     <span>Nenhum resultado para "{search}"</span>
                     <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
                   </span>
+                ) : browseFamilyId ? (
+                  'Nenhuma largura/grupo com itens nesta família'
                 ) : (
                   'Nenhum grupo-folha encontrado'
                 )}
               </CommandEmpty>
+              {filteredFamilies.length > 0 && (
+                <CommandGroup heading="Famílias · escolha para ver as larguras">
+                  {filteredFamilies.map((family) => {
+                    const kids = childrenByParent.get(family.id) || [];
+                    const withSku = kids.filter((k) => (groupIndex[k.id]?.count || 0) > 0).length;
+                    return (
+                      <CommandItem
+                        key={family.id}
+                        value={`__familia__${family.id}`}
+                        onSelect={() => { setBrowseFamilyId(family.id); setSearch(''); }}
+                        className="items-start py-2"
+                      >
+                        <ChevronsUpDown className="mr-2 mt-0.5 h-4 w-4 shrink-0 -rotate-90 opacity-50" />
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <span className="block truncate text-sm font-medium">{family.name}</span>
+                          <span className="block text-xs text-muted-foreground tabular-nums">
+                            {kids.length} bitola{kids.length !== 1 ? 's' : ''}
+                            {' · '}{withSku} com estoque
+                          </span>
+                        </div>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              )}
               {sections.map(section => (
                 <CommandGroup
                   key={section.key}
-                  heading={section.key === '__SEM_FAMILIA__'
-                    ? section.label
-                    : `${section.label} · família`}
+                  heading={browseFamilyId
+                    ? 'Larguras / grupos desta família'
+                    : section.key === '__SEM_FAMILIA__'
+                      ? section.label
+                      : `${section.label} · família`}
                 >
                   {section.options.map(({ group, pathLabel }) => {
                     const summary = groupIndex[group.id];
                     const selected = selectedGroup?.id === group.id;
+                    const leafLabel = browseFamilyId ? group.name : pathLabel;
                     return (
                       <CommandItem
                         key={group.id}
@@ -332,12 +485,13 @@ export function GroupMaterialSelect({
                       >
                         <Check className={cn('mr-2 mt-0.5 h-4 w-4 shrink-0', selected ? 'opacity-100' : 'opacity-0')} />
                         <div className="min-w-0 flex-1 space-y-1">
-                          <span className="block truncate text-sm font-medium"><HighlightMatch text={pathLabel} term={search} /></span>
+                          <span className="block truncate text-sm font-medium"><HighlightMatch text={leafLabel} term={search} /></span>
                           {summary ? (
                             <div className="space-y-1">
                               <span className="block text-xs text-muted-foreground tabular-nums">
                                 {summary.count} produto{summary.count !== 1 ? 's' : ''}
                                 {' · '}{summary.colors.length} cor{summary.colors.length !== 1 ? 'es' : ''}
+                                {Number(group.dimensions_width) > 0 ? ` · ${Number(group.dimensions_width)} ${group.dimensions_unit || 'mm'}` : ''}
                               </span>
                               {summary.colors.length > 0 && (
                                 <div className="flex flex-wrap gap-1">
@@ -379,13 +533,14 @@ export function GroupMaterialSelect({
                       onSelect={() => {
                         setOpen(false);
                         setSearch('');
+                        setBrowseFamilyId(null);
                         setGroupToFill(group);
                       }}
                       className="items-start py-2 text-muted-foreground"
                     >
                       <Plus className="mr-2 mt-0.5 h-4 w-4 shrink-0 opacity-60" />
                       <div className="min-w-0 flex-1 space-y-0.5">
-                        <span className="block truncate text-sm"><HighlightMatch text={pathLabel} term={search} /></span>
+                        <span className="block truncate text-sm"><HighlightMatch text={browseFamilyId ? group.name : pathLabel} term={search} /></span>
                         <span className="block text-xs text-warning">
                           0 itens · {group.is_color_agnostic ? 'Cadastrar itens' : 'Cadastrar cores'} →
                         </span>
