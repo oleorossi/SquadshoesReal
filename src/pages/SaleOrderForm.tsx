@@ -124,6 +124,7 @@ const emptyItem = (): SaleOrderItemFormData => withSaleOrderItemClientKey({
   terceirizacao_quantities: {},
   outsourced_sectors: {},
   dublagem_mode: null,
+  atelier_execution_mode: null,
 });
 
 type SaleOrderSnapshotHeader = Database['public']['Tables']['sale_orders']['Row'] & {
@@ -425,6 +426,7 @@ export function buildCopySeedPayload(args: {
         selected_terceirizacao_ids: [],
         terceirizacao_quantities: {},
         outsourced_sectors: {},
+        atelier_execution_mode: null,
       };
     }),
   };
@@ -523,6 +525,8 @@ export function mapLoadedSaleOrderItem(
     // Dublagem: sem copiar na carga, editar o PV gravava null e desmarcava
     // Interna/Externa em silêncio (buildExtraItemColumns sempre manda a chave).
     dublagem_mode: ((i as any).dublagem_mode as SaleOrderItemFormData['dublagem_mode']) ?? null,
+    atelier_execution_mode:
+      ((i as any).atelier_execution_mode as SaleOrderItemFormData['atelier_execution_mode']) ?? null,
   };
 }
 

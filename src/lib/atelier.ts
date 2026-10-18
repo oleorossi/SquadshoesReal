@@ -24,18 +24,23 @@ export const ATELIER_SECTOR_LABEL: Record<AtelierSector, string> = {
   aviamento: 'Aviamento',
 };
 
+export type AtelierExecutionMode = 'internal' | 'contractor';
+
 export type AtelierPipelineStatus =
   | 'awaiting_cut'
   | 'cut'
   | 'sent_to_contractor'
   | 'realized'
   | 'received_at_factory'
+  | 'in_progress'
+  | 'done'
   | 'cancelled';
 
 /**
  * Pipeline do Ateliê:
  * - Corte: só na fábrica (aguardando corte → cortado). Sem OKs de rua.
- * - Costura/Aviamento: cortado → enviado ao prestador → realizado → recebido e conferido.
+ * - Costura/Aviamento prestador: cortado → enviado → realizado → recebido e conferido.
+ * - Costura/Aviamento interno: cortado → em realização → concluído.
  */
 export const ATELIER_PIPELINE_LABEL: Record<AtelierPipelineStatus, string> = {
   awaiting_cut: 'Aguardando corte',
@@ -43,7 +48,14 @@ export const ATELIER_PIPELINE_LABEL: Record<AtelierPipelineStatus, string> = {
   sent_to_contractor: 'Enviado ao prestador',
   realized: 'Realizado',
   received_at_factory: 'Recebido e conferido',
+  in_progress: 'Em realização',
+  done: 'Concluído',
   cancelled: 'Cancelado',
+};
+
+export const ATELIER_EXECUTION_MODE_LABEL: Record<AtelierExecutionMode, string> = {
+  internal: 'Interno',
+  contractor: 'Prestador',
 };
 
 /** Colunas da fila (sem cancelled), na ordem do fluxo. */
@@ -53,13 +65,21 @@ export const ATELIER_QUEUE_COLUMNS: AtelierPipelineStatus[] = [
   'sent_to_contractor',
   'realized',
   'received_at_factory',
+  'in_progress',
+  'done',
 ];
 
-/** OKs de rua (Costura/Aviamento) — o corte da fábrica não entra aqui. */
+/** OKs de rua (prestador) — Costura/Aviamento. */
 export const ATELIER_STREET_OK_STEPS: AtelierPipelineStatus[] = [
   'sent_to_contractor',
   'realized',
   'received_at_factory',
+];
+
+/** OKs internos — Costura/Aviamento na fábrica. */
+export const ATELIER_INTERNAL_OK_STEPS: AtelierPipelineStatus[] = [
+  'in_progress',
+  'done',
 ];
 
 const PIPELINE_ORDER: Record<AtelierPipelineStatus, number> = {
@@ -68,6 +88,8 @@ const PIPELINE_ORDER: Record<AtelierPipelineStatus, number> = {
   sent_to_contractor: 2,
   realized: 3,
   received_at_factory: 4,
+  in_progress: 2,
+  done: 4,
   cancelled: 99,
 };
 
@@ -94,6 +116,10 @@ export function atelierKanbanBadgeLabel(status: string | null | undefined): stri
       return 'Ateliê · realizado';
     case 'received_at_factory':
       return 'Ateliê · recebido e conferido';
+    case 'in_progress':
+      return 'Ateliê · em realização';
+    case 'done':
+      return 'Ateliê · concluído';
     default:
       return null;
   }
@@ -101,10 +127,19 @@ export function atelierKanbanBadgeLabel(status: string | null | undefined): stri
 
 /** Enquanto está no prestador (enviado ou já realizado, ainda sem conferência). */
 export function atelierBlocksKanbanPointing(status: string | null | undefined): boolean {
-  return status === 'sent_to_contractor' || status === 'realized';
+  return status === 'sent_to_contractor' || status === 'realized' || status === 'in_progress';
 }
 
-/** Próximo OK de rua a partir do status atual do job (Costura/Aviamento). */
+/** Job libera a OP deste setor? */
+export function atelierJobReleasesFactory(
+  mode: AtelierExecutionMode | string | null | undefined,
+  status: AtelierPipelineStatus | string | null | undefined,
+): boolean {
+  if (mode === 'internal') return status === 'done';
+  return status === 'received_at_factory';
+}
+
+/** Próximo OK de rua (prestador) a partir do status atual. */
 export function atelierNextStreetOk(
   status: AtelierPipelineStatus | string | null | undefined,
 ): AtelierPipelineStatus | null {
@@ -112,6 +147,22 @@ export function atelierNextStreetOk(
   if (status === 'sent_to_contractor') return 'realized';
   if (status === 'realized') return 'received_at_factory';
   return null;
+}
+
+/** Próximo OK interno a partir do status atual. */
+export function atelierNextInternalOk(
+  status: AtelierPipelineStatus | string | null | undefined,
+): AtelierPipelineStatus | null {
+  if (status === 'cut') return 'in_progress';
+  if (status === 'in_progress') return 'done';
+  return null;
+}
+
+/** Modo efetivo do job (null/ausente = prestador, compatível com legado). */
+export function atelierEffectiveMode(
+  mode: AtelierExecutionMode | string | null | undefined,
+): AtelierExecutionMode {
+  return mode === 'internal' ? 'internal' : 'contractor';
 }
 
 /** Componentes que podem ir no kit do lote (nomes do motor de consumo). */

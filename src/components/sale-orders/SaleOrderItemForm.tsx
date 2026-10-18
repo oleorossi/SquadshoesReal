@@ -117,6 +117,8 @@ import {
 } from '@/lib/materialVariantColorGroup';
 import { SearchInput } from '@/components/ui/search-input';
 import { ItemSectorOutsourcingSection } from '@/components/sale-orders/ItemSectorOutsourcingSection';
+import { ItemAtelierModeSection } from '@/components/sale-orders/ItemAtelierModeSection';
+
 import { SignedImage } from '@/components/ui/signed-image';
 import { resolveReferenceThumbnailUrl } from '@/lib/referenceImage';
 import { isCommittedSaleOrderStrapSnapshotStatus } from '@/lib/saleOrderStateMachine';
@@ -1394,6 +1396,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       update(idx, 'selected_terceirizacao_ids', []);
       update(idx, 'terceirizacao_quantities', {});
       update(idx, 'outsourced_sectors', {});
+      update(idx, 'atelier_execution_mode', null);
     }
     prevRefId.current = item.reference_id;
   }, [item.reference_id]);
@@ -3571,6 +3574,14 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         {/* Terceirização por setor deste item (intenção; a OS nasce na entrada
             em produção). Só aparece com referência escolhida — sem ela não há
             OP futura pra receber a OS. */}
+        {item.reference_id && (
+          <ItemAtelierModeSection
+            referenceId={item.reference_id}
+            value={item.atelier_execution_mode}
+            onChange={(next) => onUpdate(index, 'atelier_execution_mode', next)}
+          />
+        )}
+
         {item.reference_id && (
           <ItemSectorOutsourcingSection
             referenceId={item.reference_id}

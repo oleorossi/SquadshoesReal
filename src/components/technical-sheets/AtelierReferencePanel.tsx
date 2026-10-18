@@ -16,12 +16,10 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import {
-  ATELIER_KIT_COMPONENTS,
   ATELIER_SECTOR_LABEL,
   ATELIER_SECTOR_STAGE,
   ATELIER_SECTORS,
   ATELIER_STREET_SECTORS,
-  atelierDefaultKit,
   atelierSheetSupport,
   type AtelierSector,
   type AtelierSheetFields,
@@ -29,6 +27,7 @@ import {
 import {
   useAtelierLots,
   useAtelierReferenceConfig,
+  useAtelierSheetKitCandidates,
   useSaveAtelierReferenceSector,
   type AtelierLotRow,
   type AtelierReferenceSectorRow,
@@ -58,8 +57,10 @@ interface Props {
 
 const SECTOR_HINT: Record<AtelierSector, string> = {
   corte_cabedal: 'Corte na fábrica, na fila do Ateliê — sem envio ao prestador.',
-  costura_cabedal: 'Depois do corte: enviado ao prestador → realizado → recebido e conferido.',
-  aviamento: 'Depois do corte: enviado ao prestador → realizado → recebido e conferido.',
+  costura_cabedal:
+    'Depois do corte: interno (em realização → concluído) ou prestador (enviado → realizado → conferido).',
+  aviamento:
+    'Depois do corte: interno (em realização → concluído) ou prestador (enviado → realizado → conferido).',
 };
 
 /**
@@ -128,8 +129,9 @@ export function AtelierReferencePanel({
             : 'Esta referência ainda não é Ateliê'}
         </h3>
         <p className="text-sm text-muted-foreground">
-          Marque só as etapas que este modelo tem. Corte acontece na fábrica. Costura e Aviamento
-          vão ao prestador e só liberam a produção depois de recebido e conferido.
+          Marque só as etapas que este modelo tem. Corte é sempre na fábrica. Costura e Aviamento
+          podem ser internos ou com prestador — a escolha fica no pedido e no relatório. O kit
+          lista os componentes reais da ficha (com quantidade no relatório).
         </p>
       </header>
 
@@ -259,7 +261,7 @@ function Checklist({
         <li className="pt-1 text-[11px] text-muted-foreground">
           {activeSectors.has('corte_cabedal') && 'Corte: OK só na fábrica. '}
           {(activeSectors.has('costura_cabedal') || activeSectors.has('aviamento')) &&
-            'Costura/Aviamento: enviado → realizado → recebido e conferido.'}
+            'Costura/Aviamento: interno ou prestador (escolha no PV/relatório).'}
         </li>
       )}
     </ul>
@@ -386,34 +388,48 @@ function SectorCard({
   hasKitColumns: boolean;
   onGoToMaterials?: () => void;
 }) {
+  const isStreet = ATELIER_STREET_SECTORS.includes(sector);
   const save = useSaveAtelierReferenceSector();
+  const { data: candidates = [], isLoading: candLoading } = useAtelierSheetKitCandidates(
+    sheet.id,
+    isStreet ? sector : null,
+  );
   const support = atelierSheetSupport(sheet, sector);
   const active = !!row?.active;
   const orphan = active && !support.ok;
-  const [kit, setKit] = useState<string[]>(
-    row?.material_components?.length ? row.material_components : atelierDefaultKit(sector),
-  );
+  const [kitProductIds, setKitProductIds] = useState<string[]>(row?.kit_product_ids ?? []);
   const [price, setPrice] = useState<number | null>(row?.value_per_pair ?? null);
 
   useEffect(() => {
-    setKit(row?.material_components?.length ? row.material_components : atelierDefaultKit(sector));
-  }, [row?.material_components, sector]);
+    setKitProductIds(row?.kit_product_ids ?? []);
+  }, [row?.kit_product_ids]);
   useEffect(() => setPrice(row?.value_per_pair ?? null), [row?.value_per_pair]);
 
   const busy = save.isPending;
   const id = `atelie-${sector}`;
-  const isStreet = ATELIER_STREET_SECTORS.includes(sector);
 
   const toggle = (next: boolean) => {
     if (!sheet.id) return;
     save.mutate({ referenceId: sheet.id, sector, active: next });
   };
 
-  const toggleKit = (c: string) => {
+  const toggleKitProduct = (productId: string) => {
     if (!sheet.id) return;
-    const next = kit.includes(c) ? kit.filter((k) => k !== c) : [...kit, c];
-    setKit(next);
-    save.mutate({ referenceId: sheet.id, sector, active: true, materialComponents: next });
+    const next = kitProductIds.includes(productId)
+      ? kitProductIds.filter((k) => k !== productId)
+      : [...kitProductIds, productId];
+    setKitProductIds(next);
+    const labels = candidates
+      .filter((c) => next.includes(c.product_id))
+      .map((c) => c.component)
+      .filter(Boolean);
+    save.mutate({
+      referenceId: sheet.id,
+      sector,
+      active: true,
+      kitProductIds: next,
+      materialComponents: labels.length ? [...new Set(labels)] : null,
+    });
   };
 
   const savePrice = () => {
@@ -511,32 +527,48 @@ function SectorCard({
           </div>
 
           <fieldset className="space-y-1.5">
-            <legend className="text-xs font-medium text-foreground">O que vai no kit do lote</legend>
-            <div className="flex flex-wrap gap-1.5">
-              {ATELIER_KIT_COMPONENTS.map((c) => {
-                const on = kit.includes(c);
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-pressed={on}
-                    disabled={busy || disabled || (on && kit.length === 1)}
-                    onClick={() => toggleKit(c)}
-                    className={cn(
-                      'inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
-                      on
-                        ? 'border-foreground/60 bg-muted/50 font-medium text-foreground'
-                        : 'border-dashed border-border bg-background text-muted-foreground hover:bg-muted/40',
-                    )}
-                  >
-                    {on && <Check className="h-3 w-3" weight="bold" />}
-                    {c}
-                  </button>
-                );
-              })}
-            </div>
+            <legend className="text-xs font-medium text-foreground">
+              Componentes da ficha no kit do lote
+            </legend>
+            {candLoading ? (
+              <p className="text-[11px] text-muted-foreground">Carregando materiais da ficha…</p>
+            ) : candidates.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground">
+                Nenhum componente deste setor na ficha (BOM). Cadastre em Materiais & Consumo.
+              </p>
+            ) : (
+              <ul className="max-h-40 space-y-1 overflow-y-auto">
+                {candidates.map((c) => {
+                  const on = kitProductIds.includes(c.product_id);
+                  return (
+                    <li key={c.product_id}>
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        disabled={busy || disabled}
+                        onClick={() => toggleKitProduct(c.product_id)}
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
+                          on
+                            ? 'border-foreground/60 bg-muted/50 font-medium text-foreground'
+                            : 'border-dashed border-border bg-background text-muted-foreground hover:bg-muted/40',
+                        )}
+                      >
+                        {on && <Check className="h-3 w-3 shrink-0" weight="bold" />}
+                        <span className="min-w-0 flex-1 truncate">{c.product_name}</span>
+                        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                          {c.quantity_per_unit != null
+                            ? `${Number(c.quantity_per_unit).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}${c.unit ? ` ${c.unit}` : ''}/par`
+                            : c.component}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <p className="text-[11px] text-muted-foreground">
-              Esses materiais saem do estoque no corte do lote. O resto vai na OP.
+              Marcados saem do estoque no corte do lote (quantidade no relatório). O resto vai na OP.
             </p>
           </fieldset>
         </div>
@@ -549,10 +581,13 @@ function SectorCard({
 function lotStage(lot: AtelierLotRow): string {
   if (lot.status === 'open') return 'Aguardando corte';
   const st = lot.jobs.map((j) => j.pipeline_status);
-  if (st.length && st.every((s) => s === 'received_at_factory')) return 'Recebido e conferido';
+  if (st.length && st.every((s) => s === 'received_at_factory' || s === 'done')) {
+    return 'Conferido / concluído';
+  }
+  if (st.some((s) => s === 'in_progress')) return 'Em realização (interno)';
   if (st.some((s) => s === 'realized')) return 'Realizado no prestador';
   if (st.some((s) => s === 'sent_to_contractor')) return 'Enviado ao prestador';
-  return 'Cortado, pronto para envio';
+  return 'Cortado, pronto para envio / realização';
 }
 
 function LotsSection({ lots, active }: { lots: AtelierLotRow[]; active: boolean }) {

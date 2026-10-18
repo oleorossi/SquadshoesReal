@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import type { AtelierPipelineStatus, AtelierSector } from '@/lib/atelier';
+import type {
+  AtelierExecutionMode,
+  AtelierPipelineStatus,
+  AtelierSector,
+} from '@/lib/atelier';
 
 export const atelierKeys = {
   all: ['atelier'] as const,
@@ -13,6 +17,8 @@ export const atelierKeys = {
   sheetsLite: () => [...atelierKeys.all, 'sheets-lite'] as const,
   reference: (referenceId: string) => [...atelierKeys.all, 'reference', referenceId] as const,
   lots: () => [...atelierKeys.all, 'lots'] as const,
+  kitCandidates: (referenceId: string, sector: string) =>
+    [...atelierKeys.all, 'kit-candidates', referenceId, sector] as const,
 };
 
 export interface AtelierReferenceSectorRow {
@@ -22,6 +28,7 @@ export interface AtelierReferenceSectorRow {
   active: boolean;
   value_per_pair: number | null;
   material_components: string[] | null;
+  kit_product_ids: string[] | null;
   updated_at: string | null;
 }
 
@@ -52,6 +59,7 @@ export function useAtelierReferenceConfig(referenceId: string | null | undefined
           ...r,
           value_per_pair: r.value_per_pair ?? null,
           material_components: r.material_components ?? null,
+          kit_product_ids: (r as { kit_product_ids?: string[] | null }).kit_product_ids ?? null,
         })) as AtelierReferenceSectorRow[],
         hasKitColumns,
       };
@@ -68,6 +76,7 @@ export function useSaveAtelierReferenceSector() {
       active: boolean;
       valuePerPair?: number | null;
       materialComponents?: string[] | null;
+      kitProductIds?: string[] | null;
     }) => {
       const payload: Record<string, unknown> = {
         reference_id: input.referenceId,
@@ -76,6 +85,7 @@ export function useSaveAtelierReferenceSector() {
       };
       if (input.valuePerPair !== undefined) payload.value_per_pair = input.valuePerPair;
       if (input.materialComponents !== undefined) payload.material_components = input.materialComponents;
+      if (input.kitProductIds !== undefined) payload.kit_product_ids = input.kitProductIds;
       const { error } = await supabase
         .from('atelier_complex_references' as never)
         .upsert(payload as never, { onConflict: 'reference_id,sector' });
@@ -84,12 +94,45 @@ export function useSaveAtelierReferenceSector() {
     },
     onSuccess: (input) => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
-      if (input.valuePerPair === undefined && input.materialComponents === undefined) {
+      if (
+        input.valuePerPair === undefined
+        && input.materialComponents === undefined
+        && input.kitProductIds === undefined
+      ) {
         toast.success(input.active ? 'Referência enviada ao Ateliê' : 'Referência tirada do Ateliê');
       }
     },
     // A recusa do cadastro vem do gatilho no banco com o motivo em português.
     onError: (e: Error) => toast.error(e.message || 'Não foi possível salvar o Ateliê'),
+  });
+}
+
+export interface AtelierKitCandidate {
+  product_id: string;
+  product_name: string;
+  unit: string | null;
+  component: string;
+  quantity_per_unit: number | null;
+  sector: string | null;
+}
+
+/** Componentes reais da ficha elegíveis pro kit do setor. */
+export function useAtelierSheetKitCandidates(
+  referenceId: string | null | undefined,
+  sector: AtelierSector | null | undefined,
+) {
+  return useQuery({
+    queryKey: atelierKeys.kitCandidates(referenceId ?? '', sector ?? ''),
+    enabled: !!referenceId && !!sector,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc(
+        'atelier_sheet_kit_candidates' as never,
+        { p_reference_id: referenceId, p_sector: sector } as never,
+      );
+      if (error) throw error;
+      return (data ?? []) as unknown as AtelierKitCandidate[];
+    },
+    staleTime: 30_000,
   });
 }
 
@@ -104,6 +147,7 @@ export interface AtelierLotJob {
   contractor_name: string | null;
   atelier_service_number: string | null;
   target_end: string | null;
+  execution_mode: AtelierExecutionMode | null;
 }
 
 export interface AtelierLotRow {
@@ -127,6 +171,7 @@ export interface AtelierLotRow {
    */
   min_delivery_deadline: string | null;
   grade: Record<string, number>;
+  kit_product_ids?: string[];
   orders: {
     sale_order_id: string;
     order_number: string;
@@ -135,6 +180,7 @@ export interface AtelierLotRow {
     delivery_deadline: string | null;
     /** Pares DESTE pedido no lote — `pairs` do lote é a soma de todos os PVs. */
     pairs: number;
+    atelier_execution_mode?: AtelierExecutionMode | null;
   }[];
   jobs: AtelierLotJob[];
   debits: {
@@ -403,6 +449,73 @@ export function useMarkAtelierReceived() {
   });
 }
 
+export function useSetAtelierJobExecutionMode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      jobId: string;
+      mode: AtelierExecutionMode;
+      contractorId?: string | null;
+    }) => {
+      const { data, error } = await supabase.rpc(
+        'atelier_set_job_execution_mode' as never,
+        {
+          p_job_id: input.jobId,
+          p_mode: input.mode,
+          p_contractor_id: input.contractorId ?? null,
+        } as never,
+      );
+      if (error) throw error;
+      return data as { execution_mode?: string } | null;
+    },
+    onSuccess: (_data, input) => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      toast.success(
+        input.mode === 'internal' ? 'Modo: interno (fábrica)' : 'Modo: prestador',
+      );
+    },
+    onError: (e: Error) => toast.error(e.message || 'Falha ao definir o modo'),
+  });
+}
+
+export function useMarkAtelierInternalStart() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (jobId: string) => {
+      const { data, error } = await supabase.rpc(
+        'atelier_mark_job_internal_start' as never,
+        { p_job_id: jobId } as never,
+      );
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      toast.success('Em realização na fábrica');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Falha ao iniciar realização'),
+  });
+}
+
+export function useMarkAtelierInternalDone() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (jobId: string) => {
+      const { data, error } = await supabase.rpc(
+        'atelier_mark_job_internal_done' as never,
+        { p_job_id: jobId } as never,
+      );
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      toast.success('Concluído — libera a OP deste setor');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Falha ao concluir'),
+  });
+}
+
 export function useAtelierSettings() {
   return useQuery({
     queryKey: atelierKeys.settings(),
@@ -498,7 +611,9 @@ export function useAtelierPrepConsumption(saleOrderIds: string[]) {
           st === 'cut' ||
           st === 'sent_to_contractor' ||
           st === 'realized' ||
-          st === 'received_at_factory'
+          st === 'received_at_factory' ||
+          st === 'in_progress' ||
+          st === 'done'
         );
       });
     },

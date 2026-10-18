@@ -84,6 +84,7 @@ export function buildExtraItemColumns(item: SaleOrderItemFormData): Record<strin
   const sel = item.selected_terceirizacao_ids;
   const tq = item.terceirizacao_quantities;
   const outs = item.outsourced_sectors;
+  const atelierMode = item.atelier_execution_mode;
   return {
     // Poda chaves de cores que não existem mais nas tiras do item — trocar a cor
     // deixaria o override antigo pendurado, pronto pra ressuscitar.
@@ -95,6 +96,8 @@ export function buildExtraItemColumns(item: SaleOrderItemFormData): Record<strin
     outsourced_sectors: (outs && typeof outs === 'object') ? outs : {},
     // Sempre presente (inclusive null) pra o sync SQL gravar desmarcação.
     dublagem_mode: item.dublagem_mode ?? null,
+    atelier_execution_mode:
+      atelierMode === 'internal' || atelierMode === 'contractor' ? atelierMode : null,
   };
 }
 
@@ -443,6 +446,8 @@ export type SaleOrderItemFormData = {
    *  ⚠ Só entra par setor→prestador COMPLETO: um trigger no banco rejeita chave
    *  de setor desconhecida ou valor que não seja uuid, e o save estoura. */
   outsourced_sectors?: Record<string, string> | null;
+  /** Sugestão Ateliê no item: interno | prestador. Copiada ao job na materialização. */
+  atelier_execution_mode?: 'internal' | 'contractor' | null;
 };
 
 /**
