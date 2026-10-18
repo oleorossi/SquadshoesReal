@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { SectionTitle } from '@/components/technical-sheets/sheetFormFields';
+import { READY_MADE_STRIPPED_SECTORS } from '@/components/technical-sheets/ConstructionConfigPanel';
 
 export const ALL_PRODUCTION_SECTORS = [
    // Sub-etapas paralelas de Corte (decisão 2026-05-12; rename Palmilha · * 2026-09):
@@ -37,12 +38,11 @@ export const ALL_PRODUCTION_SECTORS = [
  ];
 
 // Setores removidos automaticamente pelo trigger do banco
-// (tg_strip_cut_sectors_when_ready_made) quando a palmilha é pronta na cor.
+// (tg_strip_cut_sectors_when_ready_made) quando a palmilha é pronta.
+// Lista canônica + aliases: READY_MADE_STRIPPED_SECTORS em ConstructionConfigPanel.
 // O editor desabilita os chips pra não fingir que a seleção foi salva.
-// Palmilha pronta na cor ⇒ não há palmilha pra cortar nem pra costurar. A
-// costura de CABEDAL segue valendo (é outro componente).
-const READY_MADE_STRIPPED_SECTORS = ['Palmilha · Fibra', 'Palmilha · Forração', 'Corte Fibra', 'Corte Forração', 'Acabamento Palmilha'];
- 
+// Costura de CABEDAL segue valendo (é outro componente).
+
 // Etapas fixas do setor Aviamento. Quando o user marca Aviamento em
 // production_sectors, abre um sub-painel pra escolher quais dessas etapas
 // se aplicam à ficha. A ficha de operador renderiza checklist por etapa.
@@ -132,7 +132,8 @@ export function ProductionSectorsTab({
            // Pronta na cor: o trigger do banco remove esses setores em todo
            // save — marcar aqui era desfeito em silêncio (toast de sucesso
            // enganava e a ficha do setor nunca saía na impressão).
-           const lockedByReadyMade = insoleReadyMade && READY_MADE_STRIPPED_SECTORS.includes(sector.name);
+           const lockedByReadyMade = insoleReadyMade
+             && (READY_MADE_STRIPPED_SECTORS as readonly string[]).includes(sector.name);
            return (
              <button
                key={sector.name}

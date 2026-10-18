@@ -36,10 +36,11 @@ interface ConstructionConfigPanelProps {
 }
 
 // ─── Canonical sector lists ────────────────────────────────────────────────
-// • Cabedal (insole_ready_made=true)   → SEM Corte Forração, SEM Costura.
-//   Cabedal cortado (Corte Cabedal). Palmilha vem pronta na cor.
-// • Cabedal Forrado (com forração)     → COM Corte Cabedal, Corte Forração,
-//   Costura (costura palmilha+forração e cabedal).
+// • Cabedal (insole_ready_made=true)   → SEM etapas de palmilha (Fibra,
+//   Forração, Acabamento Palmilha). Cabedal cortado; palmilha/solado vêm
+//   prontos (solado palmilha_pronta / compra). Decisão do dono 2026-10.
+// • Cabedal Forrado (com forração)     → COM Palmilha · Fibra/Forração,
+//   Acabamento Palmilha, Corte Cabedal (+ Costura Cabedal quando costura).
 // • Tiras (has_straps=true)            → pode ser uma construção somente de
 //   tiras OU uma capacidade adicional de um modelo com Cabedal. Selecionar um
 //   cartão de Cabedal nunca desabilita as tiras já configuradas.
@@ -56,8 +57,8 @@ interface ConstructionConfigPanelProps {
 // migration 20261230120000), então estas listas são higiene de UI: sem elas o
 // painel mostraria uma rota e o banco gravaria outra. Travado por
 // `__tests__/constructionRouting.test.ts`.
-const SECTORS_CABEDAL              = ['Palmilha · Fibra', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
-const SECTORS_CABEDAL_SILK         = ['Palmilha · Fibra', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL              = ['Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
+const SECTORS_CABEDAL_SILK         = ['Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
 const SECTORS_CABEDAL_FORRADO      = ['Palmilha · Fibra', 'Palmilha · Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
 const SECTORS_CABEDAL_FORRADO_SILK = ['Palmilha · Fibra', 'Palmilha · Forração', 'Corte Cabedal', 'Acabamento Palmilha', 'Costura Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
 const SECTORS_TIRAS                = ['Palmilha · Fibra', 'Palmilha · Forração', 'Acabamento Palmilha', 'Aviamento', 'Colagem', 'Montagem', 'Solagem', 'Acabamento', 'Expedição'];
@@ -68,6 +69,24 @@ export const CANONICAL_ROUTINGS = [
   SECTORS_CABEDAL, SECTORS_CABEDAL_SILK,
   SECTORS_CABEDAL_FORRADO, SECTORS_CABEDAL_FORRADO_SILK,
   SECTORS_TIRAS, SECTORS_TIRAS_SILK,
+] as const;
+
+/** Modelo Cabedal = palmilha pronta — sem postos de palmilha na rota. */
+export const READY_MADE_CANONICAL_ROUTINGS = [
+  SECTORS_CABEDAL, SECTORS_CABEDAL_SILK,
+] as const;
+
+/** Etapas que a palmilha pronta não passa (espelha o strip do banco). */
+export const READY_MADE_STRIPPED_SECTORS = [
+  'Palmilha · Fibra',
+  'Palmilha · Forração',
+  'Acabamento Palmilha',
+  'Corte Fibra',
+  'Corte Palmilha',
+  'Corte Forração',
+  'Forração',
+  'Costura Palmilha',
+  'Costura',
 ] as const;
 
 function sectorsForModel(model: ProductionModel, hasSilk: boolean, requiresSewing = true): string[] {
@@ -109,6 +128,9 @@ function isCanonicalRouting(current: string[] | null | undefined): boolean {
     SECTORS_CABEDAL, SECTORS_CABEDAL_SILK,
     SECTORS_CABEDAL_FORRADO, SECTORS_CABEDAL_FORRADO_SILK,
     SECTORS_TIRAS, SECTORS_TIRAS_SILK,
+    // Cabedal pré-2026-10 ainda listava Palmilha · Fibra (pronta já não corta).
+    ['Palmilha · Fibra', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
+    ['Palmilha · Fibra', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     // Pré rename Palmilha · * (2026-09) — Corte Fibra / Corte Forração
     ['Corte Fibra', 'Corte Cabedal', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
     ['Corte Fibra', 'Corte Cabedal', 'Silk', 'Colagem', 'Montagem', 'Solagem', 'Acabamento'],
@@ -236,7 +258,7 @@ function routingLabel(model: ProductionModel, hasSilk: boolean, requires_sewing:
   // Acabamento isto batia; agora toda rota vai até a Expedição.
   const fim = ' → Colagem → Montagem → Solagem → Acabamento → Expedição';
   if (model === 'cabedal') {
-    return `Palmilha · Fibra ‖ Corte Cabedal${silk}${fim}`;
+    return `Corte Cabedal${silk}${fim}`;
   }
   if (model === 'cabedal_forrado') {
     const sewing = requires_sewing ? ' (costura inclusa)' : '';

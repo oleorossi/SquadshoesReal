@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { CANONICAL_ROUTINGS } from '../ConstructionConfigPanel';
+import {
+  CANONICAL_ROUTINGS,
+  READY_MADE_CANONICAL_ROUTINGS,
+  READY_MADE_STRIPPED_SECTORS,
+} from '../ConstructionConfigPanel';
 
 /**
  * Toda rota canônica termina em Expedição (decisão do dono, 07/08/2026).
@@ -49,6 +53,25 @@ describe('roteiros canônicos da ficha técnica', () => {
     ]);
     for (const rota of CANONICAL_ROUTINGS) {
       for (const setor of rota) expect(CONHECIDOS).toContain(setor);
+    }
+  });
+
+  it('modelo Cabedal (palmilha pronta) não inclui etapas de palmilha', () => {
+    // Decisão do dono 2026-10: solado palmilha_pronta / insole_ready_made ⇒
+    // rota sem Palmilha · Fibra, Palmilha · Forração nem Acabamento Palmilha.
+    const stripped = new Set<string>(READY_MADE_STRIPPED_SECTORS);
+    for (const rota of READY_MADE_CANONICAL_ROUTINGS) {
+      for (const setor of rota) expect(stripped.has(setor)).toBe(false);
+    }
+  });
+
+  it('modelos forrado e tiras ainda passam por palmilha', () => {
+    // Só o Cabedal é pronta; forrado/tiras cortam fibra+forração e acabam
+    // a palmilha. Índice: 0–1 Cabedal, 2–3 forrado, 4–5 tiras.
+    for (const rota of CANONICAL_ROUTINGS.slice(2)) {
+      expect(rota).toContain('Palmilha · Fibra');
+      expect(rota).toContain('Palmilha · Forração');
+      expect(rota).toContain('Acabamento Palmilha');
     }
   });
 });
