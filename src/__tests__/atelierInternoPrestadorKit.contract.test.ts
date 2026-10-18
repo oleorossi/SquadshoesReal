@@ -81,7 +81,8 @@ describe('Ateliê — interno × prestador + kit da ficha', () => {
     expect(rel).toMatch(/Prestador/);
     expect(rel).toMatch(/OK · Em realização/);
     expect(rel).toMatch(/OK · Concluído/);
-    expect(rel).toMatch(/OK · Enviado ao prestador/);
+    // Labels densificados (cartão estreito): "OK · Enviado" / "OK · Conferido"
+    expect(rel).toMatch(/OK · Enviado/);
     expect(rel).toContain('InternalJobOk');
     expect(rel).toContain('ContractorJobOk');
 

@@ -38,7 +38,8 @@ describe('Ateliê — realizado e conferido (rua)', () => {
     expect(page).toContain('AtelierRelatorioView');
     const rel = readFileSync('src/components/atelier/AtelierRelatorioView.tsx', 'utf8');
     expect(rel).toContain('OK · Realizado');
-    expect(rel).toContain('OK · Recebido e conferido');
+    // Label densificado no cartão: "OK · Conferido" (status completo fica no pipeline)
+    expect(rel).toContain('OK · Conferido');
     expect(rel).toContain('matchesAtelierReportFilters');
   });
 });
