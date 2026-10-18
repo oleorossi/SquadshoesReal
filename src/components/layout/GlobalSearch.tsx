@@ -344,7 +344,7 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
           // (ex.: "tamara" casa "NAPA SOFT TÂMARA").
           const { data, error } = await supabase
             .from('products')
-            .select('id, name, sku, color, quantity, unit, product_groups(name)')
+            .select('id, name, sku, color, quantity, unit, product_groups!products_group_id_fkey(name)')
             .or(searchNormOrFilter(searchTerm))
             .order('updated_at', { ascending: false })
             .limit(6);
