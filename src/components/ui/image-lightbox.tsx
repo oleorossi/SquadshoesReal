@@ -112,8 +112,14 @@ export function ZoomableImage({
 
   return (
     <>
-      <button
-        type="button"
+      {/*
+        `div role="button"` (não <button>): a miniatura mora dentro de cards/
+        linhas que já são <button> (ficha, picker de ref, Kanban). Botão
+        aninhado é HTML inválido e o React avisa validateDOMNesting.
+      */}
+      <div
+        role="button"
+        tabIndex={0}
         className={cn(
           'group/zoom relative block cursor-zoom-in overflow-hidden p-0',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
@@ -131,10 +137,11 @@ export function ZoomableImage({
           fit={fit}
           width={width}
           height={height}
-          loading={loading}
+          // Não passar `loading={undefined}` — sobrescreve o default lazy do SignedImage.
+          {...(loading ? { loading } : {})}
           className={cn('h-full w-full', className)}
         />
-      </button>
+      </div>
       <ImageLightbox src={fullSrc} alt={alt} open={open} onOpenChange={setOpen} />
     </>
   );

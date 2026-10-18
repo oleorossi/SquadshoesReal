@@ -68,4 +68,17 @@ describe('ZoomableImage', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: /Ampliar foto/ }), { key: 'Enter' });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
+
+  it('usa div role=button pra poder viver dentro de um botão pai', () => {
+    render(
+      <button type="button" aria-label="Abrir item">
+        <ZoomableImage src="https://cdn.example.com/i100.jpg" alt="I100" />
+      </button>,
+    );
+
+    const zoom = screen.getByRole('button', { name: /Ampliar foto/ });
+    expect(zoom.tagName).toBe('DIV');
+    fireEvent.click(zoom);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
 });
