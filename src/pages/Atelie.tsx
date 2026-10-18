@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   CheckCircle,
   CircleNotch as Loader2,
+  Factory,
   Plus,
   Scissors,
   Truck,
@@ -30,12 +31,17 @@ import {
 } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
+  ATELIER_EXECUTION_MODE_LABEL,
   ATELIER_PIPELINE_LABEL,
   ATELIER_QUEUE_COLUMNS,
   ATELIER_SECTOR_LABEL,
   ATELIER_SECTORS,
+  atelierEffectiveMode,
   atelierLotColumn,
+  atelierNextInternalOk,
+  atelierNextStreetOk,
   groupAtelierLotsByReference,
+  type AtelierExecutionMode,
   type AtelierSector,
 } from '@/lib/atelier';
 import {
@@ -44,6 +50,7 @@ import {
   matchesAtelierFilaFilters,
   type AtelierFilaFilters,
 } from '@/lib/atelierFilaFilters';
+import { kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
 import {
   useAddAtelierReference,
   useAtelierCatalog,
@@ -51,11 +58,14 @@ import {
   useAtelierLots,
   useAtelierSettings,
   useConfirmAtelierLotCut,
+  useMarkAtelierInternalDone,
+  useMarkAtelierInternalStart,
   useMarkAtelierRealized,
   useMarkAtelierReceived,
   useMarkAtelierSent,
   useReapplyAtelierEligibility,
   useRemoveAtelierReference,
+  useSetAtelierJobExecutionMode,
   useTechnicalSheetsLiteForAtelier,
   useUpdateAtelierSettings,
   type AtelierLotJob,
@@ -151,19 +161,30 @@ function KitPreview({ lotId }: { lotId: string }) {
 function JobRow({
   job,
   contractors,
-  onSend,
-  onRealize,
-  onReceive,
-  busy,
 }: {
   job: AtelierLotJob;
   contractors: { id: string; name: string }[];
-  onSend: (contractorId: string) => void;
-  onRealize: () => void;
-  onReceive: () => void;
-  busy: boolean;
 }) {
-  const [contractorId, setContractorId] = useState<string>('');
+  const mode = atelierEffectiveMode(job.execution_mode);
+  const setMode = useSetAtelierJobExecutionMode();
+  const sendMut = useMarkAtelierSent();
+  const realizedMut = useMarkAtelierRealized();
+  const receiveMut = useMarkAtelierReceived();
+  const startMut = useMarkAtelierInternalStart();
+  const doneMut = useMarkAtelierInternalDone();
+  const [contractorId, setContractorId] = useState(job.contractor_id ?? '');
+  const canChangeMode = job.pipeline_status === 'cut' || job.pipeline_status === 'awaiting_cut';
+  const nextStreet = atelierNextStreetOk(job.pipeline_status);
+  const nextInternal = atelierNextInternalOk(job.pipeline_status);
+  const busy =
+    setMode.isPending ||
+    sendMut.isPending ||
+    realizedMut.isPending ||
+    receiveMut.isPending ||
+    startMut.isPending ||
+    doneMut.isPending;
+  const kitLines = Array.isArray(job.sent_kit_lines) ? job.sent_kit_lines : [];
+
   return (
     <div className="space-y-1 border-t border-border/50 pt-1.5">
       <div className="flex items-baseline justify-between gap-2 text-[11px] leading-tight">
@@ -174,7 +195,35 @@ function JobRow({
           {Number(job.pairs)}p · {ATELIER_PIPELINE_LABEL[job.pipeline_status]}
         </span>
       </div>
-      {job.pipeline_status === 'cut' && (
+
+      {canChangeMode && (
+        <div className="inline-flex rounded-md border border-border p-0.5">
+          {(['internal', 'contractor'] as AtelierExecutionMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                setMode.mutate({
+                  jobId: job.id,
+                  mode: m,
+                  contractorId: m === 'contractor' ? contractorId || null : null,
+                })
+              }
+              className={cn(
+                'rounded px-2 py-0.5 text-[10px] font-medium transition-colors',
+                mode === m
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:bg-muted/50',
+              )}
+            >
+              {ATELIER_EXECUTION_MODE_LABEL[m]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {mode === 'contractor' && nextStreet === 'sent_to_contractor' && (
         <div className="flex gap-1">
           <Select value={contractorId || undefined} onValueChange={setContractorId}>
             <SelectTrigger className="h-7 flex-1 text-[11px]" aria-label="Prestador">
@@ -188,32 +237,100 @@ function JobRow({
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" className="h-7 px-2 text-[11px]" disabled={busy || !contractorId} onClick={() => onSend(contractorId)}>
+          <Button
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            disabled={busy || !contractorId}
+            onClick={() => sendMut.mutate({ jobId: job.id, contractorId })}
+          >
             <Truck className="h-3 w-3" />
             Enviar
           </Button>
         </div>
       )}
-      {job.pipeline_status === 'sent_to_contractor' && (
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-[10px] text-muted-foreground">
-            {job.contractor_name ?? 'Prestador'}
-            {job.atelier_service_number ? ` · ${job.atelier_service_number}` : ''}
-          </span>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onRealize}>
-            <CheckCircle className="h-3 w-3" />
-            Realizado
-          </Button>
+
+      {mode === 'contractor' && nextStreet === 'realized' && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-[10px] text-muted-foreground">
+              {job.contractor_name ?? 'Prestador'}
+              {job.atelier_service_number ? ` · ${job.atelier_service_number}` : ''}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-[11px]"
+              disabled={busy}
+              onClick={() => realizedMut.mutate(job.id)}
+            >
+              <CheckCircle className="h-3 w-3" />
+              Realizado
+            </Button>
+          </div>
+          {kitLines.length > 0 && (
+            <ul className="rounded border border-border/50 bg-muted/20 px-1.5 py-1 text-[10px] text-muted-foreground">
+              {kitLines.map((line) => (
+                <li key={`${line.product_id}-${line.product_name}`}>
+                  <span className="font-medium text-foreground">{line.product_name}</span>
+                  {' · '}
+                  <span className="font-mono tabular-nums">
+                    {formatQty(Number(line.quantity) || 0)}
+                    {line.unit ? ` ${line.unit}` : ''}
+                  </span>
+                  <span> enviados</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
-      {job.pipeline_status === 'realized' && (
+
+      {mode === 'contractor' && nextStreet === 'received_at_factory' && (
         <div className="flex items-center justify-between gap-2">
           <span className="text-[10px] text-muted-foreground">Conferir na fábrica</span>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onReceive}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-[11px]"
+            disabled={busy}
+            onClick={() => receiveMut.mutate(job.id)}
+          >
             <Warehouse className="h-3 w-3" />
             Conferir
           </Button>
         </div>
+      )}
+
+      {mode === 'internal' && nextInternal === 'in_progress' && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            disabled={busy}
+            onClick={() => startMut.mutate(job.id)}
+          >
+            <Factory className="h-3 w-3" />
+            Em realização
+          </Button>
+        </div>
+      )}
+
+      {mode === 'internal' && nextInternal === 'done' && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            disabled={busy}
+            onClick={() => doneMut.mutate(job.id)}
+          >
+            <CheckCircle className="h-3 w-3" />
+            Concluído
+          </Button>
+        </div>
+      )}
+
+      {mode === 'internal' && job.pipeline_status === 'done' && (
+        <p className="text-[10px] font-medium text-foreground">Concluído — libera a OP deste setor.</p>
       )}
     </div>
   );
@@ -230,11 +347,9 @@ function LotCard({
   focusOrderNumber?: string;
 }) {
   const cutMut = useConfirmAtelierLotCut();
-  const sendMut = useMarkAtelierSent();
-  const realizedMut = useMarkAtelierRealized();
-  const receiveMut = useMarkAtelierReceived();
   const [showKit, setShowKit] = useState(false);
-  const pending = lot.debits.filter((d) => Number(d.pending_qty) > 0);
+  const shortage = lotHasKitShortage(lot.debits);
+  const shortageLabels = kitShortageLabels(lot.debits);
   const focused = focusOrderNumber
     ? lot.orders.filter((o) => o.order_number === focusOrderNumber)
     : lot.orders;
@@ -246,10 +361,16 @@ function LotCard({
   const pairsShown = focusOrderNumber && focused.length > 0
     ? focused.reduce((s, o) => s + Number(o.pairs ?? 0), 0)
     : Number(lot.pairs);
-  const jobBusy = sendMut.isPending || realizedMut.isPending || receiveMut.isPending;
 
   return (
-    <article className="space-y-1.5 rounded-md border border-border/70 bg-card p-2">
+    <article
+      className={cn(
+        'space-y-1.5 rounded-md border p-2',
+        shortage
+          ? 'border-red-500/50 bg-red-500/10'
+          : 'border-border/70 bg-card',
+      )}
+    >
       <header className="space-y-0.5">
         <div className="flex items-baseline justify-between gap-1.5">
           <p className="min-w-0 truncate font-display text-sm leading-none text-foreground">
@@ -315,23 +436,15 @@ function LotCard({
         </div>
       )}
 
-      {lot.status === 'cut' && pending.length > 0 && (
-        <p className="rounded bg-amber-500/10 px-1.5 py-1 text-[10px] text-amber-700 dark:text-amber-400">
-          Faltou: {pending.map((d) => `${d.product_name} ${formatQty(Number(d.pending_qty))}`).join(', ')}.
+      {shortage && (
+        <p className="rounded border border-red-500/30 bg-red-500/15 px-1.5 py-1 text-[10px] font-medium text-red-700 dark:text-red-400">
+          Falta no kit: {shortageLabels.join(', ')}. Continua na fila — complete o estoque.
         </p>
       )}
 
       {lot.status === 'cut' &&
         displayJobs.map((job) => (
-          <JobRow
-            key={job.id}
-            job={job}
-            contractors={contractors}
-            busy={jobBusy}
-            onSend={(cid) => sendMut.mutate({ jobId: job.id, contractorId: cid })}
-            onRealize={() => realizedMut.mutate(job.id)}
-            onReceive={() => receiveMut.mutate(job.id)}
-          />
+          <JobRow key={job.id} job={job} contractors={contractors} />
         ))}
     </article>
   );
@@ -342,21 +455,28 @@ function AgendaSettings() {
   const update = useUpdateAtelierSettings();
   const [costura, setCostura] = useState<string | null>(null);
   const [aviamento, setAviamento] = useState<string | null>(null);
+  const [readyBefore, setReadyBefore] = useState<string | null>(null);
 
   const costuraVal = costura ?? String(settings?.costura_offset_days ?? 5);
   const aviVal = aviamento ?? String(settings?.aviamento_offset_days ?? 5);
+  const readyVal = readyBefore ?? String(settings?.ready_before_billing_days ?? 7);
 
-  const save = (field: 'costura' | 'aviamento', raw: string) => {
-    const n = Math.max(0, Math.min(60, Math.round(Number(raw) || 0)));
+  const save = (field: 'costura' | 'aviamento' | 'ready', raw: string) => {
+    const n = Math.max(0, Math.min(90, Math.round(Number(raw) || 0)));
     if (field === 'costura') {
       setCostura(String(n));
       if (n !== (settings?.costura_offset_days ?? 5)) {
         update.mutate({ costuraOffsetDays: n });
       }
-    } else {
+    } else if (field === 'aviamento') {
       setAviamento(String(n));
       if (n !== (settings?.aviamento_offset_days ?? 5)) {
         update.mutate({ aviamentoOffsetDays: n });
+      }
+    } else {
+      setReadyBefore(String(n));
+      if (n !== (settings?.ready_before_billing_days ?? 7)) {
+        update.mutate({ readyBeforeBillingDays: n });
       }
     }
   };
@@ -366,13 +486,32 @@ function AgendaSettings() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Agenda · dias úteis antes dos cortes
+            Agenda · pronto antes do faturamento
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Quantos dias úteis antes da data do pedido o lote deve voltar do prestador.
+            Material do kit pronto N dias antes do início da semana de faturamento (ex.: fatura dia 14 →
+            pronto dia 7). Offsets de Costura/Aviamento: dias úteis antes do corte programado.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Pronto (−dias)
+            </span>
+            <Input
+              type="number"
+              min={0}
+              max={90}
+              className="h-9 w-20 font-mono text-right"
+              disabled={isLoading || update.isPending}
+              value={readyVal}
+              onChange={(e) => setReadyBefore(e.target.value)}
+              onBlur={(e) => save('ready', e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+            />
+          </label>
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Costura
@@ -787,7 +926,7 @@ export default function Atelie() {
       <EditorialPageHeader
         sectionLabel="ENGENHARIA · ATELIÊ"
         title="Ateliê"
-        description="Cabedal complexo: escolha Corte, Costura e/ou Aviamento na ficha. Corte na fábrica; Costura/Aviamento no prestador (enviado → realizado → conferido) antes da OP."
+        description="Cabedal complexo: na ficha, marque o kit por setor. Corte na fábrica; Costura/Aviamento interno (em realização → concluído) ou prestador (enviado → realizado → conferido) antes da OP."
         actions={
           <Button variant="outline" size="sm" className="h-9" asChild>
             <Link to="/terceirizados">

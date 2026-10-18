@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ATELIER_READY_BEFORE_BILLING_DAYS_DEFAULT,
   assemblyDaysNeeded,
   billingWeekStartDate,
   cabedalLeadDaysBeforeBilling,
@@ -13,33 +14,49 @@ describe('cabedalPrep — meta vs montagem', () => {
     expect(billingWeekStartDate('2026-09-S3')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it('1200 pares / 600 por dia → 2 dias montagem → lead 3', () => {
+  it('capacidade de montagem continua informativa (não define a meta)', () => {
     expect(assemblyDaysNeeded(1200, 600)).toBe(2);
     expect(cabedalLeadDaysBeforeBilling(1200, 600)).toBe(3);
-  });
-
-  it('1200 pares / 400 por dia → 3 dias montagem → lead 4', () => {
     expect(assemblyDaysNeeded(1200, 400)).toBe(3);
     expect(cabedalLeadDaysBeforeBilling(1200, 400)).toBe(4);
   });
 
-  it('ready date = início da billing_week − lead', () => {
-    // 2026-05-S1 → 2026-05-01 (clamped); lead 3 → 2026-04-28
+  it('ready date = início da billing_week − 7 (default)', () => {
+    // 2026-05-S1 → 2026-05-01; −7 → 2026-04-24
+    const ready = cabedalReadyDate({ billingWeek: '2026-05-S1' });
+    expect(ready).toBe('2026-04-24');
+    expect(ATELIER_READY_BEFORE_BILLING_DAYS_DEFAULT).toBe(7);
+  });
+
+  it('fatura dia 14 → pronto dia 7 (offset 7)', () => {
+    // Ancora num mês cujo S2 começa em dia conhecido: usar ISO direto via week
+    // 2026-05-S2 ≈ 08/05; −7 = 01/05
     const ready = cabedalReadyDate({
+      billingWeek: '2026-05-S2',
+      readyBeforeBillingDays: 7,
+    });
+    expect(ready).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const start = billingWeekStartDate('2026-05-S2')!;
+    const [y, m, d] = start.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - 7);
+    const expected = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    expect(ready).toBe(expected);
+  });
+
+  it('pares/capacidade não alteram a meta (só o offset)', () => {
+    const a = cabedalReadyDate({
       billingWeek: '2026-05-S1',
       pairs: 1200,
       assemblyCapacityPerDay: 600,
     });
-    expect(ready).toBe('2026-04-28');
-  });
-
-  it('ready date com cap 400 → 4 dias antes', () => {
-    const ready = cabedalReadyDate({
+    const b = cabedalReadyDate({
       billingWeek: '2026-05-S1',
       pairs: 1200,
       assemblyCapacityPerDay: 400,
     });
-    expect(ready).toBe('2026-04-27');
+    expect(a).toBe(b);
+    expect(a).toBe('2026-04-24');
   });
 });
 

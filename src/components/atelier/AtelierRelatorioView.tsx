@@ -46,6 +46,7 @@ import {
   matchesAtelierReportFilters,
   type AtelierReportFilters,
 } from '@/lib/atelierReportFilters';
+import { kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
 import { deadlineChipLabel, deadlineTone, groupReportByOrderThenReference } from '@/lib/reportOrderGrouping';
 import { daysUntilDeadline } from '@/lib/production/productionSequence';
 import { cn } from '@/lib/utils';
@@ -101,18 +102,32 @@ function KitQtyList({ lot }: { lot: AtelierLotRow }) {
   }
   return (
     <ul className="flex flex-wrap gap-1">
-      {lot.debits.map((d) => (
-        <li
-          key={d.product_id}
-          className="rounded border border-border/50 bg-muted/25 px-1 py-px text-[10px] leading-tight text-foreground"
-        >
-          <span className="font-medium">{d.product_name}</span>
-          <span className="ml-1 font-mono tabular-nums text-muted-foreground">
-            {formatQty(Number(d.required_qty) || Number(d.quantity) || 0)}
-            {d.unit ? ` ${d.unit}` : ''}
-          </span>
-        </li>
-      ))}
+      {lot.debits.map((d) => {
+        const short = Number(d.pending_qty) > 0;
+        return (
+          <li
+            key={d.product_id}
+            className={cn(
+              'rounded border px-1 py-px text-[10px] leading-tight',
+              short
+                ? 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-400'
+                : 'border-border/50 bg-muted/25 text-foreground',
+            )}
+          >
+            <span className="font-medium">{d.product_name}</span>
+            <span
+              className={cn(
+                'ml-1 font-mono tabular-nums',
+                short ? 'text-red-700/80 dark:text-red-400/80' : 'text-muted-foreground',
+              )}
+            >
+              {formatQty(Number(d.required_qty) || Number(d.quantity) || 0)}
+              {d.unit ? ` ${d.unit}` : ''}
+              {short ? ` · falta ${formatQty(Number(d.pending_qty))}` : ''}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -701,94 +716,119 @@ export function AtelierRelatorioView() {
         />
       ) : (
         <div className="w-full space-y-2">
-          {filteredLotsByOrder.map((group) => (
-            <Panel key={group.saleOrderId} className="w-full space-y-2 p-3">
-              <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border/50 pb-1.5">
-                <h2 className="font-display text-base leading-none text-foreground">
-                  {group.orderNumber || '—'}
-                </h2>
-                <span className="text-[12px] text-muted-foreground">{group.clientName || '—'}</span>
-                <span className="text-[11px] text-muted-foreground">
-                  Entrega{' '}
-                  <span className="font-medium text-foreground">
-                    {group.deliveryDeadline ? formatDay(group.deliveryDeadline) : '—'}
-                  </span>
-                </span>
-                <span
-                  className={cn(
-                    'rounded border px-1 py-px text-[10px] font-medium',
-                    deadlineChipClass(group.deliveryDeadline),
-                  )}
-                >
-                  {deadlineChipLabel(group.daysUntilDeadline)}
-                </span>
-                <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-                  {formatQty(group.pairs)}p
-                </span>
-              </header>
-
-              {group.references.map((ref) => (
-                <section key={ref.key} className="space-y-1.5">
-                  <div className="flex flex-wrap items-baseline gap-x-1.5">
-                    <h3 className="font-display text-xs leading-none text-foreground">{ref.label}</h3>
-                    <span className="font-mono text-[9px] text-muted-foreground">
-                      {formatQty(ref.pairs)}p · {ref.rows.length}{' '}
-                      {ref.rows.length === 1 ? 'cor' : 'cores'}
+          {filteredLotsByOrder.map((group) => {
+            const groupLots = group.references.flatMap((r) => r.rows.map((row) => row.lot));
+            const groupShortage = groupLots.some((l) => lotHasKitShortage(l.debits));
+            const groupShortageLabels = [
+              ...new Set(groupLots.flatMap((l) => kitShortageLabels(l.debits))),
+            ];
+            return (
+              <Panel
+                key={group.saleOrderId}
+                className={cn(
+                  'w-full space-y-2 p-3',
+                  groupShortage && 'border-red-500/50 bg-red-500/10',
+                )}
+              >
+                <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border/50 pb-1.5">
+                  <h2 className="font-display text-base leading-none text-foreground">
+                    {group.orderNumber || '—'}
+                  </h2>
+                  <span className="text-[12px] text-muted-foreground">{group.clientName || '—'}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Entrega{' '}
+                    <span className="font-medium text-foreground">
+                      {group.deliveryDeadline ? formatDay(group.deliveryDeadline) : '—'}
                     </span>
-                  </div>
-                  <ul className="grid gap-2 xl:grid-cols-2">
-                    {ref.rows.map(({ lot, order }) => {
-                      const col = atelierLotColumn(
-                        lot.status,
-                        lot.jobs.map((j) => j.pipeline_status),
-                      );
-                      const jobs = (lot.jobs ?? []).filter((j) => jobMatchesTab(j, tab));
-                      return (
-                        <li
-                          key={`${lot.id}-${order.sale_order_id}`}
-                          className="space-y-1.5 rounded-md border border-border/70 bg-card p-2"
-                        >
-                          <div className="flex flex-wrap items-baseline justify-between gap-1.5">
-                            <div className="min-w-0">
-                              <span className="text-[12px] font-semibold text-foreground">
-                                {lot.color ?? 'Sem cor'}
-                              </span>
-                              <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
-                                {lot.lot_number}
+                  </span>
+                  <span
+                    className={cn(
+                      'rounded border px-1 py-px text-[10px] font-medium',
+                      deadlineChipClass(group.deliveryDeadline),
+                    )}
+                  >
+                    {deadlineChipLabel(group.daysUntilDeadline)}
+                  </span>
+                  <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                    {formatQty(group.pairs)}p
+                  </span>
+                </header>
+
+                {groupShortage && (
+                  <p className="rounded border border-red-500/30 bg-red-500/15 px-1.5 py-1 text-[10px] font-medium text-red-700 dark:text-red-400">
+                    Falta no kit: {groupShortageLabels.join(', ')}. Continua na fila — complete o estoque.
+                  </p>
+                )}
+
+                {group.references.map((ref) => (
+                  <section key={ref.key} className="space-y-1.5">
+                    <div className="flex flex-wrap items-baseline gap-x-1.5">
+                      <h3 className="font-display text-xs leading-none text-foreground">{ref.label}</h3>
+                      <span className="font-mono text-[9px] text-muted-foreground">
+                        {formatQty(ref.pairs)}p · {ref.rows.length}{' '}
+                        {ref.rows.length === 1 ? 'cor' : 'cores'}
+                      </span>
+                    </div>
+                    <ul className="grid gap-2 xl:grid-cols-2">
+                      {ref.rows.map(({ lot, order }) => {
+                        const col = atelierLotColumn(
+                          lot.status,
+                          lot.jobs.map((j) => j.pipeline_status),
+                        );
+                        const jobs = (lot.jobs ?? []).filter((j) => jobMatchesTab(j, tab));
+                        const shortage = lotHasKitShortage(lot.debits);
+                        return (
+                          <li
+                            key={`${lot.id}-${order.sale_order_id}`}
+                            className={cn(
+                              'space-y-1.5 rounded-md border p-2',
+                              shortage
+                                ? 'border-red-500/50 bg-red-500/10'
+                                : 'border-border/70 bg-card',
+                            )}
+                          >
+                            <div className="flex flex-wrap items-baseline justify-between gap-1.5">
+                              <div className="min-w-0">
+                                <span className="text-[12px] font-semibold text-foreground">
+                                  {lot.color ?? 'Sem cor'}
+                                </span>
+                                <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                                  {lot.lot_number}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                {ATELIER_PIPELINE_LABEL[col] ?? col} ·{' '}
+                                <span className="font-mono font-semibold text-foreground">
+                                  {formatQty(Number(order.pairs) || 0)}p
+                                </span>
                               </span>
                             </div>
-                            <span className="text-[10px] text-muted-foreground">
-                              {ATELIER_PIPELINE_LABEL[col] ?? col} ·{' '}
-                              <span className="font-mono font-semibold text-foreground">
-                                {formatQty(Number(order.pairs) || 0)}p
-                              </span>
-                            </span>
-                          </div>
 
-                          <KitQtyList lot={lot} />
-                          <CutOk lot={lot} />
+                            <KitQtyList lot={lot} />
+                            <CutOk lot={lot} />
 
-                          {jobs.length === 0 ? (
-                            <p className="text-[10px] text-muted-foreground">
-                              Sem Costura/Aviamento neste modo — só o corte, ou troque o modo da linha.
-                            </p>
-                          ) : tab === 'internal' ? (
-                            jobs.map((job) => (
-                              <InternalJobOk key={job.id} job={job} contractors={contractorOpts} />
-                            ))
-                          ) : (
-                            jobs.map((job) => (
-                              <ContractorJobOk key={job.id} job={job} contractors={contractorOpts} />
-                            ))
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </section>
-              ))}
-            </Panel>
-          ))}
+                            {jobs.length === 0 ? (
+                              <p className="text-[10px] text-muted-foreground">
+                                Sem Costura/Aviamento neste modo — só o corte, ou troque o modo da linha.
+                              </p>
+                            ) : tab === 'internal' ? (
+                              jobs.map((job) => (
+                                <InternalJobOk key={job.id} job={job} contractors={contractorOpts} />
+                              ))
+                            ) : (
+                              jobs.map((job) => (
+                                <ContractorJobOk key={job.id} job={job} contractors={contractorOpts} />
+                              ))
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                ))}
+              </Panel>
+            );
+          })}
         </div>
       )}
     </div>

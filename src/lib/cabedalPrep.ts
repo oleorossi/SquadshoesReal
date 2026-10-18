@@ -1,9 +1,9 @@
 /**
  * Motor de preparação de cabedal — cálculos puros (sem I/O).
  *
- * Meta: cabedal pronto de manhã no dia D (início da billing_week).
- * Dias de montagem = ceil(pares / assembly_capacity_per_day da ficha).
- * Antecedência = dias_montagem + 1 (ex.: 1200÷600 → 2+1=3; 1200÷400 → 3+1=4).
+ * Meta Ateliê (CANÔNICO): material pronto N dias antes do início da semana de
+ * faturamento (default 7 — fatura dia 14 → pronto dia 7). Compra/MRP usa essa
+ * data, não a OP. Dias de montagem (capacidade) continuam informativos na UI.
  */
 
 import { monthWeekToISODate } from '@/lib/billingWeek';
@@ -44,9 +44,12 @@ export function assemblyDaysNeeded(pairs: number, assemblyCapacityPerDay: number
   return Math.max(1, Math.ceil(qty / cap));
 }
 
+/** Default canônico: pronto 7 dias antes do início da semana de faturamento. */
+export const ATELIER_READY_BEFORE_BILLING_DAYS_DEFAULT = 7;
+
 /**
- * Dias de antecedência do cabedal em relação ao dia D de faturamento.
- * = dias de montagem + 1 (pronto de manhã no D).
+ * @deprecated Preferir `readyBeforeBillingDays` (fix 7). Mantido só para
+ * telas que ainda exibem a folga de montagem (capacidade da ficha).
  */
 export function cabedalLeadDaysBeforeBilling(
   pairs: number,
@@ -67,16 +70,28 @@ function addCalendarDays(isoDate: string, deltaDays: number): string {
   return `${yy}-${mm}-${dd}`;
 }
 
-/** Data em que o cabedal precisa estar pronto (manhã do dia D − lead). */
+/**
+ * Data em que o material do Ateliê precisa estar pronto.
+ * = início da billing_week − readyBeforeBillingDays (default 7).
+ */
 export function cabedalReadyDate(params: {
   billingWeek: string | null | undefined;
-  pairs: number;
-  assemblyCapacityPerDay: number;
+  /** @deprecated Ignorado — a meta não depende mais da capacidade de montagem. */
+  pairs?: number;
+  /** @deprecated Ignorado — use readyBeforeBillingDays. */
+  assemblyCapacityPerDay?: number;
+  readyBeforeBillingDays?: number;
 }): string | null {
   const dayD = billingWeekStartDate(params.billingWeek);
   if (!dayD) return null;
-  const lead = cabedalLeadDaysBeforeBilling(params.pairs, params.assemblyCapacityPerDay);
-  if (lead <= 0) return null;
+  const lead = Math.max(
+    0,
+    Math.round(
+      Number.isFinite(params.readyBeforeBillingDays as number)
+        ? Number(params.readyBeforeBillingDays)
+        : ATELIER_READY_BEFORE_BILLING_DAYS_DEFAULT,
+    ),
+  );
   return addCalendarDays(dayD, -lead);
 }
 

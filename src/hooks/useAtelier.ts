@@ -136,6 +136,16 @@ export function useAtelierSheetKitCandidates(
   });
 }
 
+export interface AtelierSentKitLine {
+  product_id?: string;
+  product_name?: string;
+  unit?: string | null;
+  component?: string | null;
+  quantity?: number;
+  required_qty?: number;
+  pending_qty?: number;
+}
+
 export interface AtelierLotJob {
   id: string;
   sector: AtelierSector;
@@ -148,6 +158,8 @@ export interface AtelierLotJob {
   atelier_service_number: string | null;
   target_end: string | null;
   execution_mode: AtelierExecutionMode | null;
+  /** Congelado no envio — qtds debitadas no corte para a OS. */
+  sent_kit_lines?: AtelierSentKitLine[] | null;
 }
 
 export interface AtelierLotRow {
@@ -210,6 +222,8 @@ export function useAtelierLots() {
 export interface AtelierSettings {
   costura_offset_days: number;
   aviamento_offset_days: number;
+  /** Dias de calendário antes do início da semana de faturamento (default 7). */
+  ready_before_billing_days: number;
   updated_at?: string | null;
 }
 
@@ -397,14 +411,24 @@ export function useMarkAtelierSent() {
         } as never,
       );
       if (error) throw error;
-      return data as { atelier_service_number?: string } | null;
+      return data as {
+        atelier_service_number?: string;
+        kit_lines?: AtelierSentKitLine[];
+      } | null;
     },
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      const lines = data?.kit_lines ?? [];
+      const kitSummary =
+        lines.length > 0
+          ? ` · ${lines
+              .map((l) => `${l.product_name ?? '?'} ${Number(l.quantity) || 0}${l.unit ? ` ${l.unit}` : ''}`)
+              .join(', ')}`
+          : '';
       toast.success(
         data?.atelier_service_number
-          ? `Enviado · ${data.atelier_service_number}`
-          : 'Marcado como enviado ao prestador',
+          ? `OS ${data.atelier_service_number}${kitSummary}`
+          : `Enviado ao prestador${kitSummary}`,
       );
     },
     onError: (e: Error) => toast.error(e.message || 'Falha ao marcar envio'),
@@ -522,7 +546,7 @@ export function useAtelierSettings() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('atelier_settings' as never)
-        .select('costura_offset_days, aviamento_offset_days, updated_at')
+        .select('costura_offset_days, aviamento_offset_days, ready_before_billing_days, updated_at')
         .eq('id', 1)
         .maybeSingle();
       if (error) throw error;
@@ -530,10 +554,17 @@ export function useAtelierSettings() {
         return {
           costura_offset_days: 5,
           aviamento_offset_days: 5,
+          ready_before_billing_days: 7,
           updated_at: null,
         } satisfies AtelierSettings;
       }
-      return data as unknown as AtelierSettings;
+      const row = data as unknown as Partial<AtelierSettings>;
+      return {
+        costura_offset_days: row.costura_offset_days ?? 5,
+        aviamento_offset_days: row.aviamento_offset_days ?? 5,
+        ready_before_billing_days: row.ready_before_billing_days ?? 7,
+        updated_at: row.updated_at ?? null,
+      } satisfies AtelierSettings;
     },
     staleTime: 30_000,
   });
@@ -545,12 +576,14 @@ export function useUpdateAtelierSettings() {
     mutationFn: async (input: {
       costuraOffsetDays?: number | null;
       aviamentoOffsetDays?: number | null;
+      readyBeforeBillingDays?: number | null;
     }) => {
       const { data, error } = await supabase.rpc(
         'atelier_update_settings' as never,
         {
           p_costura_offset_days: input.costuraOffsetDays ?? null,
           p_aviamento_offset_days: input.aviamentoOffsetDays ?? null,
+          p_ready_before_billing_days: input.readyBeforeBillingDays ?? null,
         } as never,
       );
       if (error) throw error;

@@ -132,8 +132,8 @@ export function AtelierReferencePanel({
         </h3>
         <p className="text-sm text-muted-foreground">
           Marque só as etapas que este modelo tem. Corte é sempre na fábrica. Costura e Aviamento
-          podem ser internos ou com prestador — a escolha fica no pedido e no relatório. O kit
-          lista os componentes reais da ficha (com quantidade no relatório).
+          podem ser internos ou com prestador — a escolha fica no pedido e no relatório. Em cada
+          setor, marque manualmente quais itens da ficha entram no kit (nada vem pré-marcado).
         </p>
       </header>
 
@@ -530,13 +530,13 @@ function SectorCard({
 
           <fieldset className="space-y-1.5">
             <legend className="text-xs font-medium text-foreground">
-              Componentes da ficha no kit do lote
+              Kit deste setor — escolha na ficha (nada pré-marcado)
             </legend>
             {candLoading ? (
               <p className="text-[11px] text-muted-foreground">Carregando materiais da ficha…</p>
             ) : candidates.length === 0 ? (
               <p className="text-[11px] text-muted-foreground">
-                Nenhum componente deste setor na ficha (BOM). Cadastre em Materiais & Consumo.
+                Nenhum item na ficha (BOM). Cadastre em Materiais & Consumo.
               </p>
             ) : (
               <ul className="max-h-40 space-y-1 overflow-y-auto">
@@ -570,7 +570,8 @@ function SectorCard({
               </ul>
             )}
             <p className="text-[11px] text-muted-foreground">
-              Marcados saem do estoque no corte do lote (quantidade no relatório). O resto vai na OP.
+              Só os marcados saem do estoque no corte do lote. O resto segue na OP. Meta de pronto =
+              semana de faturamento − 7 dias (compra usa essa data).
             </p>
           </fieldset>
         </div>
