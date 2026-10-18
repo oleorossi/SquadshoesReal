@@ -35,7 +35,6 @@ import {
 import { OrderStatusStepper } from '@/components/ui/order-status-stepper';
 import { useQuery } from '@tanstack/react-query';
 import { fetchClientPriceList, type PriceLookup } from '@/lib/mobile/clientContext';
-import { fetchClientCreditExposure } from '@/lib/clientCreditExposure';
 import { supabase } from '@/integrations/supabase/client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -1033,16 +1032,6 @@ export default function SaleOrderFormPanel({
     },
   });
 
-  const { data: creditExposure } = useQuery({
-    queryKey: ['client_credit_exposure', selectedClientId],
-    enabled: !!(selectedClientId && selectedClient?.credit_limit && selectedClient.credit_limit > 0),
-    // Filtrava por `accounts_receivable.client_id`, que é NULO em 70 dos 72
-    // títulos — a exposição vinha sempre R$ 0,00 e o aviso de limite nunca
-    // acendia. Ver clientCreditExposure (o vínculo real é via sale_order_id).
-    queryFn: () => fetchClientCreditExposure(selectedClientId),
-    staleTime: 30_000,
-  });
-
   const { data: allVariantsByRef = new Map() } = useAllActiveReferenceMaterialVariants();
 
   // IDs das fichas/referências presentes no PV.
@@ -1860,21 +1849,6 @@ export default function SaleOrderFormPanel({
                     value={selectedClientId}
                     onSelect={onClientSelect}
                   />
-                  {selectedClient?.credit_limit && selectedClient.credit_limit > 0 && creditExposure !== undefined && (
-                    <div className={`mt-1.5 flex items-center gap-1.5 text-xs rounded px-2 py-1 ${
-                      creditExposure >= selectedClient.credit_limit
-                        ? 'bg-destructive/10 text-destructive'
-                        : creditExposure >= selectedClient.credit_limit * 0.8
-                          ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
-                          : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                    }`}>
-                      <AlertTriangle className="h-3 w-3 shrink-0" />
-                      <span>
-                        Crédito: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(creditExposure)} em aberto
-                        {' '}/ limite {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedClient.credit_limit)}
-                      </span>
-                    </div>
-                  )}
                   {commercialDefaults?.block_new_orders && (
                     <div className="mt-1.5 flex items-center gap-1.5 text-xs rounded px-2 py-1 bg-destructive/10 text-destructive">
                       <AlertTriangle className="h-3 w-3 shrink-0" />

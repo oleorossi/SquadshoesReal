@@ -5,7 +5,6 @@ import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as 
 // `newISO` é date-only: `new Date(iso)` parseia UTC e o toast confirmava o dia
 // ANTERIOR ao que era gravado em `delivery_deadline`.
 import { formatDateBR } from '@/lib/dateOnly';
-import { fetchClientCreditExposure } from '@/lib/clientCreditExposure';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -463,11 +462,7 @@ export function buildMoveSeedPayload(args: Parameters<typeof buildCopySeedPayloa
 
 interface SubmitOptions {
   skipMinBillingCheck?: boolean;
-  skipCreditCheck?: boolean;
 }
-
-const formatCurrency = (value: number) =>
-  value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 /**
  * Payload de update = exatamente os itens do editor (com referência).
@@ -1065,14 +1060,6 @@ export default function SaleOrderForm() {
   const [minBillingDialogOpen, setMinBillingDialogOpen] = useState(false);
   const [minBillingSuggestion, setMinBillingSuggestion] = useState<MinBillingResult | null>(null);
   const [computingMinBilling, setComputingMinBilling] = useState(false);
-  const [creditLimitConfirm, setCreditLimitConfirm] = useState<null | {
-    clientName: string;
-    exposure: number;
-    orderTotal: number;
-    projected: number;
-    limit: number;
-    submitOptions: SubmitOptions;
-  }>(null);
   // Estado (c) das travas de venda: a checagem NÃO rodou (banco fora, rede caída,
   // RPC com erro). Não é "checou e passou" nem "checou e reprovou" — e até
   // 2026-08-05 se comportava como o primeiro: o erro ia pro console (ou era
@@ -1081,6 +1068,7 @@ export default function SaleOrderForm() {
   // Fail-closed cego também não serve (venda é o fluxo que paga a empresa), então
   // o meio-termo é este: a UI DIZ o que não conseguiu verificar e o usuário
   // confirma explicitamente. `resume` é o ponto exato onde o fluxo continua.
+  // (Limite de crédito saiu deste fluxo — decisão do dono: setor não usado.)
   const [unverifiedConfirm, setUnverifiedConfirm] = useState<null | {
     what: string;
     consequence: string;
@@ -2006,59 +1994,6 @@ export default function SaleOrderForm() {
     // contornáveis. Se qualquer leitura falhar, nenhum writer é chamado.
     if (!await validateAuthoritativeSources(productionItems)) return;
 
-    // 0) Em pedidos NOVOS com cliente cadastrado, valida limite de crédito.
-    //    Permite seguir mediante confirmação, mas avisa explicitamente.
-    if (!isEdit && selectedClientId && !opts.skipCreditCheck) {
-      try {
-        const { data: client, error: clientErr } = await supabase
-          .from('clients')
-          .select('credit_limit, name')
-          .eq('id', selectedClientId)
-          .maybeSingle() as any;
-        // O destructure ignorava `error`: consulta falhada devolve data=null, o
-        // limite virava 0 e a trava concluía "cliente sem limite cadastrado" —
-        // falha (c) DISFARÇADA de (a), sem nem passar pelo catch abaixo.
-        if (clientErr) throw clientErr;
-        const limit = Number(client?.credit_limit || 0);
-        if (limit > 0) {
-          // Filtrava por `accounts_receivable.client_id`, NULO em 70 dos 72
-          // títulos: a exposição dava sempre 0 e a trava nunca disparava.
-          // Ver clientCreditExposure — o vínculo real é via sale_order_id.
-          const exposure = await fetchClientCreditExposure(selectedClientId);
-          const orderTotal = validItems.reduce(
-            (s, i) => s + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0),
-            0,
-          );
-          const projected = exposure + orderTotal;
-          if (projected > limit) {
-            setCreditLimitConfirm({
-              clientName: client.name || f.client_name || 'Cliente',
-              exposure,
-              orderTotal,
-              projected,
-              limit,
-              submitOptions: opts,
-            });
-            return;
-          }
-        }
-      } catch (err: any) {
-        // (c) não deu pra checar. Antes seguia direto pro save — cliente estourado
-        // passava batido sempre que a consulta falhasse.
-        console.warn('[handleSubmit] credit limit check falhou:', err);
-        setUnverifiedConfirm({
-          what: 'o limite de crédito deste cliente',
-          consequence: 'O pedido pode ultrapassar o limite em aberto sem ninguém ser avisado.',
-          detail: err?.message,
-          resume: () => {
-            const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-            void handleSubmit(fakeEvent, { ...opts, skipCreditCheck: true });
-          },
-        });
-        return;
-      }
-    }
-
     // 1) Sugere a semana mínima de faturamento antes dos checks de estoque.
     //    Se a data estiver vazia OU for anterior ao mínimo calculado, abre o diálogo.
     //    opts.skipMinBillingCheck=true vem de handleMinBillingConfirm/handleMinBillingManual
@@ -2726,59 +2661,9 @@ export default function SaleOrderForm() {
         userPickedDateISO={form.delivery_deadline || null}
       />
 
-      <AlertDialog
-        open={creditLimitConfirm !== null}
-        onOpenChange={(open) => { if (!open) setCreditLimitConfirm(null); }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Limite de crédito ultrapassado
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>O novo pedido de <strong className="text-foreground">{creditLimitConfirm?.clientName}</strong> elevará a exposição acima do limite cadastrado.</p>
-                <dl className="space-y-1.5 rounded-md border border-border/60 bg-muted/30 p-3 text-sm tabular-nums">
-                  {([
-                    ['Em aberto', creditLimitConfirm?.exposure],
-                    ['Este PV', creditLimitConfirm?.orderTotal],
-                    ['Total projetado', creditLimitConfirm?.projected],
-                    ['Limite de crédito', creditLimitConfirm?.limit],
-                  ] as const).map(([label, value]) => (
-                    <div key={label} className="grid grid-cols-[1fr_auto] items-center gap-4">
-                      <dt>{label}</dt>
-                      <dd className="font-mono font-semibold text-foreground">{formatCurrency(value || 0)}</dd>
-                    </div>
-                  ))}
-                </dl>
-                <p>Confirme somente se a venda acima do limite já foi autorizada.</p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Revisar pedido</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                const pending = creditLimitConfirm;
-                setCreditLimitConfirm(null);
-                if (!pending) return;
-                setTimeout(() => {
-                  const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-                  void handleSubmit(fakeEvent, { ...pending.submitOptions, skipCreditCheck: true });
-                }, 0);
-              }}
-            >
-              Prosseguir mesmo assim
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Estado (c) das travas: a checagem não rodou. Nem salva calado (o que
           fazia até 2026-08-05) nem bloqueia sozinho — diz o que ficou sem
-          verificar e exige confirmação explícita, no mesmo desenho do diálogo de
-          limite de crédito acima. */}
+          verificar e exige confirmação explícita (estoque/capacidade). */}
       <AlertDialog
         open={unverifiedConfirm !== null}
         onOpenChange={(open) => { if (!open) setUnverifiedConfirm(null); }}

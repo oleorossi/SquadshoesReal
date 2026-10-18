@@ -50,7 +50,6 @@ vi.mock('@/hooks/useEconomicGroup360', () => ({ useClientCommercialDefaults: () 
 vi.mock('@/hooks/useReferenceMaterialVariants', () => ({
   useAllActiveReferenceMaterialVariants: () => ({ data: new Map() }),
 }));
-vi.mock('@/lib/clientCreditExposure', () => ({ fetchClientCreditExposure: vi.fn().mockResolvedValue(null) }));
 vi.mock('@/lib/mobile/clientContext', () => ({ fetchClientPriceList: vi.fn().mockResolvedValue(null) }));
 vi.mock('@/integrations/supabase/client', () => {
   const thenable = { data: [], error: null };
