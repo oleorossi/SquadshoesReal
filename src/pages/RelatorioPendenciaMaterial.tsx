@@ -5,7 +5,6 @@ import {
   Warning as AlertTriangle,
   CaretDown as ChevronDown,
   CaretRight as ChevronRight,
-  MagnifyingGlass as Search,
   Package,
   ShoppingCart,
   ArrowSquareOut as ExternalLink,
@@ -16,8 +15,8 @@ import { Panel } from '@/components/ui/panel';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
+import { SearchInput } from '@/components/ui/search-input';
 import {
   Select,
   SelectContent,
@@ -119,15 +118,14 @@ export default function RelatorioPendenciaMaterial() {
 
       <Panel className="p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar material, cor, PV ou cliente…"
-              className="pl-9"
-            />
-          </div>
+          <SearchInput
+            className="w-full sm:flex-1"
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar material, cor, PV ou cliente…"
+            resultCount={rows.length}
+            totalCount={allRows.length}
+          />
           <Select value={coverage} onValueChange={(v) => setCoverage(v as OcCoverageFilter)}>
             <SelectTrigger className="w-full sm:w-[200px]" aria-label="Filtro de cobertura OC">
               <SelectValue />
