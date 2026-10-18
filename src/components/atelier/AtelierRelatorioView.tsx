@@ -16,6 +16,7 @@ import {
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -459,21 +460,17 @@ function FilterBar({
         </div>
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <label className="space-y-1 text-xs">
+        <div className="space-y-1 text-xs">
           <span className="text-muted-foreground">Cliente</span>
-          <Input
-            list="atelie-report-clients"
-            className="h-9"
+          <SearchInput
             value={filters.client}
-            onChange={(e) => set('client', e.target.value)}
-            placeholder="Buscar cliente"
+            onChange={(v) => set('client', v)}
+            placeholder="Cliente…"
+            disableSlashFocus
+            hideHint
+            inputClassName="h-9"
           />
-          <datalist id="atelie-report-clients">
-            {options.clients.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
-        </label>
+        </div>
         <label className="space-y-1 text-xs">
           <span className="text-muted-foreground">Entrega de</span>
           <Input

@@ -39,6 +39,8 @@ interface MaterialDraft {
   upper_material?: string | null;
   upper_material_group_id?: string | null;
   upper_consumption?: number | string | null;
+  /** Presente pra o guard noScalarOnlyConsumption — o bloco edita o escalar do cadastro. */
+  upper_consumption_per_size?: unknown;
   upper_corte_a_fio?: boolean | null;
   has_straps?: boolean | null;
 }

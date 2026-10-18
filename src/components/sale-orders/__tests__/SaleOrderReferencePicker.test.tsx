@@ -37,8 +37,8 @@ describe('ReferenceSearch', () => {
 
   it('oculta fichas aposentadas de novas escolhas e mantém a atualmente selecionada', () => {
     const references = [
-      { id: 'active', code: 'ATIVA', name: 'Ficha ativa', retired_at: null },
-      { id: 'retired', code: 'ANTIGA', name: 'Ficha aposentada', retired_at: '2026-08-30T12:00:00Z' },
+      { id: 'active', code: 'ATIVA', name: 'Ficha ativa', retired_at: null, status_ficha: 'publicada' },
+      { id: 'retired', code: 'ANTIGA', name: 'Ficha aposentada', retired_at: '2026-08-30T12:00:00Z', status_ficha: 'publicada' },
     ];
 
     const { rerender } = render(
