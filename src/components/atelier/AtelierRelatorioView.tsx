@@ -94,17 +94,17 @@ function jobMatchesTab(job: AtelierLotJob, tab: ReportTab): boolean {
 function KitQtyList({ lot }: { lot: AtelierLotRow }) {
   if (!lot.debits.length) {
     return (
-      <p className="text-[11px] text-muted-foreground">
-        Kit ainda sem débito — aparece após o corte (com quantidades).
+      <p className="text-[10px] text-muted-foreground">
+        Kit sem débito ainda — quantidades aparecem após o corte.
       </p>
     );
   }
   return (
-    <ul className="flex flex-wrap gap-1.5">
+    <ul className="flex flex-wrap gap-1">
       {lot.debits.map((d) => (
         <li
           key={d.product_id}
-          className="rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 text-[10px] text-foreground"
+          className="rounded border border-border/50 bg-muted/25 px-1 py-px text-[10px] leading-tight text-foreground"
         >
           <span className="font-medium">{d.product_name}</span>
           <span className="ml-1 font-mono tabular-nums text-muted-foreground">
@@ -252,24 +252,27 @@ function ContractorJobOk({
   const busy = sendMut.isPending || realizedMut.isPending || receiveMut.isPending;
 
   return (
-    <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2.5">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xs font-semibold text-foreground">
+    <div className="space-y-1.5 rounded-md border border-border/50 bg-muted/15 p-2">
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-muted text-[9px] font-bold text-muted-foreground">
+            2
+          </span>
           {ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector}
-          <span className="ml-1.5 font-normal text-muted-foreground">{job.order_number}</span>
+          <span className="font-normal text-muted-foreground">{job.order_number}</span>
         </p>
-        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-          {formatQty(Number(job.pairs))} pares
+        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+          {formatQty(Number(job.pairs))}p
         </span>
       </div>
       <ModeSelector job={job} contractors={contractors} />
       <StreetOkRail status={job.pipeline_status} />
 
       {next === 'sent_to_contractor' && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1">
           <Select value={contractorId || undefined} onValueChange={setContractorId}>
-            <SelectTrigger className="h-8 min-w-[160px] flex-1 text-xs" aria-label="Prestador">
-              <SelectValue placeholder="Escolher prestador" />
+            <SelectTrigger className="h-7 min-w-[140px] flex-1 text-[11px]" aria-label="Prestador">
+              <SelectValue placeholder="Prestador" />
             </SelectTrigger>
             <SelectContent>
               {contractors.map((c) => (
@@ -281,30 +284,30 @@ function ContractorJobOk({
           </Select>
           <Button
             size="sm"
-            className="h-8"
+            className="h-7 px-2 text-[11px]"
             disabled={busy || !contractorId}
             onClick={() => sendMut.mutate({ jobId: job.id, contractorId })}
           >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
-            OK · Enviado ao prestador
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Truck className="h-3 w-3" />}
+            OK · Enviado
           </Button>
         </div>
       )}
 
       {next === 'realized' && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-1.5">
+          <span className="truncate text-[10px] text-muted-foreground">
             {job.contractor_name ?? 'Prestador'}
             {job.atelier_service_number ? ` · ${job.atelier_service_number}` : ''}
           </span>
           <Button
             size="sm"
             variant="outline"
-            className="h-8"
+            className="h-7 px-2 text-[11px]"
             disabled={busy}
             onClick={() => realizedMut.mutate(job.id)}
           >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
             OK · Realizado
           </Button>
         </div>
@@ -314,18 +317,18 @@ function ContractorJobOk({
         <div className="flex justify-end">
           <Button
             size="sm"
-            className="h-8"
+            className="h-7 px-2 text-[11px]"
             disabled={busy}
             onClick={() => receiveMut.mutate(job.id)}
           >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Warehouse className="h-3.5 w-3.5" />}
-            OK · Recebido e conferido
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Warehouse className="h-3 w-3" />}
+            OK · Conferido
           </Button>
         </div>
       )}
 
       {job.pipeline_status === 'received_at_factory' && (
-        <p className="text-[11px] font-medium text-foreground">Conferido — libera a OP deste setor.</p>
+        <p className="text-[10px] font-medium text-foreground">Conferido — libera a OP deste setor.</p>
       )}
     </div>
   );
@@ -344,14 +347,17 @@ function InternalJobOk({
   const busy = startMut.isPending || doneMut.isPending;
 
   return (
-    <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2.5">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xs font-semibold text-foreground">
+    <div className="space-y-1.5 rounded-md border border-border/50 bg-muted/15 p-2">
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-muted text-[9px] font-bold text-muted-foreground">
+            2
+          </span>
           {ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector}
-          <span className="ml-1.5 font-normal text-muted-foreground">{job.order_number}</span>
+          <span className="font-normal text-muted-foreground">{job.order_number}</span>
         </p>
-        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-          {formatQty(Number(job.pairs))} pares
+        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+          {formatQty(Number(job.pairs))}p
         </span>
       </div>
       <ModeSelector job={job} contractors={contractors} />
@@ -361,11 +367,11 @@ function InternalJobOk({
         <div className="flex justify-end">
           <Button
             size="sm"
-            className="h-8"
+            className="h-7 px-2 text-[11px]"
             disabled={busy}
             onClick={() => startMut.mutate(job.id)}
           >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Factory className="h-3.5 w-3.5" />}
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Factory className="h-3 w-3" />}
             OK · Em realização
           </Button>
         </div>
@@ -375,18 +381,18 @@ function InternalJobOk({
         <div className="flex justify-end">
           <Button
             size="sm"
-            className="h-8"
+            className="h-7 px-2 text-[11px]"
             disabled={busy}
             onClick={() => doneMut.mutate(job.id)}
           >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
             OK · Concluído
           </Button>
         </div>
       )}
 
       {job.pipeline_status === 'done' && (
-        <p className="text-[11px] font-medium text-foreground">Concluído — libera a OP deste setor.</p>
+        <p className="text-[10px] font-medium text-foreground">Concluído — libera a OP deste setor.</p>
       )}
     </div>
   );
@@ -396,30 +402,59 @@ function CutOk({ lot }: { lot: AtelierLotRow }) {
   const cutMut = useConfirmAtelierLotCut();
   if (lot.status === 'cut' || lot.status === 'cancelled') {
     return (
-      <p className="rounded-md border border-border/60 bg-muted/30 px-2.5 py-2 text-xs text-foreground">
-        <Scissors className="mr-1 inline h-3.5 w-3.5" />
-        Corte na fábrica · {lot.status === 'cut' ? 'feito' : 'cancelado'}
-        {lot.cut_at ? ` em ${formatDay(lot.cut_at)}` : ''}
-      </p>
+      <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-foreground text-[10px] font-bold text-background">
+          1
+        </span>
+        <p className="min-w-0 flex-1 text-[11px] text-foreground">
+          <Scissors className="mr-1 inline h-3 w-3" />
+          Corte na fábrica · {lot.status === 'cut' ? 'feito' : 'cancelado'}
+          {lot.cut_at ? ` · ${formatDay(lot.cut_at)}` : ''}
+        </p>
+        <CheckCircle className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden />
+      </div>
     );
   }
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-border px-2.5 py-2">
-      <p className="text-xs text-muted-foreground">Corte na fábrica (sem envio ao prestador)</p>
-      <Button
-        size="sm"
-        className="h-8"
-        disabled={cutMut.isPending}
-        onClick={() => {
-          if (!window.confirm(`Confirmar o corte do ${lot.lot_number}? O material do kit sai do estoque agora.`)) {
-            return;
-          }
-          cutMut.mutate(lot.id);
-        }}
-      >
-        {cutMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scissors className="h-3.5 w-3.5" />}
-        OK · Cortar
-      </Button>
+    <div className="space-y-1.5 rounded-md border border-foreground/25 bg-card px-2 py-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-foreground text-[10px] font-bold text-background">
+            1
+          </span>
+          <p className="text-[11px] font-medium text-foreground">
+            Corte na fábrica
+            <span className="ml-1 font-normal text-muted-foreground">— kit sai do estoque</span>
+          </p>
+        </div>
+        <Button
+          size="sm"
+          className="h-7 shrink-0 px-3 text-[11px]"
+          disabled={cutMut.isPending}
+          onClick={() => {
+            if (
+              !window.confirm(
+                `Confirmar o corte do ${lot.lot_number}? O material do kit sai do estoque agora.`,
+              )
+            ) {
+              return;
+            }
+            cutMut.mutate(lot.id);
+          }}
+        >
+          {cutMut.isPending ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Scissors className="h-3 w-3" />
+          )}
+          OK · Cortar
+        </Button>
+      </div>
+      {cutMut.isError && (
+        <p role="alert" className="text-[11px] text-destructive">
+          {(cutMut.error as Error)?.message || 'Falha ao confirmar o corte. Tente de novo.'}
+        </p>
+      )}
     </div>
   );
 }
@@ -439,61 +474,55 @@ function FilterBar({
     onChange({ ...filters, [key]: value });
 
   return (
-    <Panel className="space-y-3 p-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold text-foreground">Filtrar pedidos</p>
-          <p className="text-xs text-muted-foreground">
-            Cliente, entrega, semana, cor e tipo de material do kit.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] text-muted-foreground">{resultCount} na lista</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8"
-            onClick={() => onChange({ ...EMPTY_ATELIER_REPORT_FILTERS })}
-          >
-            Limpar
-          </Button>
-        </div>
+    <Panel className="space-y-2 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Filtrar · <span className="font-mono font-normal normal-case">{resultCount} na lista</span>
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-[11px]"
+          onClick={() => onChange({ ...EMPTY_ATELIER_REPORT_FILTERS })}
+        >
+          Limpar
+        </Button>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <div className="space-y-1 text-xs">
-          <span className="text-muted-foreground">Cliente</span>
+      <div className="grid gap-1.5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        <div className="space-y-0.5 text-[10px]">
+          <span className="font-medium uppercase tracking-wide text-muted-foreground">Cliente</span>
           <SearchInput
             value={filters.client}
             onChange={(v) => set('client', v)}
             placeholder="Cliente…"
             disableSlashFocus
             hideHint
-            inputClassName="h-9"
+            inputClassName="h-8 text-xs"
           />
         </div>
-        <label className="space-y-1 text-xs">
-          <span className="text-muted-foreground">Entrega de</span>
+        <label className="space-y-0.5 text-[10px]">
+          <span className="font-medium uppercase tracking-wide text-muted-foreground">Entrega de</span>
           <Input
             type="date"
-            className="h-9"
+            className="h-8 text-xs"
             value={filters.dateFrom}
             onChange={(e) => set('dateFrom', e.target.value)}
           />
         </label>
-        <label className="space-y-1 text-xs">
-          <span className="text-muted-foreground">Entrega até</span>
+        <label className="space-y-0.5 text-[10px]">
+          <span className="font-medium uppercase tracking-wide text-muted-foreground">Entrega até</span>
           <Input
             type="date"
-            className="h-9"
+            className="h-8 text-xs"
             value={filters.dateTo}
             onChange={(e) => set('dateTo', e.target.value)}
           />
         </label>
-        <label className="space-y-1 text-xs">
-          <span className="text-muted-foreground">Semana</span>
+        <label className="space-y-0.5 text-[10px]">
+          <span className="font-medium uppercase tracking-wide text-muted-foreground">Semana</span>
           <Input
             list="atelie-report-weeks"
-            className="h-9 font-mono"
+            className="h-8 font-mono text-xs"
             value={filters.week}
             onChange={(e) => set('week', e.target.value)}
             placeholder="2026-W42"
@@ -504,11 +533,11 @@ function FilterBar({
             ))}
           </datalist>
         </label>
-        <label className="space-y-1 text-xs">
-          <span className="text-muted-foreground">Cor</span>
+        <label className="space-y-0.5 text-[10px]">
+          <span className="font-medium uppercase tracking-wide text-muted-foreground">Cor</span>
           <Input
             list="atelie-report-colors"
-            className="h-9"
+            className="h-8 text-xs"
             value={filters.color}
             onChange={(e) => set('color', e.target.value)}
             placeholder="Cor do lote"
@@ -519,11 +548,11 @@ function FilterBar({
             ))}
           </datalist>
         </label>
-        <label className="space-y-1 text-xs">
-          <span className="text-muted-foreground">Tipo de material</span>
+        <label className="space-y-0.5 text-[10px]">
+          <span className="font-medium uppercase tracking-wide text-muted-foreground">Material</span>
           <Input
             list="atelie-report-materials"
-            className="h-9"
+            className="h-8 text-xs"
             value={filters.material}
             onChange={(e) => set('material', e.target.value)}
             placeholder="Cabedal, napa…"
@@ -599,49 +628,50 @@ export function AtelierRelatorioView() {
   const hasAny = lots.length > 0;
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Pedidos do Ateliê pela entrega. Corte na fábrica; Costura/Aviamento em{' '}
-          <span className="font-medium text-foreground">interno</span> (em realização → concluído) ou{' '}
-          <span className="font-medium text-foreground">prestador</span> (enviado → realizado → conferido).
+        <p className="min-w-0 flex-1 text-[12px] leading-snug text-muted-foreground">
+          Fluxo: <span className="font-medium text-foreground">1. Corte</span> na fábrica →{' '}
+          <span className="font-medium text-foreground">2. Costura/Aviamento</span>{' '}
+          {tab === 'internal' ? 'interno (em realização → concluído)' : 'prestador (enviado → realizado → conferido)'}.
           {hasAny && (
             <>
               {' '}
               <span className="font-medium text-foreground">
                 {filteredLotsByOrder.length}{' '}
-                {filteredLotsByOrder.length === 1 ? 'pedido' : 'pedidos'} · {formatQty(totalPairs)} pares
+                {filteredLotsByOrder.length === 1 ? 'pedido' : 'pedidos'} · {formatQty(totalPairs)}p
               </span>
             </>
           )}
         </p>
-        <Button variant="outline" size="sm" className="h-8" onClick={() => void refetch()}>
-          Atualizar
-        </Button>
-      </div>
-
-      <div className="inline-flex rounded-lg border border-border bg-card p-1" role="tablist">
-        {([
-          { id: 'contractor' as const, label: 'Prestador', icon: Truck },
-          { id: 'internal' as const, label: 'Interno', icon: Factory },
-        ]).map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              tab === id
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:bg-muted/50',
-            )}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="inline-flex rounded-md border border-border bg-card p-0.5" role="tablist">
+            {([
+              { id: 'contractor' as const, label: 'Prestador', icon: Truck },
+              { id: 'internal' as const, label: 'Interno', icon: Factory },
+            ]).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors',
+                  tab === id
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:bg-muted/50',
+                )}
+              >
+                <Icon className="h-3 w-3" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => void refetch()}>
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {hasAny && (
@@ -670,15 +700,15 @@ export function AtelierRelatorioView() {
           }
         />
       ) : (
-        <div className="space-y-3">
+        <div className="w-full space-y-2">
           {filteredLotsByOrder.map((group) => (
-            <Panel key={group.saleOrderId} className="space-y-3 p-4">
-              <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-border/60 pb-2">
-                <h2 className="font-display text-lg leading-none text-foreground">
+            <Panel key={group.saleOrderId} className="w-full space-y-2 p-3">
+              <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border/50 pb-1.5">
+                <h2 className="font-display text-base leading-none text-foreground">
                   {group.orderNumber || '—'}
                 </h2>
-                <span className="text-sm text-muted-foreground">{group.clientName || '—'}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-[12px] text-muted-foreground">{group.clientName || '—'}</span>
+                <span className="text-[11px] text-muted-foreground">
                   Entrega{' '}
                   <span className="font-medium text-foreground">
                     {group.deliveryDeadline ? formatDay(group.deliveryDeadline) : '—'}
@@ -686,27 +716,27 @@ export function AtelierRelatorioView() {
                 </span>
                 <span
                   className={cn(
-                    'rounded border px-1.5 py-0.5 text-[11px] font-medium',
+                    'rounded border px-1 py-px text-[10px] font-medium',
                     deadlineChipClass(group.deliveryDeadline),
                   )}
                 >
                   {deadlineChipLabel(group.daysUntilDeadline)}
                 </span>
-                <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-                  {formatQty(group.pairs)} pares
+                <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                  {formatQty(group.pairs)}p
                 </span>
               </header>
 
               {group.references.map((ref) => (
-                <section key={ref.key} className="space-y-2">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <h3 className="font-display text-sm leading-none text-foreground">{ref.label}</h3>
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {formatQty(ref.pairs)} pares · {ref.rows.length}{' '}
+                <section key={ref.key} className="space-y-1.5">
+                  <div className="flex flex-wrap items-baseline gap-x-1.5">
+                    <h3 className="font-display text-xs leading-none text-foreground">{ref.label}</h3>
+                    <span className="font-mono text-[9px] text-muted-foreground">
+                      {formatQty(ref.pairs)}p · {ref.rows.length}{' '}
                       {ref.rows.length === 1 ? 'cor' : 'cores'}
                     </span>
                   </div>
-                  <ul className="space-y-2">
+                  <ul className="grid gap-2 xl:grid-cols-2">
                     {ref.rows.map(({ lot, order }) => {
                       const col = atelierLotColumn(
                         lot.status,
@@ -716,21 +746,21 @@ export function AtelierRelatorioView() {
                       return (
                         <li
                           key={`${lot.id}-${order.sale_order_id}`}
-                          className="space-y-2 rounded-lg border border-border/70 bg-card p-3"
+                          className="space-y-1.5 rounded-md border border-border/70 bg-card p-2"
                         >
-                          <div className="flex flex-wrap items-baseline justify-between gap-2">
-                            <div>
-                              <span className="text-sm font-semibold text-foreground">
+                          <div className="flex flex-wrap items-baseline justify-between gap-1.5">
+                            <div className="min-w-0">
+                              <span className="text-[12px] font-semibold text-foreground">
                                 {lot.color ?? 'Sem cor'}
                               </span>
-                              <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+                              <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
                                 {lot.lot_number}
                               </span>
                             </div>
-                            <span className="text-[11px] text-muted-foreground">
+                            <span className="text-[10px] text-muted-foreground">
                               {ATELIER_PIPELINE_LABEL[col] ?? col} ·{' '}
                               <span className="font-mono font-semibold text-foreground">
-                                {formatQty(Number(order.pairs) || 0)} pares
+                                {formatQty(Number(order.pairs) || 0)}p
                               </span>
                             </span>
                           </div>
@@ -739,8 +769,8 @@ export function AtelierRelatorioView() {
                           <CutOk lot={lot} />
 
                           {jobs.length === 0 ? (
-                            <p className="text-[11px] text-muted-foreground">
-                              Sem Costura/Aviamento neste modo — só o corte na fábrica, ou troque o modo da linha.
+                            <p className="text-[10px] text-muted-foreground">
+                              Sem Costura/Aviamento neste modo — só o corte, ou troque o modo da linha.
                             </p>
                           ) : tab === 'internal' ? (
                             jobs.map((job) => (
