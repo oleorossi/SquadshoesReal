@@ -27,7 +27,6 @@ import {
 import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
 import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
 import {
-  calculateBomForOrders,
   calculateSoleBreakdownByGrade,
   calculateArtisanalStrapRollCut,
   type ConsumptionRow,
@@ -35,6 +34,7 @@ import {
   COMPONENT_ORDER,
   formatUnit,
 } from '@/lib/bomConsumption';
+import { calculatePickingListFromCanonical } from '@/lib/pickingListCanonical';
 import type { ArtisanalStrapCutRow } from '@/lib/strapRollCut';
 import {
   fetchStrapPickingLines,
@@ -320,7 +320,8 @@ export default function PickingListPage() {
     setIsCalculating(true);
     try {
       const [bomResult, soleResult, strapCutResult, strapNapaResult] = await Promise.all([
-        calculateBomForOrders(orderIds),
+        // Quantidades = motor SQL canônico (mesmo do Consumo do PV).
+        calculatePickingListFromCanonical(orderIds),
         calculateSoleBreakdownByGrade(orderIds),
         calculateArtisanalStrapRollCut(orderIds),
         // Falha aqui não pode derrubar a separação inteira: é enriquecimento.

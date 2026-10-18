@@ -42,6 +42,7 @@ import React from 'react';
 import { SoleSizeConjugationsEditor } from './SoleSizeConjugationsEditor';
 import { useSoleConjugations } from '@/hooks/useSoleConjugations';
 import { configureProductGrades } from '@/lib/stockCommand';
+import { assertAreaGeometry, isAreaStockUnit } from '@/lib/areaGeometry';
 
 // Constantes vazias estáveis pra evitar loop de re-render quando hooks
 // retornam data=undefined (loading) e o default `?? []` cria array novo.
@@ -732,6 +733,16 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     if (purchaseUnit !== stockUnit && (!Number.isFinite(conversionRate) || conversionRate <= 0)) {
       errs.conversion_rate = true;
     }
+    // Unidade de área: geometria L×A mora no grupo (porta única).
+    if (isAreaStockUnit(form.unit)) {
+      const g = groups.find((x) => x.id === form.group_id) as any;
+      const geom = assertAreaGeometry({
+        width: g?.dimensions_width ?? dimensoesDoGrupo?.width,
+        length: g?.dimensions_length ?? dimensoesDoGrupo?.length,
+        dimensionsUnit: g?.dimensions_unit ?? dimensoesDoGrupo?.unit,
+      });
+      if (!geom.ok) errs.area_geometry = true;
+    }
     return errs;
   };
 
@@ -758,6 +769,12 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     if (Object.keys(errs).length > 0) {
       if (errs.conversion_rate) {
         toast.error('A taxa de conversão deve ser maior que zero quando a unidade de compra for diferente da unidade de estoque.');
+        return;
+      }
+      if (errs.area_geometry) {
+        toast.error(
+          'Unidade de área exige largura × comprimento no grupo de estoque. Edite as dimensões do grupo antes de salvar.',
+        );
         return;
       }
       const fieldNames: Record<string, string> = {
@@ -1590,15 +1607,27 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
                 <div className="min-w-0">
                   <Label className="text-sm font-semibold">Dimensões do Material</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Vêm do grupo de estoque. A largura é o que converte dm² em metro.
+                    Vêm do grupo de estoque (porta única). Em bobina a largura converte dm²→metro;
+                    em unidade de área (dm²/m²/cm²/placa) é obrigatório largura × comprimento.
                   </p>
                 </div>
                 {dimensoesDoGrupo && (
                   <span className="text-xs text-muted-foreground shrink-0">
                     grupo <span className="font-medium text-foreground">{dimensoesDoGrupo.nome}</span>
+                    {' · '}
+                    <span className="text-foreground">Editar no grupo</span>
                   </span>
                 )}
               </div>
+              {isAreaStockUnit(form.unit) && !assertAreaGeometry({
+                width: dimensoesDoGrupo?.width,
+                length: dimensoesDoGrupo?.length,
+                dimensionsUnit: dimensoesDoGrupo?.unit,
+              }).ok && (
+                <p className="mt-2 text-xs text-destructive">
+                  Unidade {form.unit} exige L×A no grupo. Abra o grupo de estoque e preencha Dimensões.
+                </p>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
                 {([
                   ['Altura', dimensoesDoGrupo?.length, plateLength],

@@ -494,6 +494,26 @@ export const convertDm2ToPlates = (totalDm2: number, componentSheet: ComponentSh
 };
 
 /**
+ * Converte dm² → unidade de estoque espelhando `get_material_conversion_info`:
+ *   placa → ÷ área W×L; m² → ÷100; cm² → ÷0.01; dm² → identidade.
+ * Não usar convertDm2ToPlates para dm²/m² — isso inventava "placas" com rótulo de área.
+ */
+export function convertDm2ToStockUnit(
+  totalDm2: number,
+  stockUnit: string | null | undefined,
+  componentSheet: ComponentSheetCandidate | null,
+): number {
+  const unit = normalizeText(stockUnit);
+  if (unit === 'placa' || unit === 'placas') {
+    return convertDm2ToPlates(totalDm2, componentSheet);
+  }
+  if (unit === 'm²' || unit === 'm2') return totalDm2 / 100;
+  if (unit === 'cm²' || unit === 'cm2') return totalDm2 / 0.01;
+  // dm² e demais áreas: já na unidade de estoque
+  return totalDm2;
+}
+
+/**
  * Custo de UM material do BOM por par, aplicando a REGRA CANÔNICA de consumo
  * (CLAUDE.md / este arquivo): material de ÁREA (consumo em dm²/par) cujo produto é
  * vendido em unidade FÍSICA (linear m/cm ou placa) precisa ser convertido pela
@@ -538,12 +558,18 @@ export function bomMaterialCostPerPair(
     return { ...direct(), widthMissing: componentSheet != null };
   }
 
-  if (PLATE_UNITS.has(unit)) {
+  if (unit === 'placa' || unit === 'placas') {
     const plateAreaDm2 = getPlateAreaDm2(componentSheet);
     if (plateAreaDm2 > 0) {
       return { cost: convertDm2ToPlates(qty, componentSheet) * price, converted: true, widthMissing: false };
     }
     return { ...direct(), widthMissing: componentSheet != null };
+  }
+  if (unit === 'm²' || unit === 'm2' || unit === 'cm²' || unit === 'cm2' || unit === 'dm²' || unit === 'dm2') {
+    // Preço é por unidade de estoque de área — converter família, não geometria de placa.
+    const stockQty = convertDm2ToStockUnit(qty, unit, componentSheet);
+    const converted = stockQty !== qty;
+    return { cost: stockQty * price, converted, widthMissing: false };
   }
 
   // contagem (un/par), massa (kg/g), volume (L/ml) — qty já na unidade do preço.
@@ -584,10 +610,13 @@ export function areaToStockDivisor(
     // estoque em cm: divisor é dm² POR CM (= dm²/m ÷ 100). Paridade com SQL.
     return unit === 'cm' ? dm2PerMeter / 100 : dm2PerMeter;
   }
-  if (PLATE_UNITS.has(unit)) {
+  if (unit === 'placa' || unit === 'placas') {
     const a = getPlateAreaDm2(componentSheet);
     return a > 0 ? a : null;
   }
+  if (unit === 'm²' || unit === 'm2') return 100;
+  if (unit === 'cm²' || unit === 'cm2') return 0.01;
+  if (unit === 'dm²' || unit === 'dm2') return 1;
   return null;
 }
 
@@ -686,8 +715,10 @@ export const calculateConsumptionWithUnit = (
     return { total: convertDm2ToLinearMeters(rawTotal, componentSheet), unit: 'metro' };
   }
 
-  // dm2/plate path: rawTotal is in dm2
-  if (targetUnit === 'placa' || PLATE_UNITS.has(sheetUnit)) {
+  // dm2/plate path: rawTotal is in dm2.
+  // Espelha get_material_conversion_info: só `placa` divide por W×L;
+  // dm²/m²/cm² ficam na família de área (identidade / 100 / 0.01).
+  if (targetUnit === 'placa' || sheetUnit === 'placa' || sheetUnit === 'placas') {
     return { total: convertDm2ToPlates(rawTotal, componentSheet), unit: 'placa' };
   }
 
@@ -695,10 +726,16 @@ export const calculateConsumptionWithUnit = (
     return { total: convertDm2ToLinearMeters(rawTotal, componentSheet), unit: 'metro' };
   }
 
-  // auto: if sheet is plate, return plates; otherwise meters
-  if (PLATE_UNITS.has(sheetUnit)) {
-    return { total: convertDm2ToPlates(rawTotal, componentSheet), unit: 'placa' };
+  if (sheetUnit === 'm²' || sheetUnit === 'm2') {
+    return { total: convertDm2ToStockUnit(rawTotal, sheetUnit, componentSheet), unit: 'm²' };
+  }
+  if (sheetUnit === 'cm²' || sheetUnit === 'cm2') {
+    return { total: convertDm2ToStockUnit(rawTotal, sheetUnit, componentSheet), unit: 'cm²' };
+  }
+  if (sheetUnit === 'dm²' || sheetUnit === 'dm2') {
+    return { total: rawTotal, unit: 'dm2' };
   }
 
+  // auto sem unidade de estoque clara: legacy → metros pela largura
   return { total: convertDm2ToLinearMeters(rawTotal, componentSheet), unit: 'metro' };
 };

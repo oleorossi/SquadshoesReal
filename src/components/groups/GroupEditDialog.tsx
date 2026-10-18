@@ -43,6 +43,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { getFootwearSectorGuide, normalizeTaxonomyName } from '@/lib/footwearMaterialTaxonomy';
 import { isHeterogeneousGroup } from '@/lib/materialIdentity';
 import { applyUnitAndPriceToGroupItems, commonProductField } from '@/lib/applyGroupItemUnitPrice';
+import { assertAreaGeometry, isAreaStockUnit } from '@/lib/areaGeometry';
 import { UNITS, UNIT_LABELS } from '@/types/inventory';
 
 /** Abas da janela de grupo. `bulk` e `items` chegaram aqui em 22/08/2026, quando
@@ -107,7 +108,8 @@ function getVisibleFields(type: GroupType) {
     // Rendimento por numeração: só pra materiais cujo CONSUMO varia com o
     // tamanho do calçado (cabedal, forração, palmilha, solado). Componente
     // NÃO entra — fivela/ilhós/ABS consomem 1 unidade por par, fim.
-    dimensions:     isUpper || isInsole,
+    // Geometria (L×A): cabedal/palmilha e também componente (ex.: placa EVA).
+    dimensions:     isUpper || isInsole || isComponent,
     // Embalagem: o débito de embalagem lê a caixa vinculada + pares/caixa DO
     // GRUPO DO SOLADO (product_groups.box_type_*_id). Sem esse elo o débito não
     // tem o que debitar. Aqui é somente leitura; a edição fica em /embalagens.
@@ -297,7 +299,26 @@ function GroupDimensionsEditor({ group }: { group: ProductGroup }) {
   const plateAreaDm2 = widthMm > 0 && lengthMm > 0 ? (widthMm * lengthMm) / 10_000 : null;
 
   const handleSaveDimensions = async () => {
-    if (widthMm <= 0) {
+    // Porta única: se algum SKU do grupo estoca em área, L×A+unidade são
+    // obrigatórios. Bobina (só m) continua exigindo ao menos a largura.
+    const { data: groupProducts } = await supabase
+      .from('products')
+      .select('unit')
+      .eq('group_id', group.id)
+      .eq('active', true)
+      .limit(50);
+    const hasAreaSku = (groupProducts || []).some((p) => isAreaStockUnit(p.unit));
+    if (hasAreaSku) {
+      const check = assertAreaGeometry({
+        width: dimWidth,
+        length: dimLength,
+        dimensionsUnit: dimUnit,
+      });
+      if (!check.ok) {
+        toast.error(check.message);
+        return;
+      }
+    } else if (widthMm <= 0) {
       toast.error('Informe a largura útil da bobina ou placa.');
       return;
     }
@@ -374,15 +395,16 @@ function GroupDimensionsEditor({ group }: { group: ProductGroup }) {
               <p className="mt-1 text-[10px] text-muted-foreground">Largura da bobina; é o divisor dm² → m.</p>
             </div>
             <div>
-              <Label className="text-xs">Comprimento da placa</Label>
+              <Label className="text-xs">Comprimento da placa *</Label>
               <NumberInput value={dimLength} onChange={n => setDimLength(n)} min={0} className="h-8 text-xs mt-1" />
+              <p className="mt-1 text-[10px] text-muted-foreground">Obrigatório quando algum SKU estoca em dm²/m²/placa.</p>
             </div>
             <div>
               <Label className="text-xs">Espessura</Label>
               <NumberInput value={dimThickness} onChange={n => setDimThickness(n)} min={0} className="h-9 text-xs mt-1" />
             </div>
             <div>
-              <Label className="text-xs">Unidade</Label>
+              <Label className="text-xs">Unidade *</Label>
               <Select value={dimUnit} onValueChange={setDimUnit}>
                 <SelectTrigger className="h-9 text-xs mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -401,7 +423,7 @@ function GroupDimensionsEditor({ group }: { group: ProductGroup }) {
           )}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
             <p className="text-[11px] text-muted-foreground">
-              {sheets.length} ficha(s) vinculada(s) serão sincronizadas ao salvar.
+              Porta única de geometria — {sheets.length} ficha(s) sincronizada(s) ao salvar.
             </p>
             <Button size="sm" onClick={handleSaveDimensions} disabled={saving || widthMm <= 0}>
               {saving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />}

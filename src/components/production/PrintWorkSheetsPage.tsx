@@ -65,7 +65,7 @@ import {
   filterConsumptionForSector,
   type ConsumptionRow,
 } from '@/hooks/useBulkOrderConsumption';
-import { calcGroupPlateAreaDm2 } from '@/lib/orderConsumption';
+import { plateAreaDm2 } from '@/lib/areaGeometry';
 import { findSoleProductForColor, getSoleTargetColor, type SoleColorProduct } from '@/lib/soleColorResolution';
 import logoSquad from '@/assets/logo-squad-shoes.jpg';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
@@ -1845,7 +1845,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       if (error) throw error;
       const m = new Map<string, number>();
       for (const g of (data || []) as any[]) {
-        const area = calcGroupPlateAreaDm2(g);
+        const area = plateAreaDm2({
+          width: g?.dimensions_width,
+          length: g?.dimensions_length,
+          dimensionsUnit: g?.dimensions_unit || 'mm',
+        });
         if (area > 0 && g?.name) m.set(String(g.name).toLowerCase(), area);
       }
       return m;

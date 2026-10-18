@@ -18,6 +18,7 @@ import { CabedalParPeAuditPanel } from '@/components/technical-sheets/CabedalPar
 import OrphanDirectComponentsPanel from '@/components/technical-sheets/OrphanDirectComponentsPanel';
 import SoleSpecGapsPanel from '@/components/soles-hub/SoleSpecGapsPanel';
 import MaterialSectorGapsPanel from '@/components/inventory/MaterialSectorGapsPanel';
+import AreaGeometryGapsPanel from '@/components/inventory/AreaGeometryGapsPanel';
 import StrapQueueHealthPanel from '@/components/artisanal-straps/StrapQueueHealthPanel';
 import { useStockDebitHoles, summarizeStockDebitHoles, useReconcileStockDebitHole } from '@/hooks/useStockDebitHoles';
 
@@ -931,6 +932,9 @@ export default function SystemDiagnostics() {
           {/* Material em falta sem setor de consumo cadastrado: pelo fail-safe
               ele pergunta em TODO setor no apontamento. Mig 20270101038600. */}
           <MaterialSectorGapsPanel />
+
+          {/* Unidade de área sem L×A no grupo (porta única de geometria). */}
+          <AreaGeometryGapsPanel />
 
           {/* Fila do motor de tiras. A OC por Pedido exclui tira de propósito e
               manda pra cá; fila parada = tira em lugar nenhum, que foi como o

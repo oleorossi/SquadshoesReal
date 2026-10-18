@@ -6,6 +6,7 @@ import {
   generateWeeklyPurchasingPlan,
   type WeeklyOrder,
   type SheetMaterial,
+  type EngineDemandLine,
 } from '@/lib/weeklyPurchasingPlan';
 
 const makeProduct = (id: string, name: string, over: Partial<NonNullable<SheetMaterial['products']>> = {}) => ({
@@ -29,81 +30,24 @@ const baseOrder: WeeklyOrder = {
   grade: { '35': 40, '36': 60 },
 };
 
-describe('generateWeeklyPurchasingPlan — escalar do BOM (parity by_grade/modal)', () => {
-  it('usa quantity_per_unit escalar e IGNORA consumption_per_size legado do BOM', () => {
-    const cola: SheetMaterial = {
-      sheet_id: 'sheet-1',
-      product_id: 'cola-1',
-      quantity_per_unit: 0.02,
-      ...({ consumption_per_size: { '35': 100, '36': 100 } } as any),
-      products: makeProduct('cola-1', 'COLA DE CONTATO', { unit: 'kg' }),
-    };
-    const { plan } = generateWeeklyPurchasingPlan([baseOrder], [cola]);
-    const row = plan.find((r) => r.materialId === 'cola-1');
-    expect(row).toBeDefined();
-    expect(row!.totalToBuy).toBeCloseTo(2, 5);
-  });
-});
-
-describe('generateWeeklyPurchasingPlan — só demanda de PV (estoque mínimo removido)', () => {
-  it('min_stock legado no produto NÃO reserva saldo nem gera compra', () => {
-    // 100 pares × 1 un = 100 de demanda; saldo 100 cobre tudo. Antes, um
-    // min_stock 80 tirava 80 do saldo virtual e mandava comprar 80.
-    const material: SheetMaterial = {
-      sheet_id: 'sheet-1',
-      product_id: 'mat-1',
-      quantity_per_unit: 1,
-      products: Object.assign(makeProduct('mat-1', 'NAPA', { quantity: 100 }), { min_stock: 80 }),
-    };
-    const { plan } = generateWeeklyPurchasingPlan([baseOrder], [material]);
-    // nada a comprar ⇒ o material nem entra no plano
-    expect(plan.find((r) => r.materialId === 'mat-1')).toBeUndefined();
-  });
-});
-
-describe('generateWeeklyPurchasingPlan — filtro de caixa por packaging_mode', () => {
-  const caixaColmeia: SheetMaterial = {
-    sheet_id: 'sheet-1',
-    product_id: 'cx-colmeia',
-    quantity_per_unit: 1,
-    products: makeProduct('cx-colmeia', 'CAIXA COLMEIA 11', { category: 'Embalagem' }),
-  };
-  const caixaIndividual: SheetMaterial = {
-    sheet_id: 'sheet-1',
-    product_id: 'cx-individual',
-    quantity_per_unit: 1,
-    products: makeProduct('cx-individual', 'CAIXA INDIVIDUAL 11', { category: 'Embalagem' }),
-  };
-
-  it('pedido colmeia → conta SÓ a caixa colmeia (não soma a alternativa)', () => {
-    const order: WeeklyOrder = { ...baseOrder, packaging_mode: 'colmeia' };
-    const { plan } = generateWeeklyPurchasingPlan([order], [caixaColmeia, caixaIndividual]);
-    expect(plan.find((r) => r.materialId === 'cx-colmeia')?.totalToBuy).toBeCloseTo(100, 5);
-    expect(plan.find((r) => r.materialId === 'cx-individual')).toBeUndefined();
-  });
-
-  it('arredonda a necessidade de caixa por OP antes de consolidar', () => {
-    const order: WeeklyOrder = { ...baseOrder, quantity: 24, packaging_mode: 'colmeia' };
-    const fractional = { ...caixaColmeia, quantity_per_unit: 0.083 };
-    const { plan } = generateWeeklyPurchasingPlan([order], [fractional]);
-    expect(plan.find((r) => r.materialId === 'cx-colmeia')?.totalToBuy).toBe(2);
-  });
-
-  it('sem packaging_mode → comportamento legado (mantém as duas caixas)', () => {
-    const { plan } = generateWeeklyPurchasingPlan([baseOrder], [caixaColmeia, caixaIndividual]);
-    expect(plan.find((r) => r.materialId === 'cx-colmeia')?.totalToBuy).toBeCloseTo(100, 5);
-    expect(plan.find((r) => r.materialId === 'cx-individual')?.totalToBuy).toBeCloseTo(100, 5);
-  });
-
-  it('caixa ÚNICA na ficha → não filtra mesmo com modo divergente', () => {
-    const order: WeeklyOrder = { ...baseOrder, packaging_mode: 'colmeia' };
-    const { plan } = generateWeeklyPurchasingPlan([order], [caixaIndividual]);
-    expect(plan.find((r) => r.materialId === 'cx-individual')?.totalToBuy).toBeCloseTo(100, 5);
-  });
+const engineLine = (
+  productId: string,
+  required: number,
+  product: NonNullable<SheetMaterial['products']>,
+  over: Partial<EngineDemandLine> = {},
+): EngineDemandLine => ({
+  orderId: 'op-1',
+  productId,
+  required,
+  unit: product.unit,
+  name: product.name,
+  category: product.category ?? null,
+  product,
+  ...over,
 });
 
 describe('generateWeeklyPurchasingPlan — demanda do motor SQL', () => {
-  it('OP coberta pelo engine ignora o BOM e usa o required canônico', () => {
+  it('usa required canônico (não explode BOM local)', () => {
     const cola: SheetMaterial = {
       sheet_id: 'sheet-1',
       product_id: 'cola-1',
@@ -115,24 +59,41 @@ describe('generateWeeklyPurchasingPlan — demanda do motor SQL', () => {
       [cola],
       [],
       new Map(),
-      [{ orderId: 'op-1', productId: 'cola-1', required: 7.5, unit: 'kg', product: cola.products }],
+      [engineLine('cola-1', 2, cola.products!)],
     );
-    expect(plan.find((r) => r.materialId === 'cola-1')?.totalToBuy).toBeCloseTo(7.5, 5);
+    expect(plan.find((r) => r.materialId === 'cola-1')?.totalToBuy).toBeCloseTo(2, 5);
   });
 
-  it('inclui material que só existe no motor (solado/grupo fora do BOM)', () => {
+  it('min_stock legado NÃO reserva saldo nem gera compra', () => {
+    const material: SheetMaterial = {
+      sheet_id: 'sheet-1',
+      product_id: 'mat-1',
+      quantity_per_unit: 1,
+      products: Object.assign(makeProduct('mat-1', 'NAPA', { quantity: 100 }), { min_stock: 80 }),
+    };
+    const { plan } = generateWeeklyPurchasingPlan(
+      [baseOrder],
+      [material],
+      [],
+      new Map(),
+      [engineLine('mat-1', 100, material.products!)],
+    );
+    expect(plan.find((r) => r.materialId === 'mat-1')).toBeUndefined();
+  });
+
+  it('inclui material que só existe no motor', () => {
     const sole = makeProduct('sole-1', 'SOLADO 01', { unit: 'par' });
     const { plan } = generateWeeklyPurchasingPlan(
       [baseOrder],
       [],
       [],
       new Map(),
-      [{ orderId: 'op-1', productId: 'sole-1', required: 100, unit: 'par', product: sole }],
+      [engineLine('sole-1', 100, sole)],
     );
     expect(plan.find((r) => r.materialId === 'sole-1')?.totalToBuy).toBeCloseTo(100, 5);
   });
 
-  it('OP sem linha no engine continua no fallback BOM', () => {
+  it('OP sem linha no engine NÃO cai em fallback BOM', () => {
     const cola: SheetMaterial = {
       sheet_id: 'sheet-1',
       product_id: 'cola-1',
@@ -147,6 +108,52 @@ describe('generateWeeklyPurchasingPlan — demanda do motor SQL', () => {
       new Map(),
       [{ orderId: 'op-2', productId: 'cola-1', required: 1, unit: 'kg', product: cola.products }],
     );
-    expect(plan.find((r) => r.materialId === 'cola-1')?.totalToBuy).toBeCloseTo(3, 5);
+    // só op-2 (1 kg) — op-1 sem engine não inventa 2 kg pelo BOM
+    expect(plan.find((r) => r.materialId === 'cola-1')?.totalToBuy).toBeCloseTo(1, 5);
+  });
+
+  it('linha com unit null é ignorada (sem reconversão local)', () => {
+    const napa = makeProduct('napa-1', 'NAPA SOFT', { unit: 'm' });
+    const { plan } = generateWeeklyPurchasingPlan(
+      [baseOrder],
+      [],
+      [],
+      new Map(),
+      [{ orderId: 'op-1', productId: 'napa-1', required: 60, unit: null, product: napa }],
+    );
+    expect(plan.find((r) => r.materialId === 'napa-1')).toBeUndefined();
+  });
+});
+
+describe('generateWeeklyPurchasingPlan — filtro de caixa por packaging_mode', () => {
+  const caixaColmeia = makeProduct('cx-colmeia', 'CAIXA COLMEIA 11', { category: 'Embalagem' });
+  const caixaIndividual = makeProduct('cx-individual', 'CAIXA INDIVIDUAL 11', { category: 'Embalagem' });
+
+  it('pedido colmeia → conta SÓ a caixa colmeia', () => {
+    const order: WeeklyOrder = { ...baseOrder, packaging_mode: 'colmeia' };
+    const { plan } = generateWeeklyPurchasingPlan(
+      [order],
+      [],
+      [],
+      new Map(),
+      [
+        engineLine('cx-colmeia', 100, caixaColmeia, { category: 'Embalagem', name: caixaColmeia.name }),
+        engineLine('cx-individual', 100, caixaIndividual, { category: 'Embalagem', name: caixaIndividual.name }),
+      ],
+    );
+    expect(plan.find((r) => r.materialId === 'cx-colmeia')?.totalToBuy).toBeCloseTo(100, 5);
+    expect(plan.find((r) => r.materialId === 'cx-individual')).toBeUndefined();
+  });
+
+  it('arredonda a necessidade de caixa por OP antes de consolidar', () => {
+    const order: WeeklyOrder = { ...baseOrder, quantity: 24, packaging_mode: 'colmeia' };
+    const { plan } = generateWeeklyPurchasingPlan(
+      [order],
+      [],
+      [],
+      new Map(),
+      [engineLine('cx-colmeia', 1.992, caixaColmeia, { category: 'Embalagem', name: caixaColmeia.name })],
+    );
+    expect(plan.find((r) => r.materialId === 'cx-colmeia')?.totalToBuy).toBe(2);
   });
 });

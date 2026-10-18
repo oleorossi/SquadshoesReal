@@ -1223,12 +1223,46 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
             </div>
           </div>
 
-          {/* Dimensions */}
+          {/* Dimensions — porta canônica = grupo. Com group_id, só leitura aqui. */}
           <div>
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
               <Ruler className="h-4 w-4 text-primary" />
               Dimensões do Material
             </h3>
+            {prod?.group_id ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Comprimento</Label>
+                    <div className="mt-1 flex h-9 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm">
+                      {form.dimensions_length || '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Largura</Label>
+                    <div className="mt-1 flex h-9 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm">
+                      {form.dimensions_width || '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Espessura</Label>
+                    <div className="mt-1 flex h-9 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm">
+                      {form.dimensions_thickness || '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Unidade</Label>
+                    <div className="mt-1 flex h-9 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm">
+                      {form.dimensions_unit || '—'}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Somente leitura. Edite largura × comprimento no <strong className="text-foreground">grupo de estoque</strong>
+                  — a ficha é sincronizada a partir dali.
+                </p>
+              </div>
+            ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
                 <Label className="text-xs text-muted-foreground">Base / comp. ({form.dimensions_unit || '—'})</Label>
@@ -1250,10 +1284,12 @@ function ComponentSheetDetail({ sheet, siblingIds = [], groupItems = [], onDelet
                 </Select>
               </div>
             </div>
+            )}
+            {!prod?.group_id && (
             <p className="mt-2 text-xs text-muted-foreground">
-              A <strong>Altura / largura</strong> é a fonte da conversão dm²→{form.dimensions_unit || '—'} linear (cabedal, forro, BOM).
-              Sem largura, o consumo de material de área fica ~100× inflado. Use só unidade linear (mm/cm/dm/m).
+              SKU sem grupo: cadastre a geometria aqui ou vincule um grupo. A porta canônica é o grupo.
             </p>
+            )}
             {form.dimensions_unit && !DIM_UNITS.includes(form.dimensions_unit) && (
               <p className="mt-1 text-xs text-amber-600">
                 ⚠ Unidade "{form.dimensions_unit}" não é linear — os motores de consumo a tratam como mm, inflando a conversão. Troque para mm/cm/dm/m.

@@ -14,7 +14,7 @@ import type { ProductGroup } from '@/hooks/useGroups';
  */
 
 /** Unidades-base aceitas para material cortado de bobina/placa (área/linear). */
-export const AREA_STOCK_UNITS = ['m', 'cm', 'dm²'] as const;
+export const AREA_STOCK_UNITS = ['m', 'cm', 'dm²', 'm²', 'placa'] as const;
 
 export type ColorRequirement = 'required' | 'ask' | 'none';
 
@@ -92,6 +92,8 @@ export interface CreateGroupWithColorsInput {
     auto_component_sheet: boolean;
     parent_group_id: string | null;
     dimensions_width: number | null;
+    dimensions_length?: number | null;
+    dimensions_thickness?: number | null;
     dimensions_unit: string | null;
   };
   colors: string[];
@@ -135,6 +137,8 @@ export async function createGroupWithColors(input: CreateGroupWithColorsInput): 
       // posterior tentava apagar a unidade-base dos produtos.
       consumption_unit: unit,
       dimensions_width: input.group.dimensions_width,
+      dimensions_length: input.group.dimensions_length ?? null,
+      dimensions_thickness: input.group.dimensions_thickness ?? null,
       dimensions_unit: input.group.dimensions_unit,
     })
     .select('*')

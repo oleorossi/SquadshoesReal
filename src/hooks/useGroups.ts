@@ -80,6 +80,9 @@ export function useAddGroup() {
       /** Largura útil do material (mm). O GRUPO é a fonte: o item herda na
        *  criação e só diverge de propósito. Sem ela o dm²/par não vira metro. */
       dimensions_width?: number | null;
+      /** Comprimento — obrigatório junto com largura quando a unidade de estoque é de área. */
+      dimensions_length?: number | null;
+      dimensions_thickness?: number | null;
       dimensions_unit?: string | null;
       parent_group_id?: string | null;
       is_family?: boolean;

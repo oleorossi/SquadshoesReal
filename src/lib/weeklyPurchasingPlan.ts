@@ -1,6 +1,5 @@
 import { format, parseISO, addDays, isTuesday, nextTuesday, isBefore, startOfDay } from 'date-fns';
-import { convertDm2ToLinearMeters, convertDm2ToPlates, isLinearWidthMissing, type ComponentSheetCandidate } from './materialConsumption';
-import { classifyBomMaterial } from './orderConsumption';
+import { classifyBomMaterial } from './bomClassify';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, wholePackagingDemand, type CollectiveType } from './packagingPairsPerBox';
 
 /**
@@ -81,56 +80,15 @@ export interface WeeklyPlanResult {
   plan: MaterialPlanRow[];
 }
 
-function calculateRequiredAmount(
-  mat: SheetMaterial,
-  order: WeeklyOrder,
-  cs: ComponentSheetCandidate | null
-): number {
-  const rawTotal = order.quantity * (Number(mat.quantity_per_unit) || 0);
-  const unit = (mat.products?.unit || '').toLowerCase();
-  const isLinear = ['m', 'metro', 'metros', 'cm'].includes(unit);
-  const isPlate = unit === 'placa' || unit === 'chapa';
-  if (isLinear && cs && !isLinearWidthMissing(cs, unit)) {
-    return convertDm2ToLinearMeters(rawTotal, cs);
-  }
-  if (isPlate && cs) {
-    return convertDm2ToPlates(rawTotal, cs);
-  }
-  return rawTotal;
-}
-
 export function generateWeeklyPurchasingPlan(
   orders: WeeklyOrder[],
   sheetMaterials: SheetMaterial[],
-  componentSheets: Array<ComponentSheetCandidate & { product_id: string }> = [],
+  /** @deprecated Ignorado — demanda vem só do motor SQL (`engineDemand`). */
+  _componentSheets: unknown[] = [],
   buyByDates: Map<string, string> = new Map(),
   engineDemand: EngineDemandLine[] | null = null,
 ): WeeklyPlanResult {
   const weeklyDemands: Record<string, Record<string, number>> = {};
-
-  const csByProduct = new Map<string, ComponentSheetCandidate>();
-  for (const cs of componentSheets) {
-    if (cs && (cs as any).product_id) csByProduct.set((cs as any).product_id, cs);
-  }
-
-  const materialsBySheet = new Map<string, SheetMaterial[]>();
-  for (const sm of sheetMaterials) {
-    const arr = materialsBySheet.get(sm.sheet_id) || [];
-    arr.push(sm);
-    materialsBySheet.set(sm.sheet_id, arr);
-  }
-
-  const caixaTypesBySheet = new Map<string, Set<CollectiveType>>();
-  for (const sm of sheetMaterials) {
-    const p = sm.products;
-    if (!p) continue;
-    if (classifyBomMaterial('', p.name || '', p.category || '') !== 'Embalagem') continue;
-    const t = caixaCollectiveTypeFromName(p.name);
-    if (!t) continue;
-    let set = caixaTypesBySheet.get(sm.sheet_id);
-    if (!set) { set = new Set(); caixaTypesBySheet.set(sm.sheet_id, set); }
-    set.add(t);
-  }
 
   const productMap = new Map<string, SheetMaterial['products']>();
   for (const sm of sheetMaterials) {
@@ -201,19 +159,11 @@ export function generateWeeklyPurchasingPlan(
           !shouldShowCaixaForMode(materialName, order.packaging_mode, caixaTypes)
         ) continue;
 
-        const cs = csByProduct.get(line.productId) || null;
-        const unit = (prod.unit || '').toLowerCase();
-        const isLinear = ['m', 'metro', 'metros', 'cm'].includes(unit);
-        const isPlate = unit === 'placa' || unit === 'chapa';
+        // Demanda já vem convertida do motor SQL (unit preenchido). Sem unit =
+        // linha incompleta: não reconverter localmente (era o 3º motor).
         let requiredAmount = Number(line.required) || 0;
         if (line.unit == null) {
-          if (isLinear && cs && !isLinearWidthMissing(cs, unit)) {
-            requiredAmount = convertDm2ToLinearMeters(requiredAmount, cs);
-          } else if (isPlate && cs) {
-            requiredAmount = convertDm2ToPlates(requiredAmount, cs);
-          } else if (isLinear || isPlate) {
-            continue;
-          }
+          continue;
         }
         if (classifyBomMaterial('', materialName, materialCategory) === 'Embalagem') {
           requiredAmount = wholePackagingDemand(requiredAmount, prod.unit);
@@ -223,25 +173,8 @@ export function generateWeeklyPurchasingPlan(
       continue;
     }
 
-    const materials = materialsBySheet.get(order.reference_id) || [];
-    for (const mat of materials) {
-      if (!mat.products || mat.products.is_artisanal) continue;
-      if (
-        order.packaging_mode &&
-        classifyBomMaterial('', mat.products.name || '', mat.products.category || '') === 'Embalagem' &&
-        !shouldShowCaixaForMode(
-          mat.products.name,
-          order.packaging_mode,
-          caixaTypesBySheet.get(order.reference_id) || new Set<CollectiveType>(),
-        )
-      ) continue;
-      const cs = csByProduct.get(mat.product_id) || null;
-      const rawRequiredAmount = calculateRequiredAmount(mat, order, cs);
-      const requiredAmount = classifyBomMaterial('', mat.products.name || '', mat.products.category || '') === 'Embalagem'
-        ? wholePackagingDemand(rawRequiredAmount, mat.products.unit)
-        : rawRequiredAmount;
-      addDemand(order, mat.product_id, mat.products, requiredAmount, fallbackProdDate);
-    }
+    // Sem linhas do motor SQL para esta OP: não cair no BOM local (convert
+    // paralelo removido — decisão unificação motores 18/10/2026).
   }
 
   const sortedWeeks = Object.keys(weeklyDemands).sort((a, b) => {

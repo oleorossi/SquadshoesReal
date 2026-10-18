@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { resolveConversionFactors } from '@/lib/unitConversion';
 import { calculateConsumption, type ConsumptionLine } from '@/services/consumptionService';
-import { classifyBomMaterial } from '@/lib/orderConsumption';
+import { classifyBomMaterial } from '@/lib/bomClassify';
 import { caixaCollectiveTypeFromName, shouldShowCaixaForMode, type CollectiveType } from '@/lib/packagingPairsPerBox';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

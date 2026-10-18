@@ -72,6 +72,7 @@ export function dm2ToPlates(dm2: number, product: PlateDualProduct | null | unde
     });
     if (factor != null && factor > 0 && factor !== 1) return dm2 / factor;
   }
+  // Porta canônica = grupo (sincroniza sheets). Produto só como fallback legado.
   const group = product.product_groups;
   const area = plateAreaDm2FromDims(
     group?.dimensions_width ?? product.dimensions_width,

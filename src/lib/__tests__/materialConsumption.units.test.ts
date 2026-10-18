@@ -55,9 +55,8 @@ describe('calculateConsumptionWithUnit — sheet linear em metros', () => {
   });
 });
 
-describe('calculateConsumptionWithUnit — sheet de placa (dm²)', () => {
-  it('placa: dm² → quantidade de placas usando área da peça', () => {
-    // Placa 100cm × 50cm = 1000mm × 500mm = 50 dm² por placa
+describe('calculateConsumptionWithUnit — estoque de área vs placa', () => {
+  it('unit=dm²: identidade (não inventa placas)', () => {
     const sheet = {
       products: { unit: 'dm²' },
       dimensions_length: 100,
@@ -67,7 +66,23 @@ describe('calculateConsumptionWithUnit — sheet de placa (dm²)', () => {
       yield_per_size: { '36': 6.5 }, // dm²/par
     };
     const item = { grade: { '36': 2 }, fichas: 5, quantity: 10 };
-    // 2 × 6.5 × 5 = 65 dm² → 65 / 50 = 1.3 placas
+    // 2 × 6.5 × 5 = 65 dm² — estoque já em dm²
+    const { total, unit } = calculateConsumptionWithUnit(item, 6.5, sheet, 'auto');
+    expect(unit).toBe('dm2');
+    expect(total).toBeCloseTo(65, 3);
+  });
+
+  it('unit=placa: dm² → placas pela área W×L', () => {
+    const sheet = {
+      products: { unit: 'placa' },
+      dimensions_length: 100,
+      dimensions_width: 50,
+      dimensions_unit: 'cm',
+      waste_pct: 0,
+      yield_per_size: { '36': 6.5 },
+    };
+    const item = { grade: { '36': 2 }, fichas: 5, quantity: 10 };
+    // 65 dm² / 50 dm²/placa = 1.3
     const { total, unit } = calculateConsumptionWithUnit(item, 6.5, sheet, 'auto');
     expect(unit).toBe('placa');
     expect(total).toBeCloseTo(1.3, 3);

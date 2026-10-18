@@ -16,9 +16,11 @@ import { flattenGroupTree } from "@/lib/groupHierarchy";
 import { organizationSectorOptions, sectorLabel, sectorOfGroup, MATERIAL_BASE_SECTOR } from "@/lib/categoryFromGroup";
 import { getFootwearSectorGuide } from "@/lib/footwearMaterialTaxonomy";
 import { AREA_STOCK_UNITS, colorRequirement, createGroupWithColors, normalizeColorList } from "@/lib/createGroupWithColors";
+import { isAreaStockUnit } from "@/lib/areaGeometry";
 import { findDuplicate, type DuplicateHit } from "@/lib/duplicateDetection";
 import { ColorsMultiSelect } from "@/components/references/ColorsMultiSelect";
 import { DuplicateSuggestion } from "@/components/inventory/DuplicateSuggestion";
+import AreaGeometryFields, { WidthOnlyField, validateAreaGeometryFields } from "@/components/groups/AreaGeometryFields";
 import { UNITS, UNIT_LABELS } from "@/types/inventory";
 import type { GroupEditTab } from "./GroupEditDialog";
 import { cn } from "@/lib/utils";
@@ -55,11 +57,11 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
     description: "",
     sector: (initialSector ?? "") as string,
     auto_component_sheet: false,
-    // Largura útil do material (mm). É o GRUPO que manda: o item herda ao ser
-    // criado (ProductFormDialog já propaga dimensions_* do grupo) e só diverge
-    // de propósito. Sem isso a mesma napa nascia em larguras diferentes, e
-    // largura errada infla o consumo linear.
+    // Geometria do material. Porta canônica = grupo (L×A quando estoque é área;
+    // só largura quando bobina linear neste setor).
     dimensions_width: null as number | null,
+    dimensions_length: null as number | null,
+    dimensions_unit: 'mm' as string,
     parent_group_id: (initialParentId ?? "") as string,
     is_artisanal_strap: !isFamilyCreation && initialSector === MATERIAL_BASE_SECTOR,
   });
@@ -135,6 +137,8 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
   const isAreaSector = AREA_SECTORS.has(form.sector);
   const unitOptions: readonly string[] = isAreaSector ? AREA_STOCK_UNITS : UNITS;
   const unitOk = Boolean(stockUnit) && unitOptions.includes(stockUnit);
+  const stockIsArea = isAreaStockUnit(stockUnit);
+  const requiresAreaGeometry = !isFamilyCreation && !form.is_artisanal_strap && stockIsArea;
 
   /** Cor da fila que bate com item já cadastrado e ainda não foi liberada. */
   const suspeitas = useMemo(() => {
@@ -163,6 +167,8 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       auto_component_sheet: false,
       is_artisanal_strap: !isFamilyCreation && initialSector === MATERIAL_BASE_SECTOR,
       dimensions_width: null,
+      dimensions_length: null,
+      dimensions_unit: 'mm',
       parent_group_id: initialParentId ?? "",
     });
     setVariesByColor(null);
@@ -185,11 +191,19 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       toast.error('Selecione o Setor antes de criar o grupo.');
       return;
     }
-    // Material de ÁREA cortado de bobina (napa/forro/palmilha) sem largura fica
-    // com o consumo ~100× inflado: o dm²/par não tem como virar metro. Bloqueia
-    // na criação em vez de deixar o erro aparecer lá na frente, no PV.
-    if (requiresWidth && !(Number(form.dimensions_width) > 0)) {
-      toast.error('Informe a largura da bobina (mm) — material de área sem largura infla o consumo ~100×.');
+    if (requiresAreaGeometry) {
+      const geomErr = validateAreaGeometryFields({
+        width: form.dimensions_width,
+        length: form.dimensions_length,
+        dimensionsUnit: form.dimensions_unit,
+      }, true);
+      if (geomErr) {
+        toast.error(geomErr);
+        return;
+      }
+    } else if (requiresWidth && !(Number(form.dimensions_width) > 0)) {
+      // Bobina (estoque em m): só largura — fora do escopo L×A de unidade de área.
+      toast.error('Informe a largura da bobina (mm) — material sem largura infla o consumo ~100×.');
       return;
     }
     if (colorBlocker) {
@@ -208,7 +222,10 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             auto_component_sheet: form.auto_component_sheet,
             parent_group_id: form.parent_group_id || null,
             dimensions_width: form.dimensions_width,
-            dimensions_unit: form.dimensions_width ? 'mm' : null,
+            dimensions_length: form.dimensions_length,
+            dimensions_unit: form.dimensions_width
+              ? (form.dimensions_unit || 'mm')
+              : null,
           },
           colors,
           unit: stockUnit,
@@ -239,7 +256,10 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         auto_component_sheet: form.is_artisanal_strap ? false : form.auto_component_sheet,
         is_artisanal_strap: form.is_artisanal_strap,
         dimensions_width: isFamilyCreation ? null : form.dimensions_width,
-        dimensions_unit: !isFamilyCreation && form.dimensions_width ? 'mm' : null,
+        dimensions_length: isFamilyCreation ? null : form.dimensions_length,
+        dimensions_unit: !isFamilyCreation && form.dimensions_width
+          ? (form.dimensions_unit || 'mm')
+          : null,
         parent_group_id: form.parent_group_id || null,
         is_family: isFamilyCreation,
         // Fibra/placa da palmilha e cola não variam por cor. A cor da palmilha
@@ -398,33 +418,32 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 </p>
               )}
             </div>
-            {requiresWidth && (
-              <div>
-                <Label htmlFor="group-width">Largura útil (mm) *</Label>
-                <Input
-                  id="group-width"
-                  type="number"
-                  min="1"
-                  step="1"
-                  className="mt-1"
-                  value={form.dimensions_width ?? ''}
-                  onChange={(e) => setForm((f) => ({
+            {requiresAreaGeometry && (
+              <div className="rounded-lg border border-border p-3">
+                <p className="mb-2 text-sm font-medium text-foreground">Dimensões da placa *</p>
+                <AreaGeometryFields
+                  idPrefix="group-create-area"
+                  required
+                  value={{
+                    width: form.dimensions_width,
+                    length: form.dimensions_length,
+                    dimensionsUnit: form.dimensions_unit || 'mm',
+                  }}
+                  onChange={(next) => setForm((f) => ({
                     ...f,
-                    dimensions_width: e.target.value ? Number(e.target.value) : null,
+                    dimensions_width: next.width,
+                    dimensions_length: next.length,
+                    dimensions_unit: next.dimensionsUnit,
                   }))}
-                  placeholder="Ex: 1370"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Cada item criado neste grupo herda esta largura. É ela que converte
-                  dm²/par em metros — <strong>sem largura o consumo sai ~100× inflado</strong>.
-                  Um item só diverge se aquele rolo for realmente de outra largura.
-                </p>
-                {!(Number(form.dimensions_width) > 0) && (
-                  <p className="text-xs text-destructive mt-1">
-                    Obrigatória para material de {sectorLabel(form.sector)}.
-                  </p>
-                )}
               </div>
+            )}
+            {!requiresAreaGeometry && requiresWidth && (
+              <WidthOnlyField
+                value={form.dimensions_width}
+                onChange={(n) => setForm((f) => ({ ...f, dimensions_width: n, dimensions_unit: 'mm' }))}
+                required
+              />
             )}
             {requirement === 'ask' && (
               <div>
@@ -607,7 +626,12 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 addGroup.isPending
                 || creatingWithColors
                 || !form.sector
-                || (requiresWidth && !(Number(form.dimensions_width) > 0))
+                || (requiresAreaGeometry && Boolean(validateAreaGeometryFields({
+                  width: form.dimensions_width,
+                  length: form.dimensions_length,
+                  dimensionsUnit: form.dimensions_unit,
+                }, true)))
+                || (!requiresAreaGeometry && requiresWidth && !(Number(form.dimensions_width) > 0))
                 || Boolean(colorBlocker)
               }
             >

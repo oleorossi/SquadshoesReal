@@ -55,6 +55,9 @@ import { Panel } from '@/components/ui/panel';
 import { sectorLabel, sectorOfGroup } from '@/lib/categoryFromGroup';
 import { getGroupPath } from '@/lib/groupHierarchy';
 import { useCan } from '@/hooks/useAccessControl';
+import { assertAreaGeometry, isAreaStockUnit } from '@/lib/areaGeometry';
+import AreaGeometryFields, { type AreaGeometryValue } from '@/components/groups/AreaGeometryFields';
+import GroupDialog from '@/components/groups/GroupDialog';
 
 const SOLADO_COLORS = ['Preto', 'Caramelo'];
 const ADULT_SIZES = [34, 35, 36, 37, 38, 39, 40];
@@ -139,6 +142,13 @@ export default function ProductDetail() {
   const [plateWidth, setPlateWidth] = useState(0);
   const [plateThickness, setPlateThickness] = useState(0);
   const [plateUnit, setPlateUnit] = useState('mm');
+  /** Inline na aba Estoque: grava no GRUPO quando unidade de área sem L×A. */
+  const [inlineGroupGeom, setInlineGroupGeom] = useState<AreaGeometryValue>({
+    width: null,
+    length: null,
+    dimensionsUnit: 'mm',
+  });
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
 
   const selectedGroup = useMemo(
     () => groups.find(group => group.id === form.group_id) || null,
@@ -350,17 +360,70 @@ export default function ProductDetail() {
       toast.error('Distribua o saldo atual na grade antes de reclassificar este item como solado.');
       return;
     }
+    const stockIsArea = isAreaStockUnit(form.unit);
+    if (stockIsArea && !form.group_id) {
+      toast.error('Unidade de área exige um grupo de estoque. Crie/vincule o grupo e informe largura × comprimento lá.');
+      return;
+    }
     setSaving(true);
     try {
+      // Porta única: geometria de área mora no grupo. Se faltava L×A, o inline
+      // da aba Estoque grava via RPC antes de salvar o item.
+      if (stockIsArea && selectedGroup) {
+        const groupGeom = assertAreaGeometry({
+          width: Number(selectedGroup.dimensions_width) || inlineGroupGeom.width,
+          length: Number(selectedGroup.dimensions_length) || inlineGroupGeom.length,
+          dimensionsUnit: selectedGroup.dimensions_unit || inlineGroupGeom.dimensionsUnit,
+        });
+        const groupAlreadyOk = assertAreaGeometry({
+          width: selectedGroup.dimensions_width,
+          length: selectedGroup.dimensions_length,
+          dimensionsUnit: selectedGroup.dimensions_unit,
+        }).ok;
+        if (!groupAlreadyOk) {
+          const inlineCheck = assertAreaGeometry(inlineGroupGeom);
+          if (!inlineCheck.ok) {
+            toast.error(inlineCheck.message);
+            setSaving(false);
+            return;
+          }
+          const { error: dimErr } = await (supabase as any).rpc('update_material_group_dimensions', {
+            p_group_id: selectedGroup.id,
+            p_length: inlineCheck.length,
+            p_width: inlineCheck.width,
+            p_thickness: Number(selectedGroup.dimensions_thickness) || 0,
+            p_unit: inlineCheck.dimensionsUnit,
+          });
+          if (dimErr) throw dimErr;
+          setPlateWidth(inlineCheck.width);
+          setPlateLength(inlineCheck.length);
+          setPlateUnit(inlineCheck.dimensionsUnit);
+          qc.invalidateQueries({ queryKey: ['product_groups'] });
+          qc.invalidateQueries({ queryKey: ['component_sheets'] });
+        }
+      }
+
       const baseData = { ...form };
       baseData.category = effectiveCategory;
       if (hasGrade) {
         baseData.stock_grade = soladoGrade;
       }
-      baseData.dimensions_length = plateLength;
-      baseData.dimensions_width = plateWidth;
-      baseData.dimensions_thickness = plateThickness;
-      baseData.dimensions_unit = plateUnit;
+      // Espelho local do grupo (não é fonte do consumo). Preferir dims do grupo.
+      const dimSource = selectedGroup && (Number(selectedGroup.dimensions_width) > 0)
+        ? selectedGroup
+        : null;
+      baseData.dimensions_length = dimSource
+        ? Number(dimSource.dimensions_length) || plateLength
+        : plateLength;
+      baseData.dimensions_width = dimSource
+        ? Number(dimSource.dimensions_width) || plateWidth
+        : plateWidth;
+      baseData.dimensions_thickness = dimSource
+        ? Number(dimSource.dimensions_thickness) || plateThickness
+        : plateThickness;
+      baseData.dimensions_unit = dimSource
+        ? (dimSource.dimensions_unit || plateUnit)
+        : plateUnit;
       baseData.supplier_color_code = baseData.supplier_color_code?.trim() || null;
       if (baseData.supplier_color_code && !baseData.supplier_id) {
         toast.error('Selecione o fornecedor antes de informar o código da cor.');
@@ -854,6 +917,52 @@ export default function ProductDetail() {
                     </SelectContent>
                   </Select>
                 </div>
+                {isAreaStockUnit(form.unit) && (
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    {!form.group_id ? (
+                      <div className="border-l-2 border-warning bg-warning/5 px-3 py-2 text-xs text-warning">
+                        Unidade de área exige grupo de estoque com largura × comprimento.
+                        Vincule um grupo na aba Geral ou crie o grupo com as dimensões.
+                      </div>
+                    ) : !assertAreaGeometry({
+                      width: selectedGroup?.dimensions_width,
+                      length: selectedGroup?.dimensions_length,
+                      dimensionsUnit: selectedGroup?.dimensions_unit,
+                    }).ok ? (
+                      <div className="space-y-2 rounded-md border border-border p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          Dimensões do grupo (obrigatório para {form.unit})
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Porta única: ao salvar, grava no grupo <strong>{selectedGroup?.name}</strong> e sincroniza as fichas.
+                        </p>
+                        <AreaGeometryFields
+                          idPrefix="stock-inline-area"
+                          required
+                          value={inlineGroupGeom}
+                          onChange={setInlineGroupGeom}
+                        />
+                      </div>
+                    ) : (
+                      <div className="border-l-2 border-primary bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                        Geometria do grupo {selectedGroup?.name}:{' '}
+                        <strong className="text-foreground font-mono">
+                          {formatNumber(Number(selectedGroup?.dimensions_width) || 0, 2)}
+                          ×{formatNumber(Number(selectedGroup?.dimensions_length) || 0, 2)}
+                          {' '}{selectedGroup?.dimensions_unit || 'mm'}
+                        </strong>
+                        {' · '}
+                        <button
+                          type="button"
+                          className="underline underline-offset-2 text-foreground"
+                          onClick={() => setGroupDialogOpen(true)}
+                        >
+                          Editar no grupo
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div>
                   <Label>Localização</Label>
                   <Select value={form.location} onValueChange={value => update('location', value)}>
@@ -919,34 +1028,50 @@ export default function ProductDetail() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 opacity-90">
                 <div>
                   <Label>Largura útil</Label>
-                  <NumberInput value={plateWidth} onChange={setPlateWidth} min={0} step="0.1" className="mt-1" />
+                  <div className="mt-1 flex h-10 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm">
+                    {formatNumber(plateWidth, 2)}
+                  </div>
                 </div>
                 <div>
                   <Label>Comprimento</Label>
-                  <NumberInput value={plateLength} onChange={setPlateLength} min={0} step="0.1" className="mt-1" />
+                  <div className="mt-1 flex h-10 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm">
+                    {formatNumber(plateLength, 2)}
+                  </div>
                 </div>
                 <div>
                   <Label>Espessura</Label>
-                  <NumberInput value={plateThickness} onChange={setPlateThickness} min={0} step="0.01" className="mt-1" />
+                  <div className="mt-1 flex h-10 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm">
+                    {formatNumber(plateThickness, 2)}
+                  </div>
                 </div>
                 <div>
                   <Label>Unidade dimensional</Label>
-                  <Select value={plateUnit} onValueChange={setPlateUnit}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="mm">mm</SelectItem>
-                      <SelectItem value="cm">cm</SelectItem>
-                      <SelectItem value="m">m</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="mt-1 flex h-10 items-center rounded-md border border-border bg-muted/30 px-3 font-mono text-sm">
+                    {plateUnit || 'mm'}
+                  </div>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                A conversão de material de área para metro linear usa exclusivamente a <strong className="text-foreground">largura útil</strong>.
-                O comprimento só compõe a área de placas.
+                Somente leitura neste item. A porta única de geometria é o{' '}
+                <strong className="text-foreground">grupo de estoque</strong>
+                {form.group_id ? (
+                  <>
+                    {' — '}
+                    <button
+                      type="button"
+                      className="underline underline-offset-2 text-foreground"
+                      onClick={() => setGroupDialogOpen(true)}
+                    >
+                      Editar no grupo
+                    </button>
+                  </>
+                ) : (
+                  '. Vincule um grupo na aba Geral.'
+                )}
+                . Consumo lê a ficha de componente sincronizada a partir do grupo.
               </p>
             </Panel>
 
@@ -1247,6 +1372,20 @@ export default function ProductDetail() {
         </Dialog>
       )}
       {forceDeleteFlow.dialog}
+      {selectedGroup && (
+        <GroupDialog
+          open={groupDialogOpen}
+          onOpenChange={(open) => {
+            setGroupDialogOpen(open);
+            if (!open) {
+              qc.invalidateQueries({ queryKey: ['product_groups'] });
+              qc.invalidateQueries({ queryKey: ['component_sheets'] });
+            }
+          }}
+          group={selectedGroup}
+          initialTab="specs"
+        />
+      )}
       {variantDeleteFlow.dialog}
     </AppLayout>
   );

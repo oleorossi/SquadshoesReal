@@ -26,6 +26,9 @@ import {
 } from '@/lib/soleColorResolution';
 import { isLeftoverCabedalExtra, leftoverCabedalDisplayName } from '@/lib/cabedalLeftover';
 import { upperAccessoryFollowsBaseMaterial } from '@/lib/upperAccessoryVariant';
+import { plateAreaDm2 } from '@/lib/areaGeometry';
+import { classifyBomMaterial } from '@/lib/bomClassify';
+export { classifyBomMaterial };
 
 /**
  * Oráculo TypeScript legado de consumo de materiais.
@@ -586,29 +589,13 @@ export function resolveInsoleBaseProductCanonical(
   return byStock[0];
 }
 
-/** Classifica um material de BOM (sheet_materials) num componentType. */
-export const classifyBomMaterial = (groupName: string, productName: string, category: string): string => {
-  const normalized = `${groupName} ${productName} ${category}`.toLowerCase();
-  if (normalized.includes('cabedal') || normalized.includes('napa') || normalized.includes('velvet') || normalized.includes('couro')) return 'Cabedal';
-  if (normalized.includes('solado')) return 'Solado';
-  if (normalized.includes('palmilha') || normalized.includes('placa')) return 'Palmilha';
-  if (normalized.includes('forração') || normalized.includes('forracao') || normalized.includes('forro')) return 'Forração';
-  if (normalized.includes('tira')) return 'Tiras';
-  if (normalized.includes('cola') || normalized.includes('adesivo')) return 'Químicos';
-  if (normalized.includes('embalagem') || normalized.includes('caixa')) return 'Embalagem';
-  return 'Outros';
-};
-
-/** Área da placa em dm² a partir das dimensões do grupo (mm por padrão). */
-export const calcGroupPlateAreaDm2 = (group: any): number => {
-  if (!group?.dimensions_length || !group?.dimensions_width) return 0;
-  const unit = (group.dimensions_unit || 'mm').toLowerCase();
-  let l = Number(group.dimensions_length);
-  let w = Number(group.dimensions_width);
-  if (unit === 'cm') { l *= 10; w *= 10; }
-  if (unit === 'm') { l *= 1000; w *= 1000; }
-  return (l * w) / 10000;
-};
+/** Área da placa em dm² — delega ao helper canônico (grupo/sheet). */
+export const calcGroupPlateAreaDm2 = (group: any): number =>
+  plateAreaDm2({
+    width: group?.dimensions_width,
+    length: group?.dimensions_length,
+    dimensionsUnit: group?.dimensions_unit || 'mm',
+  });
 
 /** Unidades de ESTOQUE de área (canônica `dm²` + grafias legadas). Diferente de
  *  PLATE_UNITS (materialConsumption.ts), aqui `placa` fica DE FORA: estoque
