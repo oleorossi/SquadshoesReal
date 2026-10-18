@@ -25,6 +25,8 @@ export function useAreaGeometryGaps(enabled = true) {
     enabled,
     staleTime: 30_000,
     queryFn: async () => {
+      // RPC nova — tipagem gerada ainda não inclui list_area_geometry_gaps.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc('list_area_geometry_gaps');
       if (error) throw error;
       return (data || []) as AreaGeometryGap[];

@@ -387,6 +387,7 @@ export default function ProductDetail() {
             setSaving(false);
             return;
           }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC tipada após regenerar types
           const { error: dimErr } = await (supabase as any).rpc('update_material_group_dimensions', {
             p_group_id: selectedGroup.id,
             p_length: inlineCheck.length,

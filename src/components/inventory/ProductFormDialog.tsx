@@ -735,11 +735,10 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
     }
     // Unidade de área: geometria L×A mora no grupo (porta única).
     if (isAreaStockUnit(form.unit)) {
-      const g = groups.find((x) => x.id === form.group_id) as any;
       const geom = assertAreaGeometry({
-        width: g?.dimensions_width ?? dimensoesDoGrupo?.width,
-        length: g?.dimensions_length ?? dimensoesDoGrupo?.length,
-        dimensionsUnit: g?.dimensions_unit ?? dimensoesDoGrupo?.unit,
+        width: dimensoesDoGrupo?.width,
+        length: dimensoesDoGrupo?.length,
+        dimensionsUnit: dimensoesDoGrupo?.unit,
       });
       if (!geom.ok) errs.area_geometry = true;
     }
