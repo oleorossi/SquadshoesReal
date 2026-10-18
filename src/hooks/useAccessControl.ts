@@ -16,6 +16,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/estoque?tab=conversion': 'estoque',
   '/compras/alcadas': 'financeiro',
   '/compras/inspecao': 'financeiro',
+  '/compras/pendencias-material': 'financeiro',
   '/references': 'produtos',
   '/dashboard': 'dashboard',
   '/pcp': 'producao',

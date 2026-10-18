@@ -6,6 +6,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { parseNFeXML, type ParsedNFe } from '@/lib/nfeParser';
 import { convertNfToStockUnit, toNfConversionProduct, NF_CONVERSION_PRODUCT_SELECT } from '@/lib/nfUnitConversion';
 import { weightedAverageUnitPrice } from '@/lib/purchaseConversion';
@@ -18,6 +20,13 @@ import { findGroupForProduct } from '@/hooks/useProducts';
 import type { Supplier } from '@/hooks/useSuppliers';
 import type { ParsedNFeDuplicata } from '@/lib/nfeParser';
 import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAllocationReviewStore';
+import {
+  buildReceiveReceipts,
+  pickDefaultPurchaseOrder,
+  type OpenPoWithSourcePvs,
+} from '@/lib/nfPoReceipt';
+import { executePurchaseOrderCommand } from '@/services/purchaseOrderCommandService';
+import { invalidateProductSupply } from '@/hooks/useProductSupplySummary';
 
 type Props = {
   open: boolean;
@@ -26,6 +35,14 @@ type Props = {
   onSupplierAutoCreate?: (data: Partial<Supplier> & { name: string }) => Promise<{ id: string } | undefined>;
   onPayablesCreate?: (supplierId: string | null, invoiceId: string, duplicatas: ParsedNFeDuplicata[], supplierName: string, invoiceNumber: string, paymentMethod: string) => void;
   onImportComplete?: (invoiceId: string) => void;
+  /** PVs do contexto (Relatório de Pendência) — preferidos ao escolher a OC. */
+  preferredSourcePvIds?: string[];
+};
+
+type PoOverlapState = {
+  orders: Array<OpenPoWithSourcePvs & { order_number: string; updated_at?: string | null }>;
+  matchedProductIds: string[];
+  selectedPoId: string;
 };
 
 // ── Matching NF-item → produto (níveis 1–5) ─────────────────────────────────
@@ -135,7 +152,15 @@ function matchNfItemToProduct<T extends MatchableProduct>(
   return match;
 }
 
-export default function XmlImportDialog({ open, onOpenChange, suppliers, onSupplierAutoCreate, onPayablesCreate, onImportComplete }: Props) {
+export default function XmlImportDialog({
+  open,
+  onOpenChange,
+  suppliers,
+  onSupplierAutoCreate,
+  onPayablesCreate,
+  onImportComplete,
+  preferredSourcePvIds,
+}: Props) {
   const [parsed, setParsed] = useState<ParsedNFe | null>(null);
   const [xmlRaw, setXmlRaw] = useState('');
   const [dragOver, setDragOver] = useState(false);
@@ -143,9 +168,8 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
   const [matchedSupplierId, setMatchedSupplierId] = useState<string | null>(null);
   const [excludedItems, setExcludedItems] = useState<Set<number>>(new Set());
   const [duplicateWarning, setDuplicateWarning] = useState<{ invoiceNumber: string; series: string; issueDate: string | null } | null>(null);
-  // F5-06: aviso NF↔OC — OCs abertas do MESMO fornecedor com itens desta NF
-  // ainda não recebidos. Importar a NF e depois receber a OC credita 2×.
-  const [poOverlapWarning, setPoOverlapWarning] = useState<{ orders: { order_number: string; status: string }[] } | null>(null);
+  // NF↔OC: crédito único via receive da OC (não mais "importar mesmo assim").
+  const [poOverlapWarning, setPoOverlapWarning] = useState<PoOverlapState | null>(null);
   const addInvoice = useAddInvoice();
   const addItems = useAddInvoiceItems();
   const queryClient = useQueryClient();
@@ -274,11 +298,8 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
   };
 
   /**
-   * F5-06 (dedupe NF↔OC): antes de creditar, procura OC ABERTA do mesmo
-   * fornecedor cujos itens casam com os desta NF (mesma pipeline de matching
-   * do auto-lançamento). Se achar, AVISA — importar a NF credita o estoque
-   * agora e receber a OC depois creditaria o MESMO fornecimento 2×.
-   * Guard best-effort: falha na checagem não impede a importação.
+   * Antes de creditar: se há OC aberta do mesmo fornecedor com os mesmos itens,
+   * abre o seletor — crédito entra pela OC (`receive`), nunca pelos dois caminhos.
    */
   const checkOpenPoAndImport = async () => {
     if (!parsed) return;
@@ -294,15 +315,45 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
         if (matchedIds.size > 0) {
           const { data: openPos } = await supabase
             .from('purchase_orders')
-            .select('id, order_number, status, purchase_order_items(product_id, received_at)')
+            .select('id, order_number, status, promised_date, supplier_id, source_pv_ids, updated_at, purchase_order_items(id, product_id, quantity, received_quantity, received_at)')
             .eq('supplier_id', matchedSupplierId)
             .in('status', ['pending', 'approved', 'sent', 'parcial']);
-          const overlapping = (openPos || []).filter((po: any) =>
-            (po.purchase_order_items || []).some((i: any) => !i.received_at && matchedIds.has(i.product_id)),
+          const candidates: PoOverlapState['orders'] = (openPos || []).map((po: any) => ({
+            id: po.id as string,
+            order_number: po.order_number as string,
+            status: po.status as string,
+            promised_date: po.promised_date ?? null,
+            supplier_id: po.supplier_id ?? null,
+            source_pv_ids: po.source_pv_ids ?? null,
+            updated_at: po.updated_at ?? null,
+            items: (po.purchase_order_items || []).map((i: any) => ({
+              id: i.id as string,
+              product_id: i.product_id as string | null,
+              quantity: Number(i.quantity) || 0,
+              received_quantity: i.received_quantity ?? null,
+              received_at: i.received_at ?? null,
+            })),
+          }));
+          const todayIso = new Date().toISOString().slice(0, 10);
+          const picked = pickDefaultPurchaseOrder(
+            candidates,
+            matchedIds,
+            todayIso,
+            preferredSourcePvIds,
           );
-          if (overlapping.length > 0) {
+          const overlapping = candidates.filter((po) =>
+            po.items.some((i) =>
+              !!i.product_id
+              && !i.received_at
+              && matchedIds.has(i.product_id)
+              && Number(i.quantity) - Number(i.received_quantity ?? 0) > 0.0001,
+            ),
+          );
+          if (overlapping.length > 0 && picked) {
             setPoOverlapWarning({
-              orders: overlapping.map((po: any) => ({ order_number: po.order_number, status: po.status })),
+              orders: overlapping,
+              matchedProductIds: [...matchedIds],
+              selectedPoId: picked.id,
             });
             return;
           }
@@ -311,11 +362,19 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
     } catch (err) {
       console.error('[NFe Import] Falha na checagem NF↔OC (seguindo com a importação):', err);
     }
-    await doImport();
+    await doImport({ creditStock: true, purchaseOrderId: null });
   };
 
-  const doImport = async () => {
+  const doImport = async (opts?: {
+    creditStock?: boolean;
+    purchaseOrderId?: string | null;
+    receiveReceipts?: Array<{ item_id: string; quantity: number; expected_received_quantity: number }>;
+    receiveProductIds?: string[];
+    expectedUpdatedAt?: string | null;
+  }) => {
     if (!parsed) return;
+    const creditStock = opts?.creditStock !== false;
+    const purchaseOrderId = opts?.purchaseOrderId ?? null;
     setDuplicateWarning(null);
     setImporting(true);
 
@@ -343,7 +402,7 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
         }
       }
 
-      // Create invoice
+      // Create invoice (amarrada à OC quando o crédito passa pelo receive)
       try {
         invoice = await addInvoice.mutateAsync({
           supplier_id: supplierId,
@@ -356,6 +415,7 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
           discount_value: parsed.discountValue,
           xml_data: xmlRaw,
           status: 'imported',
+          ...(purchaseOrderId ? { purchase_order_id: purchaseOrderId } : {}),
         });
       } catch (err: any) {
         console.error('[NFe Import] Erro ao gravar invoice:', err);
@@ -406,102 +466,116 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
         }
       }
 
-      // ── AUTO-LAUNCH TO STOCK ──
-      // Only process items not yet in stock (avoids double-launch on re-import)
+      // ── ESTOQUE ──
+      // Com OC selecionada: crédito ÚNICO via comando receive (não adjustStockSafe).
+      // Sem OC + creditStock: caminho legado (NF sem OC aberta).
+      // creditStock=false: só cadastra a NF (sem mexer no estoque).
       const pendingItems = createdInvoiceItems.filter(i => !i.added_to_stock);
-
       const products = await loadProductsForMatching();
-      // Janela do rateio da entrada (quitação automática de falta dos PVs).
       const inboundSince = inboundEntrySince();
       const launchedProductIds: string[] = [];
       let stockLaunched = 0;
       const failedItems: string[] = [];
       const conversionWarnings: string[] = [];
 
-      for (const invItem of pendingItems) {
+      if (purchaseOrderId && opts?.receiveReceipts && opts.receiveReceipts.length > 0) {
         try {
-          // Matching NF→produto (níveis 1–5, extraído pra matchNfItemToProduct)
-          const match = matchNfItemToProduct(products, invItem.product_name, invItem.product_code);
+          await executePurchaseOrderCommand({
+            command: 'receive',
+            purchaseOrderId,
+            expectedUpdatedAt: opts.expectedUpdatedAt ?? null,
+            payload: {
+              receipts: opts.receiveReceipts,
+              received_date: new Date().toISOString().slice(0, 10),
+              invoice_id: invoice.id,
+            },
+            logicalKey: `nf-receive:${invoice.id}:${purchaseOrderId}`,
+          });
+          const matchedSet = new Set(opts.receiveProductIds || []);
+          for (const invItem of pendingItems) {
+            const match = matchNfItemToProduct(products, invItem.product_name, invItem.product_code);
+            if (match && matchedSet.has(match.id)) {
+              await supabase
+                .from('invoice_items')
+                .update({ added_to_stock: true, product_id: match.id })
+                .eq('id', invItem.id);
+              stockLaunched++;
+              launchedProductIds.push(match.id);
+            }
+          }
+          invalidateProductSupply(queryClient);
+          queryClient.invalidateQueries({ queryKey: ['purchase_orders'] });
+        } catch (err: any) {
+          console.error('[NFe Import] Falha no receive da OC:', err);
+          toast.error(`NF salva, mas o recebimento da OC falhou: ${err?.message || 'erro'}`);
+          setImporting(false);
+          return;
+        }
+      } else if (creditStock) {
+        for (const invItem of pendingItems) {
+          try {
+            const match = matchNfItemToProduct(products, invItem.product_name, invItem.product_code);
 
-          if (match) {
-            // Convert NF qty/price to product's stock unit (handles metric and
-            // package conversions). toNfConversionProduct garante o MESMO
-            // conjunto de campos nos 3 caminhos de NF (F5-03).
-            const conv = convertNfToStockUnit(
-              invItem.quantity,
-              invItem.unit,
-              invItem.unit_price,
-              toNfConversionProduct(match),
-            );
+            if (match) {
+              const conv = convertNfToStockUnit(
+                invItem.quantity,
+                invItem.unit,
+                invItem.unit_price,
+                toNfConversionProduct(match),
+              );
 
-            // CRITICAL: if conversion is required but package_weight_kg is missing, skip
-            // and warn the user — do NOT silently import the wrong quantity.
-            if (conv.needsConfig) {
-              conversionWarnings.push(`${invItem.product_name}: ${conv.reason}`);
+              if (conv.needsConfig) {
+                conversionWarnings.push(`${invItem.product_name}: ${conv.reason}`);
+                failedItems.push(invItem.product_name);
+                continue;
+              }
+
+              const addQty = conv.qty;
+              const addPrice = conv.unitPrice;
+              const oldQty = match.quantity ?? 0;
+              const oldPrice = match.unit_price ?? 0;
+              const newQty = oldQty + addQty;
+              const newPrice = weightedAverageUnitPrice(oldQty, oldPrice, addQty, addPrice);
+              const conversionNote = conv.converted
+                ? ` (convertido ${invItem.quantity} ${invItem.unit} → ${addQty.toFixed(2)} ${match.unit})`
+                : '';
+              const adjustResult = await adjustStockSafe({
+                productId: match.id,
+                expectedPrevious: oldQty,
+                newQty,
+                reason: `Entrada via NF ${parsed.invoiceNumber} - ${invItem.product_name}${conversionNote}`,
+              });
+              if (!adjustResult.success) throw new Error(adjustResult.errorMessage);
+
+              const { error: updateInvoiceItemError } = await supabase
+                .from('invoice_items')
+                .update({ added_to_stock: true, product_id: match.id })
+                .eq('id', invItem.id);
+
+              if (updateInvoiceItemError) throw updateInvoiceItemError;
+
+              const updatePayload: Record<string, any> = { unit_price: newPrice };
+              if (supplierId) updatePayload.supplier_id = supplierId;
+              const { error: updateProductError } = await supabase
+                .from('products')
+                .update(updatePayload)
+                .eq('id', match.id);
+              if (updateProductError) {
+                console.error(`[NFe Import] Falha ao atualizar preço/fornecedor de "${match.name}":`, updateProductError);
+              }
+
+              match.quantity = newQty;
+              match.unit_price = newPrice;
+              if (supplierId) match.supplier_id = supplierId;
+              stockLaunched++;
+              launchedProductIds.push(match.id);
+            } else {
               failedItems.push(invItem.product_name);
-              continue;
             }
-
-            const addQty = conv.qty;
-            const addPrice = conv.unitPrice;
-
-            const oldQty = match.quantity ?? 0;
-            const oldPrice = match.unit_price ?? 0;
-            const newQty = oldQty + addQty;
-            // Weighted average price (in the product's stock unit) — fonte
-            // única compartilhada com o recebimento de OC (F5-05).
-            const newPrice = weightedAverageUnitPrice(oldQty, oldPrice, addQty, addPrice);
-
-            // M13 (auditoria 2026-06-09): crédito via RPC adjust_stock
-            // (adjustStockSafe) — atômico (SELECT FOR UPDATE + optimistic check
-            // em oldQty) e já grava o stock_movement com a mesma descrição.
-            // Antes era read-modify-write manual (UPDATE + INSERT separados):
-            // corrida com outro usuário corrompia a quantidade.
-            const conversionNote = conv.converted
-              ? ` (convertido ${invItem.quantity} ${invItem.unit} → ${addQty.toFixed(2)} ${match.unit})`
-              : '';
-            const adjustResult = await adjustStockSafe({
-              productId: match.id,
-              expectedPrevious: oldQty,
-              newQty,
-              reason: `Entrada via NF ${parsed.invoiceNumber} - ${invItem.product_name}${conversionNote}`,
-            });
-            if (!adjustResult.success) throw new Error(adjustResult.errorMessage);
-
-            const { error: updateInvoiceItemError } = await supabase
-              .from('invoice_items')
-              .update({ added_to_stock: true, product_id: match.id })
-              .eq('id', invItem.id);
-
-            if (updateInvoiceItemError) throw updateInvoiceItemError;
-
-            // Preço médio ponderado + fornecedor da NF — fora do ajuste de
-            // quantidade (não-crítico pra concorrência de estoque). Falha aqui
-            // não desfaz o crédito: loga e segue (o estoque já está correto).
-            const updatePayload: Record<string, any> = { unit_price: newPrice };
-            if (supplierId) {
-              updatePayload.supplier_id = supplierId;
-            }
-            const { error: updateProductError } = await supabase
-              .from('products')
-              .update(updatePayload)
-              .eq('id', match.id);
-            if (updateProductError) {
-              console.error(`[NFe Import] Falha ao atualizar preço/fornecedor de "${match.name}":`, updateProductError);
-            }
-
-            // Update local cache for subsequent items
-            match.quantity = newQty;
-            match.unit_price = newPrice;
-            if (supplierId) match.supplier_id = supplierId;
-            stockLaunched++;
-            launchedProductIds.push(match.id);
-          } else {
+          } catch (err: any) {
+            console.error(`Erro ao lançar item "${invItem.product_name}" no estoque:`, err);
             failedItems.push(invItem.product_name);
           }
-        } catch (err: any) {
-          console.error(`Erro ao lançar item "${invItem.product_name}" no estoque:`, err);
-          failedItems.push(invItem.product_name);
         }
       }
 
@@ -512,6 +586,10 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
       const totalItems = createdInvoiceItems.length;
       if (totalItems === 0) {
         toast.warning('NF salva, porém sem itens. Verifique o XML ou as permissões da tabela invoice_items.', { duration: 8000 });
+      } else if (purchaseOrderId && stockLaunched > 0) {
+        toast.success(`NF importada e OC recebida — ${stockLaunched} item(ns) no estoque (crédito único).`);
+      } else if (!creditStock) {
+        toast.success(`NF cadastrada com ${totalItems} item(ns), sem lançar estoque.`);
       } else if (stockLaunched > 0) {
         toast.success(`NF importada! ${stockLaunched}/${totalItems} item(ns) lançados no estoque automaticamente.`);
       } else {
@@ -748,37 +826,83 @@ export default function XmlImportDialog({ open, onOpenChange, suppliers, onSuppl
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* F5-06: aviso NF↔OC — evita crédito duplo silencioso quando o mesmo
-          fornecimento existe como OC aberta E chega como XML de NF. */}
+      {/* NF↔OC: crédito único via receive da OC (sem "importar mesmo assim"). */}
       <AlertDialog open={!!poOverlapWarning} onOpenChange={(v) => { if (!v) setPoOverlapWarning(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-warning">
-              <AlertCircle className="h-5 w-5" />
-              OC aberta deste fornecedor com os mesmos itens
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-warning" />
+              Receber pela ordem de compra
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <p>
-                  {(poOverlapWarning?.orders.length ?? 0) === 1 ? 'A ordem de compra' : 'As ordens de compra'}{' '}
-                  <strong>{poOverlapWarning?.orders.map(o => o.order_number).join(', ')}</strong>{' '}
-                  {(poOverlapWarning?.orders.length ?? 0) === 1 ? 'está aberta' : 'estão abertas'} para este fornecedor
-                  com itens desta NF ainda não recebidos.
+                  Há OC aberta deste fornecedor com os mesmos itens. O estoque entra{' '}
+                  <strong>uma vez</strong>, pelo recebimento da OC — a NF fica vinculada a ela.
                 </p>
-                <p>
-                  Importar a NF credita o estoque <strong>agora</strong> — se depois a OC for marcada como
-                  recebida, o mesmo material entra <strong>duas vezes</strong>. Se esta NF é a entrega da OC,
-                  importe aqui e depois <strong>cancele ou ajuste a OC</strong> (não a receba de novo), ou
-                  receba pela tela de OCs e não importe esta NF pro estoque.
-                </p>
+                {poOverlapWarning && poOverlapWarning.orders.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="nf-po-select">Ordem de compra</Label>
+                    <Select
+                      value={poOverlapWarning.selectedPoId}
+                      onValueChange={(id) => setPoOverlapWarning((prev) => prev ? { ...prev, selectedPoId: id } : prev)}
+                    >
+                      <SelectTrigger id="nf-po-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {poOverlapWarning.orders.map((o) => (
+                          <SelectItem key={o.id} value={o.id}>
+                            {o.order_number} · {o.status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setPoOverlapWarning(null); void doImport(); }} className="bg-warning text-warning-foreground hover:bg-warning/90">
-              Importar mesmo assim
-            </AlertDialogAction>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={importing}
+              onClick={() => {
+                const state = poOverlapWarning;
+                setPoOverlapWarning(null);
+                void doImport({ creditStock: false, purchaseOrderId: state?.selectedPoId ?? null });
+              }}
+            >
+              Só cadastrar NF (sem estoque)
+            </Button>
+            <Button
+              type="button"
+              disabled={importing || !poOverlapWarning?.selectedPoId}
+              onClick={() => {
+                const state = poOverlapWarning;
+                if (!state) return;
+                const po = state.orders.find((o) => o.id === state.selectedPoId);
+                if (!po) return;
+                const matched = new Set(state.matchedProductIds);
+                const receipts = buildReceiveReceipts(po.items, matched);
+                if (receipts.length === 0) {
+                  toast.error('Nenhum item em aberto nesta OC casa com a NF.');
+                  return;
+                }
+                setPoOverlapWarning(null);
+                void doImport({
+                  creditStock: true,
+                  purchaseOrderId: po.id,
+                  receiveReceipts: receipts,
+                  receiveProductIds: state.matchedProductIds,
+                  expectedUpdatedAt: po.updated_at ?? null,
+                });
+              }}
+            >
+              Receber pela OC
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

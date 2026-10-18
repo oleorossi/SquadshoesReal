@@ -1222,6 +1222,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/InspecaoRecebimento").then(m => ({ Component: m.default })),
       },
       {
+        // Relatório de Pendência — materiais com quantity_short em PVs ativos
+        path: "compras/pendencias-material",
+        lazy: () => import("./pages/RelatorioPendenciaMaterial").then(m => ({ Component: m.default })),
+      },
+      {
         // Inventário cíclico + curva ABC
         path: "estoque/inventario",
         lazy: () => import("./pages/InventarioABC").then(m => ({ Component: m.default })),

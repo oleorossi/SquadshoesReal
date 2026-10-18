@@ -45,6 +45,8 @@ export type Supplier = {
 export type Invoice = {
   id: string;
   supplier_id: string | null;
+  /** OC conferida nesta NF — estoque entra pelo receive, não pelo auto-lançamento. */
+  purchase_order_id?: string | null;
   invoice_number: string;
   invoice_series: string;
   invoice_key: string;

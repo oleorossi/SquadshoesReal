@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 import {
   InboundAllocationEditError,
   useApplyInboundAllocationEdit,
@@ -56,6 +57,10 @@ interface DraftLine {
   quantity: number;
   /** Entrada de onde veio o rateio automático (null = linha incluída à mão). */
   stock_movement_id: string | null;
+  /** Menor = mais prioritário (espelha commitment_cover_priority). */
+  priority: number | null;
+  billing_week: string | null;
+  delivery_deadline: string | null;
 }
 
 interface ProductDraft {
@@ -75,7 +80,11 @@ const lineKey = (reservationId: string, sizeKey: string | null) => `${reservatio
 const compareSize = (a: string | null, b: string | null) =>
   (a ?? '').localeCompare(b ?? '', 'pt-BR', { numeric: true });
 
-function buildDrafts(rows: InboundAllocationRow[]): ProductDraft[] {
+function buildDrafts(
+  rows: InboundAllocationRow[],
+  priorityByReservation: Map<string, number>,
+  pvMeta: Map<string, { billing_week: string | null; delivery_deadline: string | null }>,
+): ProductDraft[] {
   const byProduct = new Map<string, ProductDraft>();
   for (const r of rows) {
     // Reserva apagada depois da entrada: nada a editar nessa linha.
@@ -87,6 +96,7 @@ function buildDrafts(rows: InboundAllocationRow[]): ProductDraft[] {
     }
     const key = lineKey(r.reservation_id, r.size_key);
     const existing = draft.lines.find((l) => l.key === key);
+    const meta = r.sale_order_id ? pvMeta.get(r.sale_order_id) : undefined;
     if (existing) {
       existing.original += r.quantity;
       existing.quantity += r.quantity;
@@ -101,17 +111,33 @@ function buildDrafts(rows: InboundAllocationRow[]): ProductDraft[] {
         original: r.quantity,
         quantity: r.quantity,
         stock_movement_id: r.stock_movement_id,
+        priority: priorityByReservation.get(r.reservation_id) ?? null,
+        billing_week: meta?.billing_week ?? null,
+        delivery_deadline: meta?.delivery_deadline ?? null,
       });
     }
   }
   const drafts = [...byProduct.values()];
   for (const d of drafts) {
+    // Disputa: de cima pra baixo pela prioridade de faturamento (menor score primeiro).
     d.lines.sort((a, b) =>
-      (a.order_number ?? '').localeCompare(b.order_number ?? '', 'pt-BR', { numeric: true })
+      (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER)
+      || (a.billing_week || '9999').localeCompare(b.billing_week || '9999')
+      || (a.delivery_deadline || '9999-99-99').localeCompare(b.delivery_deadline || '9999-99-99')
+      || (a.order_number ?? '').localeCompare(b.order_number ?? '', 'pt-BR', { numeric: true })
       || compareSize(a.size_key, b.size_key));
   }
   return drafts.sort((a, b) => a.product_name.localeCompare(b.product_name, 'pt-BR'));
 }
+
+const fmtDeadline = (iso: string | null | undefined) => {
+  if (!iso) return null;
+  try {
+    return new Date(iso.includes('T') ? iso : `${iso}T00:00:00`).toLocaleDateString('pt-BR');
+  } catch {
+    return iso;
+  }
+};
 
 const productChanged = (d: ProductDraft) => d.lines.some((l) => Math.abs(l.quantity - l.original) > EPS);
 
@@ -155,14 +181,49 @@ export default function InboundAllocationDialog({ open, onOpenChange, productIds
 
   useEffect(() => {
     if (!open || drafts !== null) return;
-    if (allocationsQ.isSuccess) {
-      const built = buildDrafts(allocationsQ.data);
+    if (allocationsQ.isError) {
+      onOpenChange(false);
+      return;
+    }
+    if (!allocationsQ.isSuccess) return;
+
+    let cancelled = false;
+    (async () => {
+      const rows = allocationsQ.data;
+      const priorityByReservation = new Map<string, number>();
+      for (const s of shortagesQ.data ?? []) {
+        if (s.priority != null) priorityByReservation.set(s.reservation_id, s.priority);
+      }
+      const soIds = [...new Set(rows.map((r) => r.sale_order_id).filter((id): id is string => !!id))];
+      const pvMeta = new Map<string, { billing_week: string | null; delivery_deadline: string | null }>();
+      if (soIds.length > 0) {
+        const { data } = await supabase
+          .from('sale_orders')
+          .select('id, billing_week, delivery_deadline')
+          .in('id', soIds);
+        for (const o of data ?? []) {
+          pvMeta.set(o.id, {
+            billing_week: o.billing_week ?? null,
+            delivery_deadline: o.delivery_deadline ?? null,
+          });
+        }
+      }
+      if (cancelled) return;
+      const built = buildDrafts(rows, priorityByReservation, pvMeta);
       if (built.length === 0) onOpenChange(false);
       else setDrafts(built);
-    } else if (allocationsQ.isError) {
-      onOpenChange(false);
-    }
-  }, [open, drafts, allocationsQ.isSuccess, allocationsQ.isError, allocationsQ.data, onOpenChange]);
+    })();
+
+    return () => { cancelled = true; };
+  }, [
+    open,
+    drafts,
+    allocationsQ.isSuccess,
+    allocationsQ.isError,
+    allocationsQ.data,
+    shortagesQ.data,
+    onOpenChange,
+  ]);
 
   // Falta restante (depois do rateio automático) por linha.
   const openShortByKey = useMemo(() => {
@@ -237,9 +298,17 @@ export default function InboundAllocationDialog({ open, onOpenChange, productIds
       original: 0,
       quantity: s.size_key ? Math.floor(initial) : initial,
       stock_movement_id: null,
+      priority: s.priority,
+      billing_week: null,
+      delivery_deadline: null,
     };
-    setDrafts((prev) => (prev ?? []).map((d) =>
-      d.product_id === draft.product_id ? { ...d, lines: [...d.lines, line] } : d));
+    setDrafts((prev) => (prev ?? []).map((d) => {
+      if (d.product_id !== draft.product_id) return d;
+      const lines = [...d.lines, line].sort((a, b) =>
+        (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER)
+        || (a.order_number ?? '').localeCompare(b.order_number ?? '', 'pt-BR', { numeric: true }));
+      return { ...d, lines };
+    }));
   };
 
   const handleConfirm = async () => {
@@ -290,7 +359,7 @@ export default function InboundAllocationDialog({ open, onOpenChange, productIds
           <DialogDescription>
             {phase === 'done'
               ? 'Quanto ficou para cada PV e quanto ficou livre no estoque.'
-              : 'A entrada já quitou a falta dos PVs pela prioridade. Ajuste as quantidades se quiser outro rateio, ou mantenha como está.'}
+              : 'Disputa entre pedidos — ordenados pela semana de faturamento (mais próxima em cima). Ajuste se quiser outro rateio, ou confirme.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -332,11 +401,28 @@ export default function InboundAllocationDialog({ open, onOpenChange, productIds
                       <div key={line.key} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
                         <div className="min-w-0 flex-1">
                           <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-foreground">
-                            <span className="font-mono">{line.order_number ?? 'PV'}</span>
+                            {line.sale_order_id ? (
+                              <Link
+                                to={`/sales?pv=${line.sale_order_id}`}
+                                className="font-mono underline-offset-2 hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {line.order_number ?? 'PV'}
+                              </Link>
+                            ) : (
+                              <span className="font-mono">{line.order_number ?? 'PV'}</span>
+                            )}
                             {line.size_key && <Badge variant="mono">nº {line.size_key}</Badge>}
                             {line.original === 0 && phase === 'edit' && <Badge variant="outline">incluído</Badge>}
                           </p>
                           {line.client_name && <p className="truncate text-xs text-muted-foreground">{line.client_name}</p>}
+                          {(line.billing_week || line.delivery_deadline) && (
+                            <p className="text-xs text-muted-foreground">
+                              {line.billing_week && <>Sem. fat. <strong className="text-foreground">{line.billing_week}</strong></>}
+                              {line.billing_week && line.delivery_deadline && ' · '}
+                              {line.delivery_deadline && <>Prazo <strong className="text-foreground">{fmtDeadline(line.delivery_deadline)}</strong></>}
+                            </p>
+                          )}
                         </div>
                         {phase === 'edit' ? (
                           <>

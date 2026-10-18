@@ -152,15 +152,33 @@ export function overlappingOpenPos<T extends OpenPoCandidate>(
   );
 }
 
-/** Prefere quase entregue com overlap; senão overlap; senão quase entregue do fornecedor. */
-export function pickDefaultPurchaseOrder<T extends OpenPoCandidate>(
+export type OpenPoWithSourcePvs = OpenPoCandidate & {
+  source_pv_ids?: string[] | null;
+};
+
+/**
+ * Prefere OC ligada aos PVs do contexto (Relatório de Pendência); senão
+ * quase-entregue com overlap; senão overlap; senão quase-entregue do fornecedor.
+ */
+export function pickDefaultPurchaseOrder<T extends OpenPoWithSourcePvs>(
   orders: T[],
   matchedProductIds: Set<string>,
   todayIso: string,
+  preferredSourcePvIds?: ReadonlyArray<string> | null,
 ): T | null {
   if (orders.length === 0) return null;
   const almost = filterAlmostDelivered(orders, todayIso);
   const overlap = overlappingOpenPos(orders, matchedProductIds);
+  const preferred = new Set((preferredSourcePvIds || []).filter(Boolean));
+  if (preferred.size > 0) {
+    const fromContext = overlap.filter((po) =>
+      (po.source_pv_ids || []).some((id) => preferred.has(id)),
+    );
+    if (fromContext.length > 0) {
+      const almostCtx = fromContext.filter((po) => almost.some((a) => a.id === po.id));
+      return almostCtx[0] ?? fromContext[0];
+    }
+  }
   const almostOverlap = overlap.filter((po) => almost.some((a) => a.id === po.id));
   if (almostOverlap.length > 0) return almostOverlap[0];
   if (overlap.length > 0) return overlap[0];

@@ -64,6 +64,16 @@ function notifyInboundEntry() {
   });
 }
 
+/** True = abrir diálogo de rateio. Um PV só → auto (servidor já quitou). */
+export function shouldOpenInboundAllocationDispute(
+  saleOrderIds: Array<string | null | undefined>,
+  alreadyOpen: boolean,
+): boolean {
+  const pvIds = new Set(saleOrderIds.filter((id): id is string => !!id));
+  if (pvIds.size <= 1 && !alreadyOpen) return false;
+  return true;
+}
+
 export async function openInboundAllocationReview(req: {
   productIds: Array<string | null | undefined>;
   since: string;
@@ -76,6 +86,15 @@ export async function openInboundAllocationReview(req: {
   const rows = await checkInboundAllocations(ids, since);
   if (rows.length === 0) return false;
   const touched = [...new Set(rows.map((r) => r.product_id))];
+
+  // Q9-C (Relatório de Pendência): um único PV na falta → o rateio do servidor
+  // já basta. Não abre o diálogo. Disputa (≥2 PVs) continua pedindo confirmação.
+  if (!shouldOpenInboundAllocationDispute(
+    rows.map((r) => r.sale_order_id),
+    !!state.request,
+  )) {
+    return false;
+  }
 
   const current = state.request;
   if (current) {

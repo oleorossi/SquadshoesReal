@@ -98,6 +98,21 @@ describe('pickDefaultPurchaseOrder + receipts', () => {
     expect(picked?.id).toBe('soon');
   });
 
+  it('prefere OC ligada aos PVs do contexto do relatório', () => {
+    const withPv = [
+      { ...orders[0], source_pv_ids: ['pv-x'] },
+      { ...orders[1], source_pv_ids: ['pv-target'] },
+      { ...orders[2], source_pv_ids: [] as string[] },
+    ];
+    const picked = pickDefaultPurchaseOrder(
+      withPv,
+      new Set(['preto']),
+      '2026-09-04',
+      ['pv-target'],
+    );
+    expect(picked?.id).toBe('soon');
+  });
+
   it('lista overlap sem chutar produto errado', () => {
     expect(overlappingOpenPos(orders, new Set(['cola'])).map((o) => o.id)).toEqual(['other']);
   });
