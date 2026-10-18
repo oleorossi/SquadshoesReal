@@ -87,7 +87,7 @@ describe('Cabedal dublado — contrato frontend e persistência', () => {
     // is_bom_color_source, is_color_agnostic). O contrato que importa é que
     // consumption_unit e as quatro dimensões continuem sendo lidos.
     expect(groupColorProducts).toMatch(
-      /\.select\('is_artisanal_strap,[^']*consumption_unit, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit'\)/,
+      /\.select\('is_artisanal_strap,[^']*consumption_unit, dimensions_length, dimensions_width, dimensions_thickness, dimensions_unit, default_unit_price'\)/,
     );
     expect(groupColorProducts).toContain("const explicitStockUnit = String(spec.stockUnit || '').trim();");
     expect(groupColorProducts).toContain('if (!last && !explicitStockUnit)');
