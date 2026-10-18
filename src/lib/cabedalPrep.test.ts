@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ATELIER_READY_BEFORE_BILLING_DAYS_DEFAULT,
   assemblyDaysNeeded,
+  atelierOcDatesFromReady,
   billingWeekStartDate,
   cabedalLeadDaysBeforeBilling,
   cabedalReadyDate,
@@ -57,6 +58,39 @@ describe('cabedalPrep — meta vs montagem', () => {
     });
     expect(a).toBe(b);
     expect(a).toBe('2026-04-24');
+  });
+
+  it('OC: comprar e chegar antes do pronto (pipeline + lead)', () => {
+    // pronto 14 → pipeline 5 → chegar 09; lead 7 → comprar 02
+    const t = atelierOcDatesFromReady({
+      readyDate: '2026-05-14',
+      costuraOffsetDays: 5,
+      aviamentoOffsetDays: 3,
+      supplierLeadDays: 7,
+    });
+    expect(t).toEqual({
+      readyDate: '2026-05-14',
+      promisedDate: '2026-05-09',
+      purchaseByDate: '2026-05-02',
+      pipelineDays: 5,
+      leadDays: 7,
+    });
+  });
+
+  it('OC: fatura 14 → pronto 7 → chegar e comprar bem antes', () => {
+    const ready = cabedalReadyDate({
+      billingWeek: '2026-05-S2',
+      readyBeforeBillingDays: 7,
+    });
+    const t = atelierOcDatesFromReady({
+      readyDate: ready,
+      costuraOffsetDays: 5,
+      aviamentoOffsetDays: 5,
+      supplierLeadDays: 10,
+    });
+    expect(t).not.toBeNull();
+    expect(t!.promisedDate < t!.readyDate).toBe(true);
+    expect(t!.purchaseByDate < t!.promisedDate).toBe(true);
   });
 });
 

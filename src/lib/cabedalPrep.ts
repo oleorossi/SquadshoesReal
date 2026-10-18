@@ -95,6 +95,36 @@ export function cabedalReadyDate(params: {
   return addCalendarDays(dayD, -lead);
 }
 
+/**
+ * Datas da OC do kit: o material bruto chega e é comprado ANTES do pronto,
+ * para dar tempo de corte → prestador → volta.
+ *
+ * promised = ready − max(costuraOffset, aviamentoOffset)
+ * purchaseBy = promised − supplierLeadDays
+ */
+export function atelierOcDatesFromReady(params: {
+  readyDate: string | null | undefined;
+  costuraOffsetDays?: number;
+  aviamentoOffsetDays?: number;
+  supplierLeadDays?: number;
+}): {
+  readyDate: string;
+  promisedDate: string;
+  purchaseByDate: string;
+  pipelineDays: number;
+  leadDays: number;
+} | null {
+  const ready = String(params.readyDate ?? '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ready)) return null;
+  const costura = Math.max(0, Math.round(Number(params.costuraOffsetDays) || 5));
+  const aviamento = Math.max(0, Math.round(Number(params.aviamentoOffsetDays) || 5));
+  const pipelineDays = Math.max(costura, aviamento);
+  const leadDays = Math.max(0, Math.round(Number(params.supplierLeadDays) || 10));
+  const promisedDate = addCalendarDays(ready, -pipelineDays);
+  const purchaseByDate = addCalendarDays(promisedDate, -leadDays);
+  return { readyDate: ready, promisedDate, purchaseByDate, pipelineDays, leadDays };
+}
+
 export interface PrepAllocationInput {
   contractorId: string;
   sector: CabedalPrepSector;

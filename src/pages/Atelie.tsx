@@ -489,8 +489,9 @@ function AgendaSettings() {
             Agenda · pronto antes do faturamento
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Material do kit pronto N dias antes do início da semana de faturamento (ex.: fatura dia 14 →
-            pronto dia 7). Offsets de Costura/Aviamento: dias úteis antes do corte programado.
+            Material do kit pronto N dias antes do faturamento (ex.: fatura 14 → pronto 7). Se faltar em
+            estoque, a OC antecipa: chegar = pronto − max(Costura, Aviamento); comprar = chegar − lead do
+            fornecedor — para o cabedal estar pronto quando a produção começa.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
