@@ -26,12 +26,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { NumberInput } from '@/components/ui/number-input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import {
   ArrowLeft,
   FloppyDisk as Save,
   CircleNotch as Loader2,
   Image as ImageIcon,
-  X,
   Stack as Layers,
   Footprints,
   ClockCounterClockwise as History,
@@ -103,7 +103,6 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const perm = useCan('/estoque');
-  const [zoomOpen, setZoomOpen] = useState(false);
   const [variantDialogOpen, setVariantDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -674,18 +673,14 @@ export default function ProductDetail() {
               <Card>
                 <CardContent className="flex flex-col items-center gap-3 p-4">
                   {form.image_url ? (
-                    <button
-                      type="button"
-                      className="w-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={() => setZoomOpen(true)}
-                      aria-label="Ampliar imagem do material"
-                    >
-                      <img
-                        src={form.image_url}
-                        alt={form.name || product.name}
-                        className="max-h-64 w-full rounded-lg object-contain transition-all hover:ring-2 hover:ring-primary/50"
-                      />
-                    </button>
+                    <ZoomableImage
+                      src={form.image_url}
+                      alt={form.name || product.name}
+                      fit="contain"
+                      buttonClassName="w-full rounded-lg"
+                      className="max-h-64 w-full rounded-lg transition-all hover:ring-2 hover:ring-primary/50"
+                      enlargeLabel="Ampliar imagem do material"
+                    />
                   ) : (
                     <div className="flex h-48 w-full items-center justify-center rounded-lg bg-muted">
                       <ImageIcon className="h-12 w-12 text-muted-foreground/30" />
@@ -1318,24 +1313,6 @@ export default function ProductDetail() {
           </Button>}
         </div>
       </div>
-
-      {form.image_url && (
-        <Dialog open={zoomOpen} onOpenChange={setZoomOpen}>
-          <DialogContent className="max-w-3xl bg-background/95 p-2 backdrop-blur-sm">
-            <button
-              type="button"
-              className="absolute right-2 top-2 z-10 rounded-full bg-background/80 p-1.5 transition-colors hover:bg-muted"
-              onClick={() => setZoomOpen(false)}
-              aria-label="Fechar imagem ampliada"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <div className="flex min-h-[300px] items-center justify-center">
-              <img src={form.image_url} alt={form.name || product.name} className="max-h-[80vh] max-w-full rounded-lg object-contain" />
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
 
       {/* A lista de variantes é um PAINEL sem janela própria (22/08/2026): quem
           abre é que decide o invólucro. Na tela de estoque ela é aba da janela

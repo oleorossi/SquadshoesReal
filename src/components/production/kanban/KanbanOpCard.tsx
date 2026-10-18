@@ -5,6 +5,7 @@ import {
   CheckSquare, Square, Warning as AlertTriangle, CalendarBlank, Package, Timer,
   CheckCircle as CheckCircle2, Circle,
 } from '@phosphor-icons/react';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { thumbUrl } from '@/lib/imageThumb';
 import { fmtDate, KanbanCardData } from './kanbanDerive';
 import { cardCommercialPrimary, partialRemaining } from './kanbanQueueSplit';
@@ -159,11 +160,14 @@ export function KanbanOpCard({
           </span>
         )}
         {thumb ? (
-          <img
+          <ZoomableImage
             src={thumb}
-            alt=""
-            className={`${compact ? 'h-8 w-8 md:h-7 md:w-7' : 'h-9 w-9'} rounded object-contain bg-muted shrink-0`}
+            lightboxSrc={photoUrl || q.reference_photo_url || thumb}
+            alt={q.reference_name || 'Referência'}
+            fit="contain"
             loading="lazy"
+            buttonClassName={`${compact ? 'h-8 w-8 md:h-7 md:w-7' : 'h-9 w-9'} rounded bg-muted shrink-0`}
+            className="rounded object-contain"
           />
         ) : (
           <div className={`${compact ? 'h-8 w-8 md:h-7 md:w-7' : 'h-9 w-9'} rounded bg-muted shrink-0`} />

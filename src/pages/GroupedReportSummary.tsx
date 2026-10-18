@@ -13,6 +13,7 @@ import { useOrderStraps } from '@/hooks/useOrderStraps';
  import { buildGroupedReportSummary } from '@/lib/groupedReportSummary';
 import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { applyPrintSandbox } from '@/lib/htmlUtils';
@@ -466,9 +467,11 @@ ${styles}
                       <div className="grid gap-4 md:grid-cols-[180px,1fr] print:grid-cols-[120px,1fr] print:gap-2">
                         <div className="overflow-hidden rounded-lg border border-border bg-muted/40 aspect-square flex items-center justify-center print-img">
                           {item.imageUrl ? (
-                            <SignedImage
+                            <ZoomableImage
                               src={item.imageUrl}
                               alt={`${item.refCode} ${item.refName} ${item.color}`}
+                              fit="contain"
+                              buttonClassName="h-full w-full"
                               className="h-full w-full object-contain"
                             />
                           ) : (

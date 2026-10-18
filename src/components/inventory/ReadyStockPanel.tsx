@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { toast } from 'sonner';
 
@@ -788,9 +789,14 @@ ${cardsHtml}
                   );
                   return (
                     <div className="relative group">
-                      <img src={url} alt={selColor} className="h-32 w-32 rounded-lg object-cover border-2 border-border shadow-md" />
-                      <div className="absolute inset-0 rounded-lg bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Badge className="bg-primary/90 text-white border-none text-xs">{selColor}</Badge>
+                      <ZoomableImage
+                        src={url}
+                        alt={selColor}
+                        buttonClassName="h-32 w-32 rounded-lg border-2 border-border shadow-md"
+                        className="rounded-lg object-cover"
+                      />
+                      <div className="pointer-events-none absolute inset-0 rounded-lg bg-foreground/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Badge className="bg-primary/90 text-primary-foreground border-none text-xs">{selColor}</Badge>
                       </div>
                     </div>
                   );

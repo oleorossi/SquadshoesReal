@@ -27,7 +27,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
-import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -390,7 +390,14 @@ export default function ProductionFlow({ embedded = false }: { embedded?: boolea
                   {detailLoading ? (
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   ) : detailPhoto ? (
-                    <SignedImage src={detailPhoto} alt={`Foto da referência ${summary.ref}`} fit="contain" loading="lazy" className="w-full h-full" />
+                    <ZoomableImage
+                      src={detailPhoto}
+                      alt={`Foto da referência ${summary.ref}`}
+                      fit="contain"
+                      loading="lazy"
+                      buttonClassName="h-full w-full"
+                      className="h-full w-full"
+                    />
                   ) : (
                     <div className="flex flex-col items-center gap-1.5 text-muted-foreground/50">
                       <ImageIcon className="h-8 w-8" /><span className="text-xs">Sem foto da referência</span>

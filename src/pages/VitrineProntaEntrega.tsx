@@ -5,6 +5,7 @@ import { groupItemsByLot, parseGradeLabelFromNotes } from '@/lib/readyStockLots'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { toast } from 'sonner';
 
 type PublicItem = {
@@ -173,7 +174,12 @@ export default function VitrineProntaEntregaPage() {
               <section key={lot.key} className="border rounded-xl p-3 space-y-3">
                 <div className="flex gap-3">
                   {photo ? (
-                    <img src={photo} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                    <ZoomableImage
+                      src={photo}
+                      alt={first.ref_name || first.ref_code || 'Produto'}
+                      buttonClassName="h-20 w-20 rounded-lg"
+                      className="rounded-lg object-cover"
+                    />
                   ) : (
                     <div className="h-20 w-20 rounded-lg bg-muted" />
                   )}

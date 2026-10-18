@@ -28,6 +28,7 @@ import {
 import { searchMatchesAllTerms, searchNormOrFilter } from '@/lib/searchUtils';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -2437,7 +2438,15 @@ export default function MobileNewOrder() {
             <div key={idx} className="border-[1.5px] border-foreground/15 rounded-lg p-3 bg-card">
               <div className="flex items-start gap-3">
                 {it.image_url ? (
-                  <img src={it.image_url} alt={it.reference_name} width="56" height="56" loading="lazy" decoding="async" className="h-14 w-14 object-cover rounded" />
+                  <ZoomableImage
+                    src={it.image_url}
+                    alt={it.reference_name}
+                    width={56}
+                    height={56}
+                    loading="lazy"
+                    buttonClassName="h-14 w-14 rounded"
+                    className="object-cover rounded"
+                  />
                 ) : (
                   <div className="h-14 w-14 bg-muted rounded" />
                 )}
@@ -2917,7 +2926,17 @@ export default function MobileNewOrder() {
             const independentStraps = mobileIndependentStrapReviewLines(it);
             return (
               <li key={idx} className="p-3 flex items-center gap-3">
-                {it.image_url && <img src={it.image_url} alt="" width="40" height="40" loading="lazy" decoding="async" className="h-10 w-10 object-cover rounded" />}
+                {it.image_url && (
+                  <ZoomableImage
+                    src={it.image_url}
+                    alt={it.reference_name || 'Referência'}
+                    width={40}
+                    height={40}
+                    loading="lazy"
+                    buttonClassName="h-10 w-10 rounded"
+                    className="object-cover rounded"
+                  />
+                )}
                 <div className="flex-1">
                   <p className="text-sm font-bold">{it.reference_name}</p>
                   <p className="text-xs text-muted-foreground">{it.color} · {qty} pares</p>

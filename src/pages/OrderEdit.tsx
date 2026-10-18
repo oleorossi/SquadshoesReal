@@ -9,7 +9,7 @@ import { useTechnicalSheets } from '@/hooks/useTechnicalSheets';
 import { useColorVariants } from '@/hooks/useColorVariants';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -233,10 +233,11 @@ export default function OrderEdit() {
                   <div className="shrink-0">
                     {productImage ? (
                       <div className="w-40 h-40 rounded-lg border overflow-hidden bg-muted">
-                        <SignedImage
+                        <ZoomableImage
                           src={productImage}
                           alt={`${ref?.name || 'Produto'} — ${orderColor || 'sem cor'}`}
-                          className="w-full h-full object-cover"
+                          buttonClassName="h-full w-full"
+                          className="object-cover"
                         />
                       </div>
                     ) : (

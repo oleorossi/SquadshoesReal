@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { PencilSimple as Pencil, Warning as AlertTriangle, FolderOpen, CaretDown as ChevronDown, ArrowsDownUp as ArrowUpDown, ArrowUp, ArrowDown, Stack as Layers, Package as PackageMinus, GridFour as Grid3X3, Gear as Settings2, Package, Image as ImageIcon, X, Flask as FlaskConical, WarningCircle, Plus, DotsThree, ShoppingBag, Copy } from '@phosphor-icons/react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { HighlightMatch } from '@/components/ui/highlight-match';
@@ -39,22 +39,7 @@ import { fiberStockDualDisplay } from '@/lib/insolePlateDualDisplay';
 // Degrada em silêncio: sem a RPC no banco o Map vem vazio e nada novo aparece.
 import { useProductSupplySummary, type ProductSupplyMap } from '@/hooks/useProductSupplySummary';
 
-function ImageZoomDialog({ src, alt, open, onOpenChange }: { src: string; alt: string; open: boolean; onOpenChange: (o: boolean) => void }) {
-  if (!src) return null;
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-2 bg-background/95 backdrop-blur-sm">
-        {/* O X de fechar já vem do primitive DialogContent (com aria-label) */}
-        <DialogTitle className="sr-only">{alt}</DialogTitle>
-        <div className="flex items-center justify-center min-h-[300px]">
-          <img src={src} alt={alt} className="max-w-full max-h-[80vh] object-contain rounded-lg" />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ProductImageThumb({ src, alt, size = 'sm', onClick }: { src?: string | null; alt: string; size?: 'sm' | 'md' | 'xs'; onClick?: () => void }) {
+function ProductImageThumb({ src, alt, size = 'sm' }: { src?: string | null; alt: string; size?: 'sm' | 'md' | 'xs' }) {
   const sizeClass = size === 'md' ? 'h-20 w-20' : size === 'xs' ? 'h-9 w-9' : 'h-14 w-14';
   if (!src) {
     return (
@@ -64,14 +49,12 @@ function ProductImageThumb({ src, alt, size = 'sm', onClick }: { src?: string | 
     );
   }
   return (
-    <img
+    <ZoomableImage
       src={src}
       alt={alt}
-      role="button"
-      tabIndex={0}
-      className={cn(sizeClass, 'rounded object-cover cursor-pointer hover:ring-2 hover:ring-primary/50 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none transition-all shrink-0')}
-      onClick={(e) => { e.stopPropagation(); onClick?.(); }}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onClick?.(); } }}
+      fit="cover"
+      buttonClassName={cn(sizeClass, 'rounded shrink-0 ring-offset-background transition-all hover:ring-2 hover:ring-primary/50')}
+      className="rounded"
     />
   );
 }
@@ -328,7 +311,6 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
   /** Falta de PV / em compra por produto. Vazio = RPC indisponível → nada aparece. */
   supply: ProductSupplyMap;
 }) {
-  const [zoomImg, setZoomImg] = useState<{ src: string; alt: string } | null>(null);
   const swatchOf = useColorSwatches();
   const { density, isVisible } = useTableView();
   const dCls = densityClasses(density);
@@ -339,7 +321,6 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
   const { byProduct: configIssuesByProduct } = useMaterialsConfigIssuesByProduct();
   return (
     <>
-      <ImageZoomDialog src={zoomImg?.src || ''} alt={zoomImg?.alt || ''} open={!!zoomImg} onOpenChange={(o) => { if (!o) setZoomImg(null); }} />
       {products.map((product) => {
         const status = getStockStatus(product);
         const isSole = product.category.toLowerCase().includes('solado');
@@ -373,7 +354,6 @@ function ProductRows({ products, onEdit, onDelete, onStockOut, onGrade, onArtisa
                   <ProductImageThumb
                     src={product.image_url}
                     alt={product.name}
-                    onClick={() => product.image_url && setZoomImg({ src: product.image_url, alt: product.name })}
                   />
                 )}
                 {status.variant === 'destructive' && (

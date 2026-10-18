@@ -1,6 +1,6 @@
 
 import { useMemo, useState } from 'react';
-import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Scissors, Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, DotsThreeVertical, Package, ClipboardText, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
@@ -822,7 +822,7 @@ export default function Colagem() {
                       <CardContent className="px-4 pb-4 space-y-4 border-t">
                         <div className="flex items-start gap-4 pt-3">
                           {imageUrl ? (
-                            <SignedImage src={imageUrl} alt={ref?.name || ''} className="w-28 h-28 object-cover rounded-md border" />
+                            <ZoomableImage src={imageUrl} alt={ref?.name || ''} className="w-28 h-28 object-cover rounded-md border" />
                           ) : (
                             <div className="w-28 h-28 bg-muted rounded-md border flex items-center justify-center text-xs text-muted-foreground">Sem foto</div>
                           )}

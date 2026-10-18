@@ -18,6 +18,7 @@ import {
   type SaleOrderMaterialShortageInfo,
 } from '@/hooks/useSaleOrderMaterialShortages';
 import { toast } from 'sonner';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { thumbUrl } from '@/lib/imageThumb';
 import { norm, fmtDate, KanbanCardData } from './kanbanDerive';
 import { buildPointingPlan, moveOptions, applyPointing, skipBlockedByPartial } from './pointingPlan';
@@ -260,11 +261,14 @@ export function DropApontarDialog({
                 antes só havia uma linha de texto. */}
             <div className="flex gap-3.5 rounded-lg border border-border bg-muted/40 p-3">
               {referencePhoto ? (
-                <img
+                <ZoomableImage
                   src={referencePhoto}
+                  lightboxSrc={photoUrl || q.reference_photo_url || referencePhoto}
                   alt={q.reference_name || 'Referência'}
-                  className="h-28 w-28 shrink-0 rounded-md border border-border bg-muted object-contain"
+                  fit="contain"
                   loading="lazy"
+                  buttonClassName="h-28 w-28 shrink-0 rounded-md border border-border bg-muted"
+                  className="rounded-md object-contain"
                 />
               ) : (
                 <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-[10px] text-muted-foreground">

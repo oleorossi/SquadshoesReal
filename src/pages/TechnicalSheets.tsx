@@ -22,6 +22,7 @@ import {
   type TechnicalSheetCatalogScope,
 } from '@/lib/technicalSheetCatalogScope';
 import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { useDisplaySizeKeys } from '@/lib/soleGradeKeys';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { FileText, Plus, Trash as Trash2, PencilSimple as Pencil, CircleNotch as Loader2, Package, Copy, Stack as Layers, Scissors, Drop as Droplets, Shield, Cube as Box, Footprints, FloppyDisk as Save, Wrench, Tag, ImageSquare as ImagePlus, Warning as AlertTriangle, ClockCounterClockwise as History, Factory, MagicWand as Wand2, ArrowsClockwise as RefreshCw, Gauge, ArrowLeft, ClipboardText as ClipboardCopy, Lock, Palette, CurrencyDollar as DollarSign, GridFour, ListBullets } from '@phosphor-icons/react';
@@ -1012,8 +1013,14 @@ function SheetImageEditor({ sheet, onSaved, updateSheet }: { sheet: any; onSaved
     <div className="space-y-4">
       {previewUrl ? (
         <div className="relative w-full h-64 rounded-lg border overflow-hidden bg-muted">
-          <SignedImage src={previewUrl} alt={sheet.name} className="w-full h-full object-contain" />
-          <Button type="button" variant="destructive" size="icon" aria-label="Remover foto" className="absolute top-2 right-2 h-7 w-7"
+          <ZoomableImage
+            src={previewUrl}
+            alt={sheet.name}
+            fit="contain"
+            buttonClassName="h-full w-full"
+            className="h-full w-full object-contain"
+          />
+          <Button type="button" variant="destructive" size="icon" aria-label="Remover foto" className="absolute top-2 right-2 z-10 h-7 w-7"
             onClick={() => setPreviewUrl(null)}>
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -1114,8 +1121,14 @@ function QuickCreateForm({ onCreated, onCancel }: { onCreated: (id: string) => v
             <div className="mt-1">
               {previewUrl ? (
                 <div className="relative w-full h-36 rounded-lg border overflow-hidden bg-muted">
-                  <SignedImage src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
-                  <Button type="button" variant="destructive" size="icon" aria-label="Remover foto" className="absolute top-2 right-2 h-6 w-6"
+                  <ZoomableImage
+                    src={previewUrl}
+                    alt="Preview"
+                    fit="contain"
+                    buttonClassName="h-full w-full"
+                    className="h-full w-full object-contain"
+                  />
+                  <Button type="button" variant="destructive" size="icon" aria-label="Remover foto" className="absolute top-2 right-2 z-10 h-6 w-6"
                     onClick={() => { setPreviewUrl(null); setForm(f => ({ ...f, images: [] })); }}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -1368,7 +1381,12 @@ function TechnicalSheetExpandedPanel({
         <Separator orientation="vertical" className="h-5" />
         <div className="flex items-center gap-2 min-w-0">
           {sheet.images && Array.isArray(sheet.images) && sheet.images.length > 0 ? (
-            <SignedImage src={String(sheet.images[0])} alt={sheet.name} className="h-8 w-8 rounded object-cover border shrink-0" />
+            <ZoomableImage
+              src={String(sheet.images[0])}
+              alt={sheet.name}
+              buttonClassName="h-8 w-8 rounded border shrink-0"
+              className="rounded object-cover"
+            />
           ) : (
             <div className="h-8 w-8 rounded bg-muted flex items-center justify-center border shrink-0">
               <Package className="h-4 w-4 text-muted-foreground/40" />

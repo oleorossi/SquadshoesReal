@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { cn } from '@/lib/utils';
 import { CatalogColorPicker } from '@/components/catalog/CatalogColorPicker';
@@ -335,11 +336,12 @@ export default function Catalogo() {
                           : 'border-border hover:border-primary/50',
                       )}
                     >
-                      <img
+                      <ZoomableImage
                         src={photo.image_url}
                         alt={photo.color_nome}
                         loading="lazy"
-                        className="aspect-[3/2] w-full object-cover"
+                        buttonClassName="aspect-[3/2] w-full"
+                        className="object-cover"
                       />
                       <div className="flex items-center justify-between gap-1 px-2 py-1.5">
                         <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">

@@ -3,7 +3,7 @@ import { CheckCircle, Footprints, ImageSquare as ImagePlus, Package, Stack as La
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { HighlightMatch } from '@/components/ui/highlight-match';
-import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import type { TechnicalSheetAuditGap } from '@/lib/technicalSheetAudit';
 import { cn } from '@/lib/utils';
 
@@ -74,11 +74,13 @@ function SheetThumbnail({ sheet }: { sheet: TechnicalSheetGridItem }) {
   }
 
   return (
-    <SignedImage
+    <ZoomableImage
       src={image}
       alt={`Foto da referência ${sheet.name}`}
-      className="aspect-video w-full border-0 bg-muted/20 transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transform-none"
       fit="contain"
+      buttonClassName="aspect-video w-full bg-muted/20"
+      className="border-0 bg-muted/20 transition-transform duration-200 group-hover/zoom:scale-[1.02] motion-reduce:transform-none"
+      enlargeLabel="Ampliar foto"
     />
   );
 }
@@ -112,87 +114,90 @@ export function TechnicalSheetCardGrid({
           >
             <button
               type="button"
-              className="flex w-full flex-1 flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="flex w-full min-w-0 items-center justify-between gap-1 border-b border-foreground px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               onClick={() => onOpenSheet(sheet.id)}
               aria-label={`Abrir ficha técnica ${sheet.name}`}
             >
-              <div className="flex min-w-0 items-center justify-between gap-1 border-b border-foreground px-2 py-1.5">
-                <span className="min-w-0 truncate text-xs font-bold sm:text-sm" title={sheet.name}>
-                  <HighlightMatch text={sheet.name} term={searchTerm} />
-                </span>
-                <span
-                  className={cn(
-                    'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold leading-none sm:px-2 sm:text-[10px]',
-                    STATUS_STYLES[status] || STATUS_STYLES.rascunho,
-                  )}
-                >
-                  {STATUS_LABELS[status] || status}
-                </span>
-              </div>
-
-              <div className="overflow-hidden border-b border-foreground">
-                <SheetThumbnail sheet={sheet} />
-              </div>
-
-              <div className="flex flex-1 flex-col space-y-1.5 p-2 sm:p-2.5">
-                {auditGaps.length > 0 && (
-                  <div
-                    className={cn(
-                      'rounded-sm border p-1.5',
-                      hasCriticalAuditGap
-                        ? 'border-destructive/30 bg-destructive/5'
-                        : 'border-warning/30 bg-warning/10',
-                    )}
-                    aria-label={`${auditGaps.length} ${auditGaps.length === 1 ? 'pendência' : 'pendências'}: ${auditGapLabels}`}
-                  >
-                    <Badge
-                      variant={hasCriticalAuditGap ? 'destructive-soft' : 'warning-soft'}
-                      className="gap-1 px-1.5 py-0 text-[9px]"
-                    >
-                      <Warning className="h-3 w-3 shrink-0" weight="fill" />
-                      {auditGaps.length} {auditGaps.length === 1 ? 'pendência' : 'pendências'}
-                    </Badge>
-                    <p
-                      className={cn(
-                        'mt-1 line-clamp-2 text-[9px] font-medium leading-tight sm:text-[10px]',
-                        hasCriticalAuditGap ? 'text-destructive' : 'text-warning',
-                      )}
-                      title={auditGapLabels}
-                    >
-                      {auditGapLabels}
-                    </p>
-                  </div>
+              <span className="min-w-0 truncate text-xs font-bold sm:text-sm" title={sheet.name}>
+                <HighlightMatch text={sheet.name} term={searchTerm} />
+              </span>
+              <span
+                className={cn(
+                  'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold leading-none sm:px-2 sm:text-[10px]',
+                  STATUS_STYLES[status] || STATUS_STYLES.rascunho,
                 )}
+              >
+                {STATUS_LABELS[status] || status}
+              </span>
+            </button>
 
-                <div className="min-h-8">
-                  {sheet.code && (
-                    <p className="truncate font-mono text-[9px] text-muted-foreground sm:text-[10px]" title={`Código interno: ${sheet.code}`}>
-                      Cód. interno: <HighlightMatch text={sheet.code} term={searchTerm} />
-                    </p>
-                  )}
-                  {sheet.collection && (
-                    <p className="mt-0.5 truncate text-[10px] text-muted-foreground sm:text-xs" title={sheet.collection}>
-                      {sheet.collection}
-                    </p>
-                  )}
-                </div>
+            <div className="overflow-hidden border-b border-foreground">
+              <SheetThumbnail sheet={sheet} />
+            </div>
 
-                <div className="mt-auto grid gap-1 text-[9px] text-muted-foreground sm:text-[10px]">
-                  <span className="flex min-w-0 items-center gap-1" title={sheet.sole_material || 'Solado não definido'}>
-                    <Footprints className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{sheet.sole_material || 'Solado não definido'}</span>
-                  </span>
-                  <span className="flex min-w-0 items-center gap-1" title={sheet.upper_material || 'Cabedal não definido'}>
-                    <Layers className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{sheet.upper_material || 'Cabedal não definido'}</span>
-                  </span>
-                  {variants.length > 0 && (
-                    <span className="flex min-w-0 items-center gap-1 text-warning" title={variants.map(variant => variant.material_name).join(', ')}>
-                      <Package className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{variants.length} {variants.length === 1 ? 'material alternativo' : 'materiais alternativos'}</span>
-                    </span>
+            <button
+              type="button"
+              className="flex w-full flex-1 flex-col space-y-1.5 p-2 text-left sm:p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              onClick={() => onOpenSheet(sheet.id)}
+              aria-label={`Abrir detalhes da ficha ${sheet.name}`}
+            >
+              {auditGaps.length > 0 && (
+                <div
+                  className={cn(
+                    'rounded-sm border p-1.5',
+                    hasCriticalAuditGap
+                      ? 'border-destructive/30 bg-destructive/5'
+                      : 'border-warning/30 bg-warning/10',
                   )}
+                  aria-label={`${auditGaps.length} ${auditGaps.length === 1 ? 'pendência' : 'pendências'}: ${auditGapLabels}`}
+                >
+                  <Badge
+                    variant={hasCriticalAuditGap ? 'destructive-soft' : 'warning-soft'}
+                    className="gap-1 px-1.5 py-0 text-[9px]"
+                  >
+                    <Warning className="h-3 w-3 shrink-0" weight="fill" />
+                    {auditGaps.length} {auditGaps.length === 1 ? 'pendência' : 'pendências'}
+                  </Badge>
+                  <p
+                    className={cn(
+                      'mt-1 line-clamp-2 text-[9px] font-medium leading-tight sm:text-[10px]',
+                      hasCriticalAuditGap ? 'text-destructive' : 'text-warning',
+                    )}
+                    title={auditGapLabels}
+                  >
+                    {auditGapLabels}
+                  </p>
                 </div>
+              )}
+
+              <div className="min-h-8">
+                {sheet.code && (
+                  <p className="truncate font-mono text-[9px] text-muted-foreground sm:text-[10px]" title={`Código interno: ${sheet.code}`}>
+                    Cód. interno: <HighlightMatch text={sheet.code} term={searchTerm} />
+                  </p>
+                )}
+                {sheet.collection && (
+                  <p className="mt-0.5 truncate text-[10px] text-muted-foreground sm:text-xs" title={sheet.collection}>
+                    {sheet.collection}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-auto grid gap-1 text-[9px] text-muted-foreground sm:text-[10px]">
+                <span className="flex min-w-0 items-center gap-1" title={sheet.sole_material || 'Solado não definido'}>
+                  <Footprints className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{sheet.sole_material || 'Solado não definido'}</span>
+                </span>
+                <span className="flex min-w-0 items-center gap-1" title={sheet.upper_material || 'Cabedal não definido'}>
+                  <Layers className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{sheet.upper_material || 'Cabedal não definido'}</span>
+                </span>
+                {variants.length > 0 && (
+                  <span className="flex min-w-0 items-center gap-1 text-warning" title={variants.map(variant => variant.material_name).join(', ')}>
+                    <Package className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{variants.length} {variants.length === 1 ? 'material alternativo' : 'materiais alternativos'}</span>
+                  </span>
+                )}
               </div>
             </button>
 

@@ -43,6 +43,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { cn } from '@/lib/utils';
 import { resolveColorHex } from '@/lib/colorHex';
 import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import {
   useContractors, useServiceOrders, useServiceOrderOverview, useCreateContractor, useUpdateContractor, useDeleteContractor,
   useBulkReceiveServiceOrders, useArchiveServiceOrders,
@@ -2211,11 +2212,20 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                                 {on ? '✓' : ''}
                               </span>
 
-                              <SignedImage
-                                src={it.photo_url || ''}
-                                alt={`Referência ${refLabel}${colorLabel !== '—' ? ` · ${colorLabel}` : ''}`}
-                                className="h-14 w-14 shrink-0 rounded-sm border border-border bg-muted"
-                              />
+                              {it.photo_url ? (
+                                <ZoomableImage
+                                  src={it.photo_url}
+                                  alt={`Referência ${refLabel}${colorLabel !== '—' ? ` · ${colorLabel}` : ''}`}
+                                  buttonClassName="h-14 w-14 shrink-0 rounded-sm border border-border bg-muted"
+                                  className="rounded-sm"
+                                />
+                              ) : (
+                                <SignedImage
+                                  src=""
+                                  alt={`Referência ${refLabel}${colorLabel !== '—' ? ` · ${colorLabel}` : ''}`}
+                                  className="h-14 w-14 shrink-0 rounded-sm border border-border bg-muted"
+                                />
+                              )}
 
                               <div className="min-w-0 flex-1 space-y-1">
                                 <div className="flex items-baseline gap-2 min-w-0">

@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { CircleNotch as Loader2, ImageSquare as ImagePlus, Trash as Trash2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { SignedImage } from '@/components/ui/signed-image';
+import { ImageLightbox } from '@/components/ui/image-lightbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -36,10 +35,14 @@ export function SheetImageUpload({ images, onChange }: { images: any[]; onChange
       <div className="flex items-start gap-4">
         {currentUrl ? (
           <div className="relative group">
-            <div className="w-80 h-80 rounded-xl border-2 border-border overflow-hidden bg-muted cursor-zoom-in shadow-sm hover:shadow-md transition-shadow"
-              onClick={() => setLightboxOpen(true)}>
-              <img src={currentUrl} alt="Produto" className="w-full h-full object-cover" />
-            </div>
+            <button
+              type="button"
+              className="h-80 w-80 overflow-hidden rounded-xl border-2 border-border bg-muted shadow-sm transition-shadow hover:shadow-md cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => setLightboxOpen(true)}
+              aria-label="Ampliar foto: Produto"
+            >
+              <img src={currentUrl} alt="Produto" className="h-full w-full object-cover" />
+            </button>
             <div className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
               <label className="cursor-pointer">
                 <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
@@ -68,14 +71,14 @@ export function SheetImageUpload({ images, onChange }: { images: any[]; onChange
           </label>
         )}
       </div>
-      {lightboxOpen && currentUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
-          onClick={() => setLightboxOpen(false)}>
-          <img src={currentUrl} alt="Produto ampliado" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
-            onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
+      {currentUrl ? (
+        <ImageLightbox
+          src={currentUrl}
+          alt="Produto ampliado"
+          open={lightboxOpen}
+          onOpenChange={setLightboxOpen}
+        />
+      ) : null}
     </>
   );
 }
-

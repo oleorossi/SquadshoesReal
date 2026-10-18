@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { SignedImage } from '@/components/ui/signed-image';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn } from '@/lib/utils';
@@ -243,11 +244,12 @@ export function PaintSelectList({
                 {showThumb && (
                   <div className="h-14 w-14 rounded-md border border-border bg-muted overflow-hidden shrink-0">
                     {item.imageUrl ? (
-                      <SignedImage
+                      <ZoomableImage
                         src={item.imageUrl}
                         alt={item.title}
                         width={56}
                         height={56}
+                        buttonClassName="h-full w-full"
                         className="h-full w-full"
                       />
                     ) : (

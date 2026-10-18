@@ -1,7 +1,7 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers, DotsThreeVertical, Package, ClipboardText, Needle, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -741,7 +741,7 @@ if (totalPairsAll !== palmTotal) {
                     {(() => {
                       const imageUrl = (ref?.images as string[] | undefined)?.[0] || ref?.image_url || '';
                       return imageUrl ? (
-                        <SignedImage src={imageUrl} alt={ref?.name || ''} className="w-24 h-24 object-cover rounded-md border" />
+                        <ZoomableImage src={imageUrl} alt={ref?.name || ''} className="w-24 h-24 object-cover rounded-md border" />
                       ) : null;
                     })()}
                     <div className="space-y-1">

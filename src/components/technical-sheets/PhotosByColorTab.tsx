@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { SheetFormData } from '@/hooks/useTechnicalSheets';
@@ -148,7 +148,12 @@ export function PhotosByColorTab({ sheetId, form, groups, products }: {
             <div key={color} className="relative group flex flex-col items-center">
               <div className="w-full aspect-square rounded-lg border-2 border-border bg-muted overflow-hidden flex items-center justify-center relative shadow-sm group-hover:border-primary/50 transition-colors">
                 {hasImage ? (
-                  <SignedImage src={variant.image_url} alt={color} className="w-full h-full object-cover" />
+                  <ZoomableImage
+                    src={variant.image_url}
+                    alt={color}
+                    buttonClassName="h-full w-full"
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="flex flex-col items-center gap-1 text-muted-foreground/40">
                     <ImagePlus className="h-8 w-8" />

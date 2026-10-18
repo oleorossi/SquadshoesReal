@@ -8,6 +8,7 @@ import { useProducts } from '@/hooks/useProducts';
  import { useQuery } from '@tanstack/react-query';
  import { supabase } from '@/integrations/supabase/client';
  import { Badge } from '@/components/ui/badge';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 
 export function ReportTab() {
   const { data: stats, isLoading } = useInventoryStats();
@@ -120,7 +121,12 @@ export function ReportTab() {
                  >
                    <div className="h-12 w-12 rounded-md bg-muted overflow-hidden shrink-0 border border-border/50">
                      {product.image_url ? (
-                       <img src={product.image_url} alt={product.name} className="h-full w-full object-cover group-hover:scale-110 transition-transform" />
+                       <ZoomableImage
+                         src={product.image_url}
+                         alt={product.name}
+                         buttonClassName="h-full w-full"
+                         className="object-cover transition-transform group-hover:scale-110"
+                       />
                      ) : (
                        <Package className="h-full w-full p-3 text-muted-foreground/40" />
                      )}

@@ -1,6 +1,6 @@
 
 import { useMemo, useState } from 'react';
-import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, CaretDown as ChevronDown, CaretRight as ChevronRight, Storefront as Store, Buildings as Building2, Stack as Layers, Scissors, DotsThreeVertical, LinkSimple, Clock, ArrowsClockwise, MagnifyingGlass, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
@@ -515,7 +515,7 @@ export default function Costura() {
                                   onCheckedChange={() => sel.toggle(order.id)}
                                 />
                                 {imageUrl && (
-                                  <SignedImage src={imageUrl} alt={ref?.name || ''} className="w-12 h-12 rounded object-contain border" />
+                                  <ZoomableImage src={imageUrl} alt={ref?.name || ''} className="w-12 h-12 rounded object-contain border" />
                                 )}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">

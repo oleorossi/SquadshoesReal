@@ -20,6 +20,7 @@ import {
 import { encodeGradeNotes, groupItemsByLot, sizesToGradeLabel } from '@/lib/readyStockLots';
 import { cn } from '@/lib/utils';
 import { SearchInput } from '@/components/ui/search-input';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
 function parseSizes(sizesStr: string | null): string[] {
@@ -168,7 +169,16 @@ export default function ReadyStockBoard() {
                 {grouped.map((g) => (
                   <TableRow key={g.key}>
                     <TableCell>
-                      {g.imageUrl ? <img src={g.imageUrl} alt="" className="w-10 h-10 object-cover rounded" /> : <Package className="h-4 w-4 text-muted-foreground" />}
+                      {g.imageUrl ? (
+                        <ZoomableImage
+                          src={g.imageUrl}
+                          alt={g.refCode || 'Produto'}
+                          buttonClassName="h-10 w-10 rounded"
+                          className="rounded object-cover"
+                        />
+                      ) : (
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      )}
                     </TableCell>
                     <TableCell className="text-xs font-mono font-semibold">{g.refCode}</TableCell>
                     <TableCell className="text-xs">{g.refName}</TableCell>

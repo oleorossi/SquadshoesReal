@@ -1,6 +1,6 @@
 import { parseDateOnly, formatDateBR } from '@/lib/dateOnly';
 import { useMemo, useState } from 'react';
-import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Printer, Funnel as Filter, CheckSquare, Stack as Layers, ClipboardText, DotsThreeVertical, CaretRight, Package, Palette, ListBullets, CircleNotch as Loader2 } from '@phosphor-icons/react';
@@ -425,7 +425,7 @@ export default function Montagem() {
                     {/* Image + info */}
                     <div className="flex items-start gap-4 pt-3">
                       {imageUrl ? (
-                        <SignedImage src={imageUrl} alt={ref?.name || ''} className="w-28 h-28 object-cover rounded-md border" />
+                        <ZoomableImage src={imageUrl} alt={ref?.name || ''} className="w-28 h-28 object-cover rounded-md border" />
                       ) : (
                         <div className="w-28 h-28 bg-muted rounded-md border flex items-center justify-center text-xs text-muted-foreground">Sem foto</div>
                       )}

@@ -10,6 +10,27 @@ vi.mock('@/components/ui/signed-image', () => ({
   ),
 }));
 
+vi.mock('@/components/ui/image-lightbox', () => ({
+  ZoomableImage: ({
+    src,
+    alt,
+    className,
+    fit,
+    buttonClassName,
+  }: {
+    src: string;
+    alt: string;
+    className?: string;
+    fit?: string;
+    buttonClassName?: string;
+  }) => (
+    <button type="button" aria-label={`Ampliar foto: ${alt}`} className={buttonClassName}>
+      <img src={src} alt={alt} className={className} data-fit={fit} />
+    </button>
+  ),
+  ImageLightbox: () => null,
+}));
+
 const sheet: TechnicalSheetGridItem = {
   id: 'sheet-1',
   name: 'NL04',
@@ -48,9 +69,10 @@ function renderGrid({
 describe('TechnicalSheetCardGrid', () => {
   it('usa miniatura compacta 16:9 sem recortar a foto', () => {
     const { container } = renderGrid();
+    const zoomButton = screen.getByRole('button', { name: 'Ampliar foto: Foto da referência NL04' });
     const image = screen.getByAltText('Foto da referência NL04');
 
-    expect(image).toHaveClass('aspect-video');
+    expect(zoomButton).toHaveClass('aspect-video');
     expect(image).toHaveAttribute('data-fit', 'contain');
     expect(container.firstElementChild?.className).toContain('min-[1800px]:grid-cols-6');
   });
@@ -60,6 +82,13 @@ describe('TechnicalSheetCardGrid', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Abrir ficha técnica NL04' }));
     expect(onOpenSheet).toHaveBeenCalledWith('sheet-1');
+  });
+
+  it('clique na foto amplia e não abre a ficha', () => {
+    const { onOpenSheet } = renderGrid();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ampliar foto: Foto da referência NL04' }));
+    expect(onOpenSheet).not.toHaveBeenCalled();
   });
 
   it('identifica e aciona a edição de foto da referência correta', () => {
@@ -115,12 +144,12 @@ describe('TechnicalSheetCardGrid', () => {
       />,
     );
 
-    const firstCard = screen.getByRole('button', { name: 'Abrir ficha técnica NL04' });
+    const firstCard = screen.getByRole('button', { name: 'Abrir detalhes da ficha NL04' });
     expect(within(firstCard).getByText('2 pendências')).toBeInTheDocument();
     expect(within(firstCard).getByText('Grupo da palmilha • Setores de produção não configurados')).toBeInTheDocument();
     expect(within(firstCard).queryByText('Cores do solado')).not.toBeInTheDocument();
 
-    const secondCard = screen.getByRole('button', { name: 'Abrir ficha técnica M100' });
+    const secondCard = screen.getByRole('button', { name: 'Abrir detalhes da ficha M100' });
     expect(within(secondCard).getByText('1 pendência')).toBeInTheDocument();
     expect(within(secondCard).getByText('Cores do solado')).toBeInTheDocument();
     expect(within(secondCard).queryByText('Grupo da palmilha')).not.toBeInTheDocument();

@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import {
   Select,
@@ -150,7 +151,13 @@ function ProductThumb({
       style={{ width: size, height: size, boxShadow: `0 0 0 2px ${hex}` }}
     >
       {src ? (
-        <img src={src} alt={alt} className="h-full w-full object-cover" loading="lazy" />
+        <ZoomableImage
+          src={src}
+          alt={alt}
+          loading="lazy"
+          buttonClassName="h-full w-full"
+          className="object-cover"
+        />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
           <Scissors className="h-5 w-5 text-muted-foreground/60" aria-hidden />

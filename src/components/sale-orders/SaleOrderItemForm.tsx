@@ -119,7 +119,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { ItemSectorOutsourcingSection } from '@/components/sale-orders/ItemSectorOutsourcingSection';
 import { ItemAtelierModeSection } from '@/components/sale-orders/ItemAtelierModeSection';
 
-import { SignedImage } from '@/components/ui/signed-image';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { resolveReferenceThumbnailUrl } from '@/lib/referenceImage';
 import { isCommittedSaleOrderStrapSnapshotStatus } from '@/lib/saleOrderStateMachine';
 import { shouldSkipCommittedStrapReconcile } from '@/lib/strapSnapshotGuard';
@@ -1858,11 +1858,12 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
               {(() => {
                 const imgSrc = resolveReferenceThumbnailUrl(selectedRef, 40);
                 return imgSrc ? (
-                  <SignedImage
+                  <ZoomableImage
                     src={imgSrc}
                     alt={selectedRef?.name || selectedRef?.code || 'Referência'}
                     width={40}
                     height={40}
+                    buttonClassName="h-full w-full"
                     className="h-full w-full"
                   />
                 ) : (
@@ -3903,11 +3904,12 @@ export function ReferenceSearch({
               <div className="flex items-start gap-3 flex-1 min-w-0">
                 <div className="h-14 w-14 rounded-md border bg-muted overflow-hidden flex-shrink-0">
                   {thumbnailUrl ? (
-                    <SignedImage
+                    <ZoomableImage
                       src={thumbnailUrl}
                       alt={ref.name || ref.code || 'Referência'}
                       width={56}
                       height={56}
+                      buttonClassName="h-full w-full"
                       className="h-full w-full"
                     />
                   ) : (
