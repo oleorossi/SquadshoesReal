@@ -39,6 +39,12 @@ import {
   type AtelierSector,
 } from '@/lib/atelier';
 import {
+  EMPTY_ATELIER_FILA_FILTERS,
+  collectFilaFilterOptions,
+  matchesAtelierFilaFilters,
+  type AtelierFilaFilters,
+} from '@/lib/atelierFilaFilters';
+import {
   useAddAtelierReference,
   useAtelierCatalog,
   useAtelierLotKitPreview,
@@ -94,11 +100,11 @@ function GradeStrip({ grade }: { grade: Record<string, number> }) {
     .sort((a, b) => parseFloat(a) - parseFloat(b));
   if (sizes.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1" aria-label="Grade do lote">
+    <div className="flex flex-wrap gap-0.5" aria-label="Grade do lote">
       {sizes.map((size) => (
         <span
           key={size}
-          className="inline-flex items-baseline gap-1 rounded border border-border/70 px-1.5 py-0.5 font-mono text-[11px]"
+          className="inline-flex items-baseline gap-0.5 rounded border border-border/60 px-1 py-px font-mono text-[10px] leading-tight"
         >
           <span className="text-muted-foreground">{size}</span>
           <span className="font-semibold tabular-nums text-foreground">{formatQty(Number(grade[size]))}</span>
@@ -159,19 +165,19 @@ function JobRow({
 }) {
   const [contractorId, setContractorId] = useState<string>('');
   return (
-    <div className="space-y-1.5 border-t border-border/60 pt-2">
-      <div className="flex items-baseline justify-between gap-2 text-xs">
+    <div className="space-y-1 border-t border-border/50 pt-1.5">
+      <div className="flex items-baseline justify-between gap-2 text-[11px] leading-tight">
         <span className="font-medium text-foreground">
           {ATELIER_SECTOR_LABEL[job.sector]} · {job.order_number}
         </span>
-        <span className="text-muted-foreground">
-          {Number(job.pairs)} pares · {ATELIER_PIPELINE_LABEL[job.pipeline_status]}
+        <span className="shrink-0 text-muted-foreground">
+          {Number(job.pairs)}p · {ATELIER_PIPELINE_LABEL[job.pipeline_status]}
         </span>
       </div>
       {job.pipeline_status === 'cut' && (
-        <div className="flex gap-1.5">
+        <div className="flex gap-1">
           <Select value={contractorId || undefined} onValueChange={setContractorId}>
-            <SelectTrigger className="h-8 flex-1 text-xs" aria-label="Prestador">
+            <SelectTrigger className="h-7 flex-1 text-[11px]" aria-label="Prestador">
               <SelectValue placeholder="Prestador" />
             </SelectTrigger>
             <SelectContent>
@@ -182,29 +188,29 @@ function JobRow({
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" className="h-8" disabled={busy || !contractorId} onClick={() => onSend(contractorId)}>
-            <Truck className="h-3.5 w-3.5" />
+          <Button size="sm" className="h-7 px-2 text-[11px]" disabled={busy || !contractorId} onClick={() => onSend(contractorId)}>
+            <Truck className="h-3 w-3" />
             Enviar
           </Button>
         </div>
       )}
       {job.pipeline_status === 'sent_to_contractor' && (
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] text-muted-foreground">
+          <span className="truncate text-[10px] text-muted-foreground">
             {job.contractor_name ?? 'Prestador'}
             {job.atelier_service_number ? ` · ${job.atelier_service_number}` : ''}
           </span>
-          <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={onRealize}>
-            <CheckCircle className="h-3.5 w-3.5" />
+          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onRealize}>
+            <CheckCircle className="h-3 w-3" />
             Realizado
           </Button>
         </div>
       )}
       {job.pipeline_status === 'realized' && (
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] text-muted-foreground">Aguardando conferência na fábrica</span>
-          <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={onReceive}>
-            <Warehouse className="h-3.5 w-3.5" />
+          <span className="text-[10px] text-muted-foreground">Conferir na fábrica</span>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onReceive}>
+            <Warehouse className="h-3 w-3" />
             Conferir
           </Button>
         </div>
@@ -213,64 +219,88 @@ function JobRow({
   );
 }
 
-function LotCard({ lot, contractors }: { lot: AtelierLotRow; contractors: { id: string; name: string }[] }) {
+function LotCard({
+  lot,
+  contractors,
+  focusOrderNumber,
+}: {
+  lot: AtelierLotRow;
+  contractors: { id: string; name: string }[];
+  /** Quando a fila filtra por PV, destaca esse pedido no cartão. */
+  focusOrderNumber?: string;
+}) {
   const cutMut = useConfirmAtelierLotCut();
   const sendMut = useMarkAtelierSent();
   const realizedMut = useMarkAtelierRealized();
   const receiveMut = useMarkAtelierReceived();
   const [showKit, setShowKit] = useState(false);
   const pending = lot.debits.filter((d) => Number(d.pending_qty) > 0);
-  const clients = [...new Set(lot.orders.map((o) => o.client_name).filter(Boolean))];
+  const focused = focusOrderNumber
+    ? lot.orders.filter((o) => o.order_number === focusOrderNumber)
+    : lot.orders;
+  const displayOrders = focused.length > 0 ? focused : lot.orders;
+  const displayJobs = focusOrderNumber
+    ? lot.jobs.filter((j) => j.order_number === focusOrderNumber)
+    : lot.jobs;
+  const clients = [...new Set(displayOrders.map((o) => o.client_name).filter(Boolean))];
+  const pairsShown = focusOrderNumber && focused.length > 0
+    ? focused.reduce((s, o) => s + Number(o.pairs ?? 0), 0)
+    : Number(lot.pairs);
   const jobBusy = sendMut.isPending || realizedMut.isPending || receiveMut.isPending;
 
   return (
-    <article className="space-y-2 rounded-lg border border-border/70 bg-card p-3">
+    <article className="space-y-1.5 rounded-md border border-border/70 bg-card p-2">
       <header className="space-y-0.5">
-        <div className="flex items-baseline justify-between gap-2">
-          <h3 className="font-display text-base leading-tight text-foreground">
+        <div className="flex items-baseline justify-between gap-1.5">
+          <p className="min-w-0 truncate font-display text-sm leading-none text-foreground">
             {lot.reference_code ?? '—'}
-            <span className="ml-1.5 font-sans text-sm text-muted-foreground">{lot.color ?? 'Sem cor'}</span>
-          </h3>
-          <span className="font-mono text-[11px] text-muted-foreground">{lot.lot_number}</span>
+            <span className="ml-1 font-sans text-[11px] font-normal text-muted-foreground">
+              {lot.color ?? 'Sem cor'}
+            </span>
+          </p>
+          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{lot.lot_number}</span>
         </div>
-        <p className="text-xs text-muted-foreground">
-          <span className="font-semibold tabular-nums text-foreground">{Number(lot.pairs)} pares</span>
+        <p className="truncate text-[11px] leading-snug text-muted-foreground">
+          <span className="font-semibold tabular-nums text-foreground">{pairsShown}p</span>
+          {focusOrderNumber && Number(lot.pairs) !== pairsShown ? (
+            <span className="text-muted-foreground"> / {Number(lot.pairs)}p lote</span>
+          ) : null}
           {' · '}
-          {lot.orders.map((o) => o.order_number).join(', ')}
-          {lot.min_ready_date ? ` · pronto até ${formatDay(lot.min_ready_date)}` : ''}
+          {displayOrders.map((o) => o.order_number).join(', ')}
+          {clients.length > 0 ? ` · ${clients.join(', ')}` : ''}
         </p>
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+        <div className="flex flex-wrap items-center gap-1 text-[10px]">
           <span className="text-muted-foreground">
             Entrega{' '}
             <span className="font-medium text-foreground">
               {lot.min_delivery_deadline ? formatDay(lot.min_delivery_deadline) : '—'}
             </span>
+            {lot.min_ready_date ? ` · pronto ${formatDay(lot.min_ready_date)}` : ''}
           </span>
-          <span className={cn('rounded border px-1.5 py-0.5 font-medium', deadlineChipClass(lot))}>
+          <span className={cn('rounded border px-1 py-px font-medium', deadlineChipClass(lot))}>
             {deadlineChipLabel(daysUntilDeadline(lot.min_delivery_deadline))}
           </span>
         </div>
-        {clients.length > 0 && <p className="truncate text-[11px] text-muted-foreground">{clients.join(', ')}</p>}
       </header>
 
       <GradeStrip grade={lot.grade} />
 
       {lot.status === 'open' && (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {showKit ? (
             <KitPreview lotId={lot.id} />
           ) : (
             <button
               type="button"
               onClick={() => setShowKit(true)}
-              className="text-xs font-medium text-foreground underline underline-offset-2 hover:text-primary"
+              className="text-[11px] font-medium text-foreground underline underline-offset-2 hover:text-primary"
             >
-              Ver o kit de material
+              Ver kit
             </button>
           )}
           <Button
             size="sm"
-            className="h-8 w-full"
+            className="h-7 w-full text-[11px]"
             disabled={cutMut.isPending}
             onClick={() => {
               if (!window.confirm(`Confirmar o corte do ${lot.lot_number}? O material do kit sai do estoque agora.`)) {
@@ -279,21 +309,20 @@ function LotCard({ lot, contractors }: { lot: AtelierLotRow; contractors: { id: 
               cutMut.mutate(lot.id);
             }}
           >
-            {cutMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scissors className="h-3.5 w-3.5" />}
+            {cutMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Scissors className="h-3 w-3" />}
             Confirmar corte
           </Button>
         </div>
       )}
 
       {lot.status === 'cut' && pending.length > 0 && (
-        <p className="rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-400">
-          Faltou no corte: {pending.map((d) => `${d.product_name} ${formatQty(Number(d.pending_qty))}`).join(', ')}.
-          A OP completa o que faltou.
+        <p className="rounded bg-amber-500/10 px-1.5 py-1 text-[10px] text-amber-700 dark:text-amber-400">
+          Faltou: {pending.map((d) => `${d.product_name} ${formatQty(Number(d.pending_qty))}`).join(', ')}.
         </p>
       )}
 
       {lot.status === 'cut' &&
-        lot.jobs.map((job) => (
+        displayJobs.map((job) => (
           <JobRow
             key={job.id}
             job={job}
@@ -548,34 +577,107 @@ const COLUMN_TITLE: Record<string, string> = {
 function FilaView() {
   const { data: lots = [], isLoading, isError, refetch } = useAtelierLots();
   const { data: contractors = [] } = useContractors();
+  const [filters, setFilters] = useState<AtelierFilaFilters>(EMPTY_ATELIER_FILA_FILTERS);
 
   const contractorOpts = (contractors as { id: string; name: string }[]).map((c) => ({
     id: c.id,
     name: c.name,
   }));
 
+  const filterOptions = useMemo(() => collectFilaFilterOptions(lots), [lots]);
+
+  const filteredLots = useMemo(
+    () => lots.filter((lot) => matchesAtelierFilaFilters(lot, filters)),
+    [lots, filters],
+  );
+
   const byColumn = useMemo(() => {
     const m = new Map<string, AtelierLotRow[]>();
-    for (const lot of lots) {
+    for (const lot of filteredLots) {
       const col = atelierLotColumn(lot.status, lot.jobs.map((j) => j.pipeline_status));
       m.set(col, [...(m.get(col) ?? []), lot]);
     }
     return m;
-  }, [lots]);
+  }, [filteredLots]);
+
+  const filtersActive = Boolean(filters.orderNumber || filters.color);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <AgendaSettings />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Cada lote junta a mesma referência e cor de vários pedidos, agrupado por referência e com a entrega mais
-          próxima no topo. Corte aqui, envie ao prestador e, quando voltar, a OP nasce com essas etapas prontas.
-        </p>
-        <Button variant="outline" size="sm" className="h-8" onClick={() => void refetch()}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+          <label className="flex min-w-[140px] flex-1 flex-col gap-1 sm:max-w-[200px]">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Pedido
+            </span>
+            <Select
+              value={filters.orderNumber || '__all__'}
+              onValueChange={(v) =>
+                setFilters((f) => ({ ...f, orderNumber: v === '__all__' ? '' : v }))
+              }
+            >
+              <SelectTrigger className="h-8 text-xs" aria-label="Filtrar por pedido">
+                <SelectValue placeholder="Todos os PVs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todos os PVs</SelectItem>
+                {filterOptions.orderNumbers.map((n) => (
+                  <SelectItem key={n} value={n}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="flex min-w-[140px] flex-1 flex-col gap-1 sm:max-w-[200px]">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Cor
+            </span>
+            <Select
+              value={filters.color || '__all__'}
+              onValueChange={(v) =>
+                setFilters((f) => ({ ...f, color: v === '__all__' ? '' : v }))
+              }
+            >
+              <SelectTrigger className="h-8 text-xs" aria-label="Filtrar por cor">
+                <SelectValue placeholder="Todas as cores" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todas as cores</SelectItem>
+                {filterOptions.colors.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          {filtersActive && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 self-end text-xs"
+              onClick={() => setFilters(EMPTY_ATELIER_FILA_FILTERS)}
+            >
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+        <Button variant="outline" size="sm" className="h-8 shrink-0" onClick={() => void refetch()}>
           Atualizar
         </Button>
       </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        Pedido isola um PV quando a mesma ref está em vários pedidos. Cor lista todos os lotes daquela
+        cor, em qualquer referência.
+        {filtersActive
+          ? ` · ${filteredLots.length} de ${lots.length} lote${lots.length === 1 ? '' : 's'}`
+          : null}
+      </p>
 
       {isError ? (
         <p className="text-sm text-destructive">Não foi possível carregar a fila.</p>
@@ -589,35 +691,67 @@ function FilaView() {
           title="Nenhum lote no Ateliê"
           description="Quando um pedido com referência do Ateliê for aprovado, cada cor entra num lote aqui."
         />
+      ) : filteredLots.length === 0 ? (
+        <EmptyState
+          icon={CheckCircle}
+          title="Nenhum lote com esses filtros"
+          description="Troque o pedido ou a cor, ou limpe os filtros."
+        />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-5">
           {ATELIER_QUEUE_COLUMNS.map((col) => {
             const colLots = byColumn.get(col) ?? [];
+            const active = colLots.length > 0;
             return (
-              <section key={col} className="space-y-2" aria-labelledby={`col-${col}`}>
-                <header className="flex items-baseline justify-between px-0.5">
-                  <h2 id={`col-${col}`} className="text-sm font-semibold text-foreground">
+              <section key={col} className="space-y-1.5" aria-labelledby={`col-${col}`}>
+                <header className="flex items-baseline justify-between gap-1 px-0.5">
+                  <h2
+                    id={`col-${col}`}
+                    className={cn(
+                      'text-xs font-semibold leading-tight',
+                      active ? 'text-foreground' : 'text-muted-foreground',
+                    )}
+                  >
                     {COLUMN_TITLE[col]}
                   </h2>
-                  <span className="font-mono text-[11px] text-muted-foreground">{colLots.length}</span>
+                  <span
+                    className={cn(
+                      'font-mono text-[10px] tabular-nums',
+                      active ? 'text-foreground' : 'text-muted-foreground',
+                    )}
+                  >
+                    {colLots.length}
+                  </span>
                 </header>
-                <div className="min-h-[120px] space-y-2 rounded-lg border border-dashed border-border/50 bg-muted/20 p-2">
+                <div
+                  className={cn(
+                    'min-h-[72px] space-y-1.5 rounded-md p-1.5',
+                    active
+                      ? 'border border-border bg-card/80'
+                      : 'border border-dashed border-border/40 bg-muted/10',
+                  )}
+                >
                   {colLots.length === 0 ? (
-                    <p className="py-6 text-center text-xs text-muted-foreground">Nada aqui</p>
+                    <p className="py-3 text-center text-[10px] text-muted-foreground">—</p>
                   ) : (
                     groupAtelierLotsByReference(colLots).map((refGroup) => (
-                      <section key={refGroup.key} className="space-y-2">
-                        <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
-                          <h3 className="font-display text-sm leading-none text-foreground">
+                      <section key={refGroup.key} className="space-y-1.5">
+                        <header className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 px-0.5">
+                          <h3 className="font-display text-xs leading-none text-foreground">
                             {refGroup.label}
                           </h3>
-                          <span className="font-mono text-[10px] text-muted-foreground">
-                            {refGroup.pairs} pares · {refGroup.lots.length}{' '}
+                          <span className="font-mono text-[9px] text-muted-foreground">
+                            {refGroup.pairs}p · {refGroup.lots.length}{' '}
                             {refGroup.lots.length === 1 ? 'cor' : 'cores'}
                           </span>
                         </header>
                         {refGroup.lots.map((lot) => (
-                          <LotCard key={lot.id} lot={lot} contractors={contractorOpts} />
+                          <LotCard
+                            key={lot.id}
+                            lot={lot}
+                            contractors={contractorOpts}
+                            focusOrderNumber={filters.orderNumber || undefined}
+                          />
                         ))}
                       </section>
                     ))
