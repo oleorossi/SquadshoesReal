@@ -6,6 +6,10 @@ import { toast } from 'sonner';
 // Motor único de ponto: base por-dia canônica (mesmos primitivos da folha).
 import { worksOnDow, expectedDayMinutes, splitDayMinutes } from '@/lib/ponto/pontoEngine';
 import { createTimesheetImportBatchId } from '@/lib/timeControlFilters';
+import {
+  looksLikeRelatorioPresenca,
+  parseRelatorioPresencaSheets,
+} from '@/lib/ponto/parseRelatorioPresenca';
 
 type TimeImportLogInsert = Database['public']['Tables']['time_import_logs']['Insert'];
 type TimeImportLogUpdate = Database['public']['Tables']['time_import_logs']['Update'];
@@ -321,8 +325,10 @@ export function parseTimesheetRows(rows: SpreadsheetRow[]): { employees: ParsedE
             while (dateCursor <= endCursor && dateCursor.getUTCDate() !== day) {
               dateCursor = addUtcDays(dateCursor, 1);
             }
+            // Q2-A / decisão do dono: coluna de dia fora do período declarado
+            // é ignorada (como o recorte no save), não aborta o arquivo inteiro.
             if (dateCursor > endCursor) {
-              throw new Error(`Dia ${day} do cabeçalho não cabe no período ${startDate} a ${endDate}.`);
+              continue;
             }
             columnDates[column] = formatUtcDate(dateCursor);
             dateCursor = addUtcDays(dateCursor, 1);
@@ -420,7 +426,52 @@ export function parseTimesheetRows(rows: SpreadsheetRow[]): { employees: ParsedE
 }
 
 export async function parseTimesheetXlsx(file: File): Promise<{ employees: ParsedEmployee[]; startDate: string; endDate: string }> {
-  return parseTimesheetRows(await readSpreadsheetRows(file));
+  // xlsx sob demanda — mesmo padrão de readSpreadsheetRows.
+  const XLSX = await import('xlsx');
+  const buffer = await file.arrayBuffer();
+  let wb: import('xlsx').WorkBook;
+  try {
+    wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+  } catch (sheetJsErr) {
+    // Fallback ExcelJS só pra .xlsx puro; RelatórioPresença é .xls (CDF).
+    try {
+      return parseTimesheetRows(await readSpreadsheetRows(file));
+    } catch {
+      throw sheetJsErr;
+    }
+  }
+
+  const sheets = wb.SheetNames.map(name => ({
+    name,
+    rows: XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], {
+      header: 1,
+      defval: '',
+      raw: true,
+    }) as unknown[][],
+  }));
+
+  // RelatórioPresença.xls (multi-aba + Cartão de ponto). Tem que vencer a
+  // 1ª aba de turno, senão o parser legado lê códigos de turno como "dias".
+  if (looksLikeRelatorioPresenca(sheets)) {
+    const parsed = parseRelatorioPresencaSheets(sheets);
+    return {
+      startDate: parsed.startDate,
+      endDate: parsed.endDate,
+      employees: parsed.employees.map(employee => ({
+        externalId: employee.externalId,
+        name: employee.name,
+        department: employee.department,
+        records: employee.records,
+      })),
+    };
+  }
+
+  const first = sheets[0];
+  if (!first) throw new Error('Planilha vazia');
+  const stringRows = first.rows.map(row =>
+    (row || []).map(cell => (cell != null ? String(cell) : '')),
+  );
+  return parseTimesheetRows(stringRows);
 }
 
 // ── TXT Parsing (REP / ponto eletrônico) ─────────────

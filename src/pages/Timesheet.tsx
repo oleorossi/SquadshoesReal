@@ -1064,7 +1064,7 @@ function TimesheetRecordsTab() {
               <p className="section-label text-primary">COMECE AQUI</p>
               <h3 className="mt-1 text-base font-bold">Selecione o arquivo do relógio</h3>
               <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-                Aceita AGL_001.TXT, XLS e XLSX. Antes de gravar, você confere o período, os funcionários vinculados e as batidas encontradas.
+                Aceita AGL_001.TXT, RelatórioPresença.xls (cartão de ponto), XLS e XLSX. Antes de gravar, você confere o período, os funcionários vinculados e as batidas encontradas.
               </p>
             </div>
           </div>

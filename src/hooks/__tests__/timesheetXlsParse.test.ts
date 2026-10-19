@@ -89,6 +89,20 @@ describe('parseTimesheetRows — KP1028 RegistroPresença.xls', () => {
     ])).toThrow(/Período inválido/);
   });
 
+  it('ignora coluna de dia fora do período em vez de abortar o arquivo', () => {
+    const result = parseTimesheetRows([
+      ['Data de presença:01/10/2026~15/10/2026'],
+      ['IDUsuário:', '15', 'Nome:', 'ana', 'Dep.:', 'CORTE'],
+      ['', '', '', '', '', '', '1', '2', '15', '16'],
+      ['', '', '', '', '', '', '08:00 12:00', '08:01 12:01', '08:14 12:14', '08:16 12:16'],
+    ]);
+    expect(result.employees[0].records).toEqual([
+      { day: 1, dateStr: '2026-10-01', punches: ['08:00', '12:00'] },
+      { day: 2, dateStr: '2026-10-02', punches: ['08:01', '12:01'] },
+      { day: 15, dateStr: '2026-10-15', punches: ['08:14', '12:14'] },
+    ]);
+  });
+
   it('aceita somente HH:MM canônico dentro do intervalo do dia', () => {
     expect(isValidTimesheetPunch('00:00')).toBe(true);
     expect(isValidTimesheetPunch('23:59')).toBe(true);
