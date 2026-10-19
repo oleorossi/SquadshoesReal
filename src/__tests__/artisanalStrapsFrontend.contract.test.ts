@@ -364,7 +364,9 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
 
   it('oferece configuração guiada em duas etapas e concentra histórico e simulação', () => {
     expect(hub).toContain('Configure em duas etapas');
-    expect(hub).toContain('Tipo, material e rendimento');
+    // Grill 19/10: rendimento por medida × bobina (não mais “material” a material).
+    expect(hub).toContain('Tipo, medida e rendimento');
+    expect(hub).toContain('MeasureGeometryFillSheet');
     expect(hub).toContain('Origem, cor e estoque');
     expect(hub).toContain("type ConfigurationView = 'cadastro' | 'variantes' | 'ferramentas'");
     expect(hub).toContain('Histórico e simulação');
