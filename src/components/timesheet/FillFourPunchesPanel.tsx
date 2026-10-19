@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   useCompletePunches,
@@ -88,13 +89,14 @@ export function FillFourPunchesPanel({
 
   const fillSchedule = () => {
     if (!canFillSchedule || !schedule) return;
-    setSlots({
-      entrada: schedule[0],
-      saidaAlmoco: schedule[1],
-      voltaAlmoco: schedule[2],
-      saida: schedule[3],
-    });
-    setExtras([]);
+    // Complemento: só preenche slots VAZIOS. Não sobrescreve batida real do
+    // relógio (ex.: 08:17/18:55) ao completar almoço 12:00–13:00 da escala.
+    setSlots((prev) => ({
+      entrada: prev.entrada || schedule[0],
+      saidaAlmoco: prev.saidaAlmoco || schedule[1],
+      voltaAlmoco: prev.voltaAlmoco || schedule[2],
+      saida: prev.saida || schedule[3],
+    }));
     if (reason.trim().length < 4) {
       setReason('Dia normal conforme escala — batidas completadas pelo RH.');
     }
@@ -122,18 +124,39 @@ export function FillFourPunchesPanel({
   };
 
   const savePunches = async (andNext: boolean) => {
-    if (!hasCanonical || !validation.valid || reason.trim().length < 4) return;
+    // Antes: return silencioso — o clique “não fazia nada” sem toast (parecia
+    // que o Salvar estava quebrado quando faltava almoço/justificativa).
+    if (!hasCanonical) {
+      toast.error('Vincule a matrícula do funcionário antes de salvar as batidas.');
+      return;
+    }
+    if (!validation.valid) {
+      toast.error(validation.errors[0] || 'Complete os 4 horários antes de salvar.');
+      return;
+    }
+    if (reason.trim().length < 4) {
+      toast.error('Informe uma justificativa com pelo menos 4 caracteres.');
+      return;
+    }
     const punches = namedSlotsToPunches(slots, extras.length > 4 ? extras : []);
     // Escape: se havia 5+ batidas originais, preserva extras no save
     const finalPunches = extras.length > 0 && pending.punches.length >= 5
       ? namedSlotsToPunches(slots, extras)
       : punches;
-    await complete.mutateAsync({
-      timeRecordId: pending.id,
-      punches: finalPunches,
-      reason: reason.trim(),
-    });
-    if (andNext) advance(nextAny);
+    // Captura o próximo ANTES do mutate: o onSuccess remove o atual da fila
+    // otimista e nextAny derivado do queue ficaria stale no mesmo tick.
+    const nextAfterSave = andNext ? nextAny : null;
+    try {
+      await complete.mutateAsync({
+        timeRecordId: pending.id,
+        punches: finalPunches,
+        reason: reason.trim(),
+      });
+    } catch {
+      // onError do mutation já mostrou o toast; não avança a fila.
+      return;
+    }
+    if (andNext) advance(nextAfterSave);
     else advance(null);
   };
 
@@ -259,7 +282,7 @@ export function FillFourPunchesPanel({
           {canFillSchedule && (
             <Button type="button" variant="secondary" size="sm" className="h-8 text-xs gap-1.5" onClick={fillSchedule}>
               <Clock className="h-3.5 w-3.5" />
-              Usar escala ({schedule![0]}–{schedule![3]})
+              Completar vazios com escala ({schedule![1]}–{schedule![2]})
             </Button>
           )}
 

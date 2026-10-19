@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarBlank,
   Users,
@@ -126,6 +126,15 @@ export default function PendingPunchesWorkspace() {
   }, [monthPendings, selectedEmployeeId]);
 
   const activeQueue = mode === 'by-day' ? dayItems : employeeItems;
+
+  // Se o registro saiu da fila (save otimista / refetch), não mantenha o
+  // snapshot velho no painel — era a sensação de "salvei e não gravou".
+  useEffect(() => {
+    if (!editing) return;
+    if (!monthPendings.some((row) => row.id === editing.id)) {
+      setEditing(null);
+    }
+  }, [monthPendings, editing]);
 
   // Dias 100% vazios com escala — candidatos a lote (Q10-C)
   const emptyWithSchedule = useMemo(

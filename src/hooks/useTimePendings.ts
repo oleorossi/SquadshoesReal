@@ -155,8 +155,31 @@ export function useCompletePunches() {
         p_reason: reason ?? null,
       });
       if (error) throw new Error(error.message);
+      return { timeRecordId, punches };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // Remove da fila de problemas NA HORA. Sem isso, o Salvar fecha o painel
+      // e a lista ainda mostra o registro velho (staleTime 60s + refetch async) —
+      // o RH reabre achando que "não salvou", embora a auditoria já tenha a linha.
+      const dropResolved = (rows: TimePending[] | undefined) =>
+        (rows || []).filter((row) => row.id !== result.timeRecordId);
+      const patchPunches = (rows: TimePending[] | undefined) =>
+        (rows || []).map((row) => (
+          row.id === result.timeRecordId
+            ? {
+              ...row,
+              punches: result.punches,
+              punches_count: result.punches.length,
+              day_summary: {
+                ...(row.day_summary || { status: 'normal' as DayStatus }),
+                status: 'normal' as DayStatus,
+                punch_count: result.punches.length,
+              },
+            }
+            : row
+        ));
+      qc.setQueryData<TimePending[]>(['v_time_pendings', true], dropResolved);
+      qc.setQueryData<TimePending[]>(['v_time_pendings', false], patchPunches);
       qc.invalidateQueries({ queryKey: ['v_time_pendings'] });
       qc.invalidateQueries({ queryKey: ['get_pending_count_by_employee'] });
       qc.invalidateQueries({ queryKey: ['bank_hours_balance'] });
