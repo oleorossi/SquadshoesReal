@@ -20,7 +20,12 @@ describe('Histórico de estoque de tiras no hub canônico', () => {
     expect(stockHistory).toContain("'sale_order_strap_demand_id.not.is.null'");
     expect(stockHistory).toContain("'strap_batch_item_id.not.is.null'");
     expect(stockHistory).toContain(".or(identityFilters.join(','))");
-    expect(stockHistory).toContain('products(name, sku, unit, color)');
+    // Embed products(...) é ambíguo (base_product_id + finished_product_id).
+    // O histórico resolve o SKU do movimento via product_id + merge no client.
+    expect(stockHistory).toContain("select('*, orders(order_number, sale_order_id, sale_orders(order_number))')");
+    expect(stockHistory).toContain(".select('id, name, sku, unit, color')");
+    expect(stockHistory).toContain('productsMap.get(movement.product_id)');
+    expect(stockHistory).not.toMatch(/products\(name,\s*sku,\s*unit,\s*color\)/);
     expect(stockHistory).toContain("'finished' as const : 'base' as const");
     expect(stockHistory).toContain("'Tira pronta' : 'Material-base'");
     expect(stockHistory).toContain('STRAP_STOCK_HISTORY_DAYS = 180');

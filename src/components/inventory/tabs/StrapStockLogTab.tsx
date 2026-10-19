@@ -30,8 +30,12 @@ interface StrapVariantProductQueryResult {
   error: unknown;
 }
 
+type StrapStockMovementRow = Omit<StockMovement, 'strap_stock_role' | 'products'> & {
+  products?: StockMovement['products'];
+};
+
 interface StrapStockMovementQueryResult {
-  data: Array<Omit<StockMovement, 'strap_stock_role'>> | null;
+  data: Array<StrapStockMovementRow> | null;
   error: unknown;
 }
 
@@ -97,17 +101,43 @@ export default function StrapStockLogTab() {
         identityFilters.unshift(`product_id.in.(${strapProductIds.join(',')})`);
       }
 
+      // stock_movements tem 2 FKs para products (base_product_id e
+      // finished_product_id). O embed `products(...)` sem hint estoura
+      // "more than one relationship". product_id (SKU do movimento) NÃO tem
+      // FK — mesmo padrão de useStockMovements: merge no client.
       const { data, error } = await strapStockClient
         .from('stock_movements')
-        .select('*, products(name, sku, unit, color), orders(order_number, sale_order_id, sale_orders(order_number))')
+        .select('*, orders(order_number, sale_order_id, sale_orders(order_number))')
         .gte('created_at', historyStart)
         .or(identityFilters.join(','))
         .order('created_at', { ascending: false })
         .limit(1000);
       if (error) throw error;
+
+      const movementProductIds = [...new Set(
+        (data || []).map((movement) => movement.product_id).filter(Boolean),
+      )];
+      const productsMap = new Map<string, StockMovement['products']>();
+      if (movementProductIds.length > 0) {
+        const { data: products, error: productsError } = await supabase
+          .from('products')
+          .select('id, name, sku, unit, color')
+          .in('id', movementProductIds);
+        if (productsError) throw productsError;
+        for (const product of products || []) {
+          productsMap.set(product.id, {
+            name: product.name,
+            sku: product.sku,
+            unit: product.unit,
+            color: product.color ?? null,
+          });
+        }
+      }
+
       const finishedProductIds = new Set(strapProductIds);
       return (data || []).map((movement) => ({
         ...movement,
+        products: productsMap.get(movement.product_id) || null,
         strap_stock_role: finishedProductIds.has(movement.product_id) ? 'finished' as const : 'base' as const,
       }));
     },
