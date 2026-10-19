@@ -88,8 +88,10 @@ describe('Ateliê — interno × prestador + kit da ficha', () => {
 
     const ficha = readFileSync('src/components/technical-sheets/AtelierReferencePanel.tsx', 'utf8');
     expect(ficha).toContain('useAtelierSheetKitCandidates');
-    expect(ficha).toContain('kitGroupIds');
-    expect(ficha).toContain('kit_group_ids');
+    // SKU pinado (débito exato) — kit por product_id, não só grupo (Q11-a revertido).
+    expect(ficha).toContain('kitProductIds');
+    expect(ficha).toContain('kit_product_ids');
+    expect(ficha).toContain('toggleKitProduct');
 
     const pv = readFileSync('src/components/sale-orders/ItemAtelierModeSection.tsx', 'utf8');
     expect(pv).toContain('AtelierExecutionMode');
