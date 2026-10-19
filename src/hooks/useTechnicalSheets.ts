@@ -570,7 +570,8 @@ export async function findSheetNameCollision(
     .ilike('name', alvo);
   // Erro de leitura NÃO bloqueia o cadastro: a trave é uma conveniência, e
   // derrubar o save por causa de um SELECT que falhou seria pior que o
-  // duplicado que ela evita.
+  // duplicado que ela evita. A integridade de verdade fica no índice único
+  // parcial (só fichas ativas) — mig 20270101043800.
   if (error) {
     console.warn('[findSheetNameCollision] checagem falhou, seguindo sem travar:', error);
     return null;
@@ -581,6 +582,22 @@ export async function findSheetNameCollision(
     && !sheet.retired_at
     && (sheet.name || '').trim().toLowerCase() === alvo.toLowerCase()
   ) ?? null;
+}
+
+/** Traduz 23505 do índice de nome pra mensagem acionável (não o texto cru do Postgres). */
+export function formatSheetNameUniqueViolation(
+  error: { code?: string; message?: string } | null | undefined,
+  attemptedName?: string | null,
+): string | null {
+  if (!error) return null;
+  const msg = error.message || '';
+  const isNameUnique = error.code === '23505'
+    && (msg.includes('technical_sheets_name_unique_idx') || /unique constraint.*technical_sheets.*name/i.test(msg));
+  if (!isNameUnique && !msg.includes('technical_sheets_name_unique_idx')) return null;
+  const nome = (attemptedName || '').trim();
+  return nome
+    ? `A referência "${nome}" já existe no sistema (ficha ativa). Escolha outro nome.`
+    : 'Já existe uma ficha ativa com este nome. Escolha outro nome.';
 }
 
 type TechnicalSheetCloneCompletionState = {
@@ -667,7 +684,9 @@ export function useAddSheet() {
         .insert(sanitizeUuidFields(form as any) as any)
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        throw new Error(formatSheetNameUniqueViolation(error, name) || error.message);
+      }
 
       // Kit de materiais base da categoria → linhas na Precificação (rascunho).
       let kitApplied = 0;
@@ -725,7 +744,9 @@ export function useUpdateSheet() {
         .select('*');
       if (error) {
         console.error('[useUpdateSheet] erro Supabase:', { id, payload, error });
-        throw error;
+        throw new Error(
+          formatSheetNameUniqueViolation(error, (data as any)?.name) || error.message,
+        );
       }
       if (!updated || updated.length === 0) {
         console.error('[useUpdateSheet] 0 rows affected — possível RLS bloqueando:', { id, payload });

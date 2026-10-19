@@ -18,7 +18,7 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
-import { findSheetNameCollision } from '../useTechnicalSheets';
+import { findSheetNameCollision, formatSheetNameUniqueViolation } from '../useTechnicalSheets';
 
 beforeEach(() => {
   ilikeMock.mockReset();
@@ -87,5 +87,21 @@ describe('findSheetNameCollision', () => {
   it('não confunde código repetido com nome repetido', async () => {
     linhas([{ id: 'bt01', name: 'BT01', code: 'BT01' }]);
     expect(await findSheetNameCollision('BT02')).toBeNull();
+  });
+});
+
+describe('formatSheetNameUniqueViolation', () => {
+  it('traduz 23505 do índice de nome', () => {
+    expect(formatSheetNameUniqueViolation(
+      { code: '23505', message: 'duplicate key value violates unique constraint "technical_sheets_name_unique_idx"' },
+      'SP130',
+    )).toBe('A referência "SP130" já existe no sistema (ficha ativa). Escolha outro nome.');
+  });
+
+  it('ignora outros 23505', () => {
+    expect(formatSheetNameUniqueViolation(
+      { code: '23505', message: 'duplicate key value violates unique constraint "other_idx"' },
+      'SP130',
+    )).toBeNull();
   });
 });
