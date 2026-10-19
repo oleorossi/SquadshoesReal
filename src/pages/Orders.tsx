@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
@@ -1822,10 +1823,11 @@ function getWeekOptions() {
                         const imageUrl = colorVariant?.image_url || (order as any).technical_sheets?.image_url;
                         
                         return imageUrl ? (
-                          <img 
-                            src={imageUrl} 
-                            alt={ref?.name} 
-                            className="w-full h-full object-cover transition-transform hover:scale-110 duration-300" 
+                          <ZoomableImage
+                            src={imageUrl}
+                            alt={ref?.name || 'Referência'}
+                            buttonClassName="h-full w-full"
+                            className="object-cover transition-transform duration-300 hover:scale-110"
                           />
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">

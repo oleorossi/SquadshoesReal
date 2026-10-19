@@ -646,7 +646,12 @@ ${cardsHtml}
                     <TableCell className="text-center text-xs font-semibold">{idx + 1}</TableCell>
                     <TableCell className="text-center p-1">
                       {g.imageUrl ? (
-                        <img src={g.imageUrl} alt={g.refName} className="w-10 h-10 object-cover rounded mx-auto" />
+                        <ZoomableImage
+                          src={g.imageUrl}
+                          alt={g.refName || g.refCode || 'Produto'}
+                          buttonClassName="mx-auto h-10 w-10 rounded"
+                          className="rounded object-cover"
+                        />
                       ) : (
                         <div className="w-10 h-10 bg-muted rounded flex items-center justify-center mx-auto">
                           <Package className="h-3.5 w-3.5 text-muted-foreground" />

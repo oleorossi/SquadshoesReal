@@ -93,6 +93,7 @@ import { SmartSearch, SmartSearchSuggestion } from '@/components/ui/smart-search
 import { HighlightMatch } from '@/components/ui/highlight-match';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -3222,7 +3223,16 @@ export default function SaleOrders() {
                           <div key={key}>
                             {/* Cabeçalho da referência (uma vez por grupo) */}
                             <div className="flex items-center gap-2.5 bg-muted/40 px-3 py-1.5">
-                              {g.refImage ? <img src={g.refImage} alt={g.refName} className="h-10 w-10 rounded-md object-cover border shrink-0" /> : <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center text-muted-foreground text-[10px] shrink-0">Sem foto</div>}
+                              {g.refImage ? (
+                                <ZoomableImage
+                                  src={g.refImage}
+                                  alt={g.refName || g.refCode || 'Referência'}
+                                  buttonClassName="h-10 w-10 rounded-md border shrink-0"
+                                  className="rounded-md object-cover"
+                                />
+                              ) : (
+                                <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center text-muted-foreground text-[10px] shrink-0">Sem foto</div>
+                              )}
                               <div className="min-w-0 flex-1">
                                 {g.refId ? (
                                   <button type="button" onClick={() => { setDetailDialogOpen(false); navigate(`/fichas-tecnicas?ref=${g.refId}`); }} title="Abrir ficha técnica desta referência" className="group inline-flex items-center gap-1 text-sm font-bold text-primary hover:underline text-left">
