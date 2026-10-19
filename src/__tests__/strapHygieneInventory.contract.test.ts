@@ -98,12 +98,14 @@ describe('Higiene do cadastro de tiras — inventario e redes de seguranca', () 
 
   it('expoe checkbox em todo grupo-folha e painel de higiene no Hub', () => {
     expect(groupEditDialog).toContain('id="edit-is-artisanal-strap"');
-    expect(groupEditDialog).toContain('Tira acabada (Hub)');
+    // Rótulo atual da janela do grupo (antes: "Tira acabada (Hub)").
+    expect(groupEditDialog).toContain('Grupo de tira acabada');
     expect(groupEditDialog).toContain('is_artisanal_strap: isContainer ? false : isArtisanalStrap');
     expect(groupEditDialog).toContain('!isContainer');
     expect(groupEditDialog).not.toMatch(/show\.artisanal && \(\s*<Checkbox/);
 
     expect(groupCreateDialog).toContain('id="is-artisanal-strap"');
+    expect(groupCreateDialog).toContain('Tira acabada (Hub)');
     expect(groupCreateDialog).toContain('is_artisanal_strap: form.is_artisanal_strap');
     expect(groupCreateDialog).toContain('auto_component_sheet: form.is_artisanal_strap ? false : form.auto_component_sheet');
     expect(groupCreateDialog).toContain('disabled={form.is_artisanal_strap}');

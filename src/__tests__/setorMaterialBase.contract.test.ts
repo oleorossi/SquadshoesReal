@@ -78,9 +78,12 @@ describe('setor Material Base para tiras cortadas de napa', () => {
     expect(create).toContain('MATERIAL_BASE_SECTOR');
     expect(create).toContain('is_artisanal_strap: enteringBase && !isFamilyCreation ? true');
     expect(create).toContain('STRASS comprada pronta permanece em');
+    expect(create).toContain('Tira comprada pronta (STRASS) fica em Componentes');
     expect(edit).toContain('MATERIAL_BASE_SECTOR');
     expect(edit).toContain('setIsArtisanalStrap(true)');
-    expect(edit).toContain('Tira comprada pronta (STRASS) permanece em Componentes');
+    // Aviso de STRASS vs Material Base mora no create; no edit o rótulo é
+    // "Grupo de tira acabada" + painel de origem/rendimento.
+    expect(edit).toContain('Grupo de tira acabada');
   });
 
   it('Material Base não é material de variante; STRASS/Componentes seguem no seletor de napa', () => {

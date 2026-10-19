@@ -45,7 +45,8 @@ describe('cadastro de rendimento de tira por material', () => {
 
   it('mantém cor e variante fora da página de cadastro', () => {
     const catalogTab = hub.slice(hub.indexOf('function CatalogTab'), hub.indexOf('function RecipesTab'));
-    expect(catalogTab).toContain('Tipos de tira e materiais possíveis');
+    // Título da Configuração após rendimento por geometria (medida × bobina).
+    expect(catalogTab).toContain('Tipos de tira × geometria da bobina');
     expect(catalogTab).not.toContain('Cores e nomes alternativos');
     expect(catalogTab).not.toContain('Produtos-base oficiais por cor');
   });
