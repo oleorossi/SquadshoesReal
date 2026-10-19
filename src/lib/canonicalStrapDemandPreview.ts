@@ -155,13 +155,13 @@ export function hardStrapBlockingReasons(
 }
 
 export const STRAP_NAPA_MISSING_YIELD_REASON =
-  'Sem receita/rendimento aprovado para esta tira × napa — cadastre no Hub de Tiras.';
+  'Sem rendimento para esta tira × napa — cadastre no grupo da tira (Estoque).';
 
 /**
  * FONTE ÚNICA da regra D9 (linha, bloco “Setor de Tiras”, PDF e compra):
- * tira Fazer só vira napa com receita aprovada, rendimento > 0 e sem bloqueio
- * duro. Devolve o motivo do bloqueio, ou null quando a napa é calculável.
- * Comprar/origem pendente não têm napa — devolve null (não se aplica).
+ * tira Prestador/Fábrica só vira napa com rendimento > 0 (grupo ou receita Hub)
+ * e sem bloqueio duro. Devolve o motivo do bloqueio, ou null quando a napa é
+ * calculável. Comprar/origem pendente não têm napa — devolve null.
  */
 export function strapNapaBlockReason(
   preview: Pick<
@@ -173,7 +173,8 @@ export function strapNapaBlockReason(
   const hard = hardStrapBlockingReasons(preview);
   if (hard.length > 0) return hard.join(' · ');
   const yieldM = finiteOrZero(preview.confirmedYieldMPerM);
-  if (!(yieldM > 0) || !preview.recipeId) {
+  // Rendimento do grupo basta — recipeId do Hub não é mais pré-requisito (R3).
+  if (!(yieldM > 0)) {
     const soft = (preview.snapshotWarning || '').trim();
     return soft || STRAP_NAPA_MISSING_YIELD_REASON;
   }
@@ -260,7 +261,9 @@ const isHealthyStrapPreview = (preview: CanonicalStrapDemandPreview): boolean =>
   if (preview.blockingReasons.length > 0 || preview.snapshotWarning) return false;
   if (!preview.sourceMode) return false;
   if (preview.sourceMode === 'internal') {
-    return !!preview.recipeId && !!preview.baseProductId && finiteOrZero(preview.confirmedYieldMPerM) > 0;
+    // Rendimento do grupo basta; recipeId do Hub é opcional (R3 material-de-estoque).
+    return finiteOrZero(preview.confirmedYieldMPerM) > 0
+      && (!!preview.baseProductId || !!preview.baseGroupId);
   }
   return !!preview.finishedProductId;
 };

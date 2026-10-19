@@ -76,8 +76,9 @@ import { deadlineChipLabel, deadlineTone } from '@/lib/reportOrderGrouping';
 import { daysUntilDeadline } from '@/lib/production/productionSequence';
 import { cn } from '@/lib/utils';
 import { AtelierRelatorioView } from '@/components/atelier/AtelierRelatorioView';
+import { AtelierStrapsView } from '@/components/atelier/AtelierStrapsView';
 
-const VIEW_SET = new Set(['cadastro', 'fila', 'relatorio']);
+const VIEW_SET = new Set(['cadastro', 'fila', 'relatorio', 'tiras']);
 
 function sheetLabel(s: {
   code?: string | null;
@@ -931,7 +932,7 @@ export default function Atelie() {
       <EditorialPageHeader
         sectionLabel="ENGENHARIA · ATELIÊ"
         title="Ateliê"
-        description="Cabedal complexo: na ficha, marque o kit por setor. Corte na fábrica; Costura/Aviamento interno (em realização → concluído) ou prestador (enviado → realizado → conferido) antes da OP."
+        description="Cabedal complexo e tiras: corte/kit na fila; aba Tiras para OC de napa ao prestador e recebimento da tira pronta."
         actions={
           <Button variant="outline" size="sm" className="h-9" asChild>
             <Link to="/terceirizados">
@@ -947,6 +948,9 @@ export default function Atelie() {
           <TabsTrigger value="fila" className="text-xs sm:text-sm">
             Fila operacional
           </TabsTrigger>
+          <TabsTrigger value="tiras" className="text-xs sm:text-sm">
+            Tiras
+          </TabsTrigger>
           <TabsTrigger value="relatorio" className="text-xs sm:text-sm">
             Relatório
           </TabsTrigger>
@@ -956,6 +960,9 @@ export default function Atelie() {
         </TabsList>
         <TabsContent value="fila">
           <FilaView />
+        </TabsContent>
+        <TabsContent value="tiras">
+          <AtelierStrapsView />
         </TabsContent>
         <TabsContent value="relatorio">
           <AtelierRelatorioView />

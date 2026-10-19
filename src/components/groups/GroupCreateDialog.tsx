@@ -413,7 +413,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
               </p>
               {form.sector === MATERIAL_BASE_SECTOR && !isFamilyCreation && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Tira cortada de napa (OVERLOCK, CHATA, meia cana). Cadastre rendimento e cores no Hub de Tiras.
+                  Tira cortada de napa (OVERLOCK, CHATA, meia cana). Depois de criar, cadastre origem e rendimento (m/m) na janela do grupo.
                   STRASS comprada pronta permanece em <strong>Componentes</strong> — não tem material-base.
                 </p>
               )}

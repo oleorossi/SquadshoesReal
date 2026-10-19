@@ -46,6 +46,8 @@ import { applyUnitAndPriceToGroupItems, commonProductField } from '@/lib/applyGr
 import { assertAreaGeometry, isAreaStockUnit } from '@/lib/areaGeometry';
 import { UNITS, UNIT_LABELS } from '@/types/inventory';
 import { createWidthLeafGroup, parseWidthMm, widthLeafName } from '@/lib/createWidthLeafGroup';
+import StrapGroupConfigPanel from '@/components/groups/StrapGroupConfigPanel';
+import type { StrapOrigin } from '@/hooks/useStrapGroupYields';
 
 /** Abas da janela de grupo. `bulk` e `items` chegaram aqui em 22/08/2026, quando
  *  o `MasterVariantDialog` deixou de ser um segundo diálogo e virou painel.
@@ -586,6 +588,15 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
   const [unitWeightKg, setUnitWeightKg] = useState<number>(group.unit_weight_kg || 0);
   const [purchaseMultiple, setPurchaseMultiple] = useState<number>((group as any).purchase_multiple || 0);
   const [isArtisanalStrap, setIsArtisanalStrap] = useState(group.is_artisanal_strap === true);
+  const [strapOrigin, setStrapOrigin] = useState<StrapOrigin | null>(
+    () => (group.strap_origin as StrapOrigin | null) ?? null,
+  );
+  const [strapLaborCostPerM, setStrapLaborCostPerM] = useState<number | null>(
+    () => group.strap_labor_cost_per_m != null ? Number(group.strap_labor_cost_per_m) : null,
+  );
+  const [strapDefaultContractorId, setStrapDefaultContractorId] = useState<string | null>(
+    () => group.strap_default_contractor_id ?? null,
+  );
 
   // Unidade + custo dos ITENS (products.unit / products.unit_price). Moram na
   // aba Geral pra unificar o ajuste rápido com a confirmação "aplicar a todos"
@@ -679,6 +690,11 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
     setUnitWeightKg(group.unit_weight_kg || 0);
     setPurchaseMultiple((group as any).purchase_multiple || 0);
     setIsArtisanalStrap(group.is_artisanal_strap === true);
+    setStrapOrigin((group.strap_origin as StrapOrigin | null) ?? null);
+    setStrapLaborCostPerM(
+      group.strap_labor_cost_per_m != null ? Number(group.strap_labor_cost_per_m) : null,
+    );
+    setStrapDefaultContractorId(group.strap_default_contractor_id ?? null);
     setDefaultUnitPrice(
       (group as any).default_unit_price != null ? Number((group as any).default_unit_price) : null,
     );
@@ -809,6 +825,13 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
           unit_weight_kg: unitWeightKg,
           purchase_multiple: purchaseMultiple > 0 ? purchaseMultiple : null,
           is_artisanal_strap: isContainer ? false : isArtisanalStrap,
+          strap_origin: isContainer || !isArtisanalStrap ? null : strapOrigin,
+          strap_labor_cost_per_m: isContainer || !isArtisanalStrap
+            ? null
+            : strapLaborCostPerM,
+          strap_default_contractor_id: isContainer || !isArtisanalStrap || strapOrigin !== 'prestador'
+            ? null
+            : strapDefaultContractorId,
           default_unit_price: isContainer
             ? null
             : (defaultUnitPrice != null && Number.isFinite(defaultUnitPrice) ? defaultUnitPrice : null),
@@ -1271,16 +1294,6 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                     </CardContent>
                   </Card>
 
-                  {show.artisanal && !isArtisanalStrap && (
-                    <div className="flex flex-col gap-3 border border-foreground/15 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-start gap-3">
-                        <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                        <div><p className="text-sm font-medium">Tiras artesanais</p><p className="mt-1 text-xs text-muted-foreground">Receita, cor, rendimento e produto acabado têm cadastro canônico próprio.</p></div>
-                      </div>
-                      <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`); }}>Abrir cadastro de tiras</Button>
-                    </div>
-                  )}
-
                   {!isContainer && (
                     <div className="flex items-start gap-3 border border-foreground/15 bg-muted/20 p-4">
                       <Checkbox
@@ -1290,18 +1303,39 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                       />
                       <div className="min-w-0">
                         <Label htmlFor="edit-is-artisanal-strap" className="cursor-pointer text-sm font-medium">
-                          Tira acabada (Hub)
+                          Grupo de tira acabada
                         </Label>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Marque quando este grupo é o produto final da tira cortada de napa (chata, overlock, meia cana), não a napa de origem. Tira comprada pronta (STRASS) permanece em Componentes — não tem material-base. Desliga a ficha de componente automática. A identidade operacional continua por UUID — o nome não decide.
+                          Marque quando este grupo é o produto final da tira (chata, overlock, meia cana, strass), não a napa de origem. Origem, rendimento e mão de obra ficam nesta janela — o PV só calcula os metros.
                         </p>
-                        {sector === MATERIAL_BASE_SECTOR && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Neste setor a flag liga sozinha: a napa (Soft vs Madrid) vem da variante da ficha, não de um grupo de tira por napa. Cadastre rendimento no Hub de Tiras.
-                          </p>
-                        )}
                       </div>
                       <Scissors className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    </div>
+                  )}
+
+                  {!isContainer && isArtisanalStrap && (
+                    <StrapGroupConfigPanel
+                      groupId={group.id}
+                      strapOrigin={strapOrigin}
+                      onStrapOriginChange={setStrapOrigin}
+                      laborCostPerM={strapLaborCostPerM}
+                      onLaborCostPerMChange={setStrapLaborCostPerM}
+                      defaultContractorId={strapDefaultContractorId}
+                      onDefaultContractorIdChange={setStrapDefaultContractorId}
+                    />
+                  )}
+
+                  {show.artisanal && !isArtisanalStrap && (
+                    <div className="flex flex-col gap-3 border border-foreground/15 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-start gap-3">
+                        <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                        <div>
+                          <p className="text-sm font-medium">Material-base de tira</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Este grupo é napa/base. O rendimento (m/m) cadastra-se no grupo da tira acabada, não aqui.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
 

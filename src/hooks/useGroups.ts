@@ -47,6 +47,12 @@ export type ProductGroup = {
   is_color_agnostic?: boolean;
   /** Grupo acabado de tira controlado exclusivamente pelo catálogo canônico. */
   is_artisanal_strap?: boolean;
+  /** Origem operacional da tira: comprar_pronto | fabrica | prestador. */
+  strap_origin?: 'comprar_pronto' | 'fabrica' | 'prestador' | null;
+  /** Mão de obra do prestador/fábrica (R$/m de tira). */
+  strap_labor_cost_per_m?: number | null;
+  /** Prestador padrão quando origem = prestador. */
+  strap_default_contractor_id?: string | null;
   /** Setor/categoria EXPLÍCITO do grupo (= products.category canônico). Fonte da
    *  categoria dos itens (substitui a dedução por nome). Mover o grupo de setor
    *  cascateia pra products.category no banco. Ver lib/categoryFromGroup.ts. */
