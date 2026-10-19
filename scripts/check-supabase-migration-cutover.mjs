@@ -31,12 +31,16 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
 // medido 22/09/2026 = 2295. Em 16/10/2026 o workflow Apply Migrations
 // falhou com "esperado 2295, encontrado 2304": nove carimbos MCP com data
 // real (abaixo do corte) entraram em schema_migrations desde a última
-// calibração — baseline remediado medindo o banco vivo. Marcadores
-// temporários podem ter qualquer nome descritivo: o contrato do Supabase
-// compara os timestamps.
+// calibração — baseline remediado medindo o banco vivo. Em 19/10/2026 o
+// mesmo padrão: "esperado 2304, encontrado 2308" — quatro carimbos MCP de
+// calendário (20261019103116, 20261019104100, 20261019122236,
+// 20261019122505; os dois últimos espelham o canônico 20270101044000/44001
+// de rendimento por geometria). Baseline remediado medindo o banco vivo.
+// Marcadores temporários podem ter qualquer nome descritivo: o contrato do
+// Supabase compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
-  count: 2304,
-  sha256: 'a637ef4079fa213b0f1624a754575bd2e8ffd7dafd2a78690c7163c03cb6f56a',
+  count: 2308,
+  sha256: 'caa9f62ab2a8ca8b6ef1b51863eeb7d80dff283ada1060123e2fd18a1c56132c',
 });
 
 const MIGRATION_FILE = /^(\d{14})_(.+)\.sql$/;
