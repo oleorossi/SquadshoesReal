@@ -851,7 +851,7 @@ export function buildMaterialConsumptionReportHtml({
     <span><strong>${formatQty(total, unit)}</strong> ${escapeHtml(formatUnit(unit))}</span>
   `).join('');
   const pendingStrip = pendingTiraM > 0
-    ? `<div class="pending-strip"><span class="flag warning">Tira com cadastro pendente</span><strong>${formatQty(pendingTiraM, 'm')} m de tira</strong><small>napa “—” no Setor de Tiras até cadastrar o rendimento — corrija no Hub de Tiras / regrave o PV</small></div>`
+    ? `<div class="pending-strip"><span class="flag warning">Tira com cadastro pendente</span><strong>${formatQty(pendingTiraM, 'm')} m de tira</strong><small>napa “—” no Setor de Tiras até cadastrar o rendimento — corrija no grupo da tira (Estoque) / regrave o PV</small></div>`
     : '';
   const shortfallList = majorShortfalls.length ? `<ol class="shortfall-list">${majorShortfalls.map((shortfall) => `
     <li><span>${escapeHtml(shortfall.label)}${shortfall.color && shortfall.color !== '—' ? ` · ${escapeHtml(shortfall.color)}` : ''}</span><strong>${formatQty(shortfall.qty, shortfall.unit)} ${escapeHtml(formatUnit(shortfall.unit))}</strong></li>
