@@ -119,7 +119,9 @@ DECLARE
     'v_delivery_routes_summary',
     'v_demand_forecast',
     'v_demand_history_monthly',
-    'v_employee_punch_pattern',
+    -- v_employee_punch_pattern NÃO entra: suggest_punches_for_record lê
+    -- public.v_employee_punch_pattern no prosrc (pg_depend não vê). Movê-la
+    -- quebrou Pendências em 19/10/2026 — restaurada na 20270101044100.
     'v_ficha_sole_range_mismatch',
     'v_lasts_with_usage',
     'v_late_orders',
