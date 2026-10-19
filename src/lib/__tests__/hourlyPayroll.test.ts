@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { splitDayMinutes, calculateHourlyPayroll, type HourlyDayInput } from '../hourlyPayroll';
 
-// Folha por hora trabalhada. Trava a regra (atualizada 2026-10-17):
+// Folha por hora trabalhada. Trava a regra (atualizada 2026-10-19):
 // VH = salário/220; 1,5× após 18h / sáb / dom / feriado; não acumula;
-// só par ≥4 batidas paga; 1/2/3 e ímpar ≥5 = INCONSISTENTE → 0h (Pendências).
+// par ≥4 e n=2 turno parcial pagam; n=2 jornada cheia / 1 / 3 / ímpar ≥5 = pendência.
 const WED = 3, SAT = 6, SUN = 0;
 
 describe('splitDayMinutes', () => {
@@ -29,15 +29,26 @@ describe('splitDayMinutes', () => {
   it('hora que não existe no relógio vira pendência, nunca pagamento', () => {
     expect(splitDayMinutes(['08:00', '29:59'], WED, false)).toEqual({ normal: 0, premium: 0, incomplete: true });
     expect(splitDayMinutes(['08:00', '12:75'], WED, false).incomplete).toBe(true);
-    // 2 batidas (mesmo com *) também são pendência agora.
+    // Jornada cheia com * ainda é pendência (faltam marcas de almoço).
     expect(splitDayMinutes(['08:00', '18:00*'], WED, false).incomplete).toBe(true);
   });
 
-  it('2 batidas (entrada+saída) viram pendência — sem inferir almoço', () => {
+  it('n=2 jornada cheia (cruza almoço) continua pendência — sem inferir 12:00/13:00', () => {
     expect(splitDayMinutes(['08:00', '18:00'], WED, false))
       .toEqual({ normal: 0, premium: 0, incomplete: true });
     expect(splitDayMinutes(['08:00', '13:00'], WED, false).incomplete).toBe(true);
-    expect(splitDayMinutes(['08:00', '12:00'], WED, false).incomplete).toBe(true);
+    expect(splitDayMinutes(['08:01', '20:15'], WED, false).incomplete).toBe(true);
+  });
+
+  it('n=2 turno parcial (só tarde / só manhã) PAGA o par — Mariane 19/10/2026', () => {
+    // Só tarde: 13:06→18:06 = 5h (4h54 normal + 6min premium após 18h).
+    expect(splitDayMinutes(['13:06', '18:06'], WED, false)).toEqual({
+      normal: 294, premium: 6, incomplete: false,
+    });
+    // Só manhã: 08:00→12:00 = 4h, sem almoço fantasma.
+    expect(splitDayMinutes(['08:00', '12:00'], WED, false)).toEqual({
+      normal: 240, premium: 0, incomplete: false,
+    });
   });
 
   it('vai até 20h (completo 4 batidas): 9h normal + 2h após 18h a 1,5×', () => {
@@ -45,8 +56,10 @@ describe('splitDayMinutes', () => {
     expect(r).toEqual({ normal: 540, premium: 120, incomplete: false });
   });
 
-  it('sábado com só 2 batidas é pendência; com 4 é tudo 1,5×', () => {
+  it('sábado: n=2 jornada cheia pendência; n=2 parcial e n=4 pagam em 1,5×', () => {
     expect(splitDayMinutes(['08:00', '18:00'], SAT, false).incomplete).toBe(true);
+    expect(splitDayMinutes(['13:00', '18:00'], SAT, false))
+      .toEqual({ normal: 0, premium: 300, incomplete: false });
     expect(splitDayMinutes(['08:00', '12:00', '13:00', '18:00'], SAT, false))
       .toEqual({ normal: 0, premium: 540, incomplete: false });
   });

@@ -23,13 +23,13 @@ import { PUNCHES_REAIS, TODAS_AS_BATIDAS } from './fixtures/punchesReais';
 const QUARTA = 3;
 const SABADO = 6;
 
-/** Baseline: 17/10/2026 — só par ≥4 paga; n=1/2/3 e ímpar ≥5 = pendência. */
+/** Baseline: 19/10/2026 — par ≥4 e n2_seco (turno parcial) pagam; n2_cruza/ímpar pendem. */
 const BASELINE = [
   { bucket: 'n1',       dias: 12, utilNormal: 0,    utilPremium: 0,    pendentes: 12 },
   { bucket: 'n3',       dias: 14, utilNormal: 0,    utilPremium: 0,    pendentes: 14 },
   { bucket: 'impar5',   dias: 11, utilNormal: 0,    utilPremium: 0,    pendentes: 11 },
   { bucket: 'n2_cruza', dias: 13, utilNormal: 0,    utilPremium: 0,    pendentes: 13 },
-  { bucket: 'n2_seco',  dias: 12, utilNormal: 0,    utilPremium: 0,    pendentes: 12 },
+  { bucket: 'n2_seco',  dias: 12, utilNormal: 3914, utilPremium: 1527, pendentes: 0 },
   { bucket: 'par4',     dias: 12, utilNormal: 6801, utilPremium: 3157, pendentes: 0 },
   { bucket: 'par6',     dias: 14, utilNormal: 7104, utilPremium: 625,  pendentes: 0 },
 ] as const;
@@ -63,14 +63,21 @@ describe('splitDayMinutes — corpus real de produção', () => {
     });
   }
 
-  it('tudo que não é par ≥4 é pendência (decisão 2026-10-17)', () => {
-    const incompletos = TODAS_AS_BATIDAS.filter(p => p.length < 4 || p.length % 2 !== 0);
-    expect(incompletos.length).toBe(62); // n1+n3+impar5+n2_cruza+n2_seco
-    for (const p of incompletos) {
-      expect(threePunchesStayPending(p)).toBe(true);
+  it('ímpar e n2_cruza pendem; n2_seco (turno parcial) paga (19/10/2026)', () => {
+    const semprePendente = TODAS_AS_BATIDAS.filter(p =>
+      p.length % 2 !== 0 || (p.length === 2 && splitDayMinutes(p, QUARTA, false).incomplete),
+    );
+    // n1(12)+n3(14)+impar5(11)+n2_cruza(13) = 50; n2_seco sai da conta
+    expect(semprePendente.length).toBe(50);
+    for (const p of semprePendente) {
+      if (p.length === 3) expect(threePunchesStayPending(p)).toBe(true);
       expect(splitDayMinutes(p, QUARTA, false), `esperava pendência em ${JSON.stringify(p)}`).toEqual({
         normal: 0, premium: 0, incomplete: true,
       });
+    }
+    const secas = PUNCHES_REAIS.find(b => b.bucket === 'n2_seco')!.batidas;
+    for (const p of secas) {
+      expect(splitDayMinutes(p, QUARTA, false).incomplete, `seco deveria pagar ${JSON.stringify(p)}`).toBe(false);
     }
   });
 

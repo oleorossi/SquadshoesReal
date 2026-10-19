@@ -2,7 +2,10 @@
  * 4 slots nomeados do dia de ponto (Entrada · Saída almoço · Volta · Saída).
  * Fonte compartilhada entre Ajustar (DayAdjustDialog) e Pendências.
  */
-import { mapThreePunchesToNamedSlots } from '@/lib/ponto/interpretDayPunches';
+import {
+  mapThreePunchesToNamedSlots,
+  twoPunchesNeedLunchMarks,
+} from '@/lib/ponto/interpretDayPunches';
 
 export const PUNCH_SLOT_DEFS = [
   { key: 'entrada', label: 'Entrada' },
@@ -84,6 +87,34 @@ export function namedSlotsToPunches(slots: PunchSlots, extras: string[] = []): s
 
 export function validateFourPunchSlots(slots: PunchSlots): { valid: boolean; errors: string[]; workedMin: number } {
   const errs: string[] = [];
+  const entrada = (slots.entrada || '').trim();
+  const saidaAlmoco = (slots.saidaAlmoco || '').trim();
+  const voltaAlmoco = (slots.voltaAlmoco || '').trim();
+  const saida = (slots.saida || '').trim();
+  const lunchEmpty = !saidaAlmoco && !voltaAlmoco;
+
+  // Turno parcial: só Entrada + Saída (almoço vazio) — válido quando NÃO parece
+  // jornada cheia sem almoço (13:06→18:06 ok; 08:01→20:15 exige almoço).
+  if (lunchEmpty && entrada && saida) {
+    const flat = [entrada, saida];
+    if (!HH_MM_RE.test(entrada)) errs.push('Entrada: use HH:MM.');
+    if (!HH_MM_RE.test(saida)) errs.push('Saída: use HH:MM.');
+    if (errs.length > 0) return { valid: false, errors: errs, workedMin: 0 };
+    if (twoPunchesNeedLunchMarks(flat)) {
+      return {
+        valid: false,
+        errors: ['Saída almoço: preencha o horário.', 'Volta almoço: preencha o horário.'],
+        workedMin: 0,
+      };
+    }
+    const am = timeToMinutes(entrada);
+    const bm = timeToMinutes(saida);
+    if (bm <= am) {
+      return { valid: false, errors: ['Saída deve ser depois da entrada.'], workedMin: 0 };
+    }
+    return { valid: true, errors: [], workedMin: bm - am };
+  }
+
   const values = PUNCH_SLOT_DEFS.map(({ key, label }) => ({ key, label, v: (slots[key] || '').trim() }));
   for (const { label, v } of values) {
     if (!v) errs.push(`${label}: preencha o horário.`);
@@ -107,5 +138,16 @@ export function validateFourPunchSlots(slots: PunchSlots): { valid: boolean; err
 }
 
 export function isCompleteFourSlots(slots: PunchSlots): boolean {
+  const entrada = (slots.entrada || '').trim();
+  const saida = (slots.saida || '').trim();
+  const lunchEmpty = !(slots.saidaAlmoco || '').trim() && !(slots.voltaAlmoco || '').trim();
+  if (
+    lunchEmpty
+    && HH_MM_RE.test(entrada)
+    && HH_MM_RE.test(saida)
+    && !twoPunchesNeedLunchMarks([entrada, saida])
+  ) {
+    return true;
+  }
   return PUNCH_SLOT_DEFS.every(({ key }) => HH_MM_RE.test((slots[key] || '').trim()));
 }

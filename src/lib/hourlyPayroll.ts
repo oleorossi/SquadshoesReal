@@ -24,6 +24,7 @@
  */
 
 import { orderPunchMinutesForIntervals } from './ponto/overnightPunches';
+import { twoPunchesNeedLunchMarks } from './ponto/interpretDayPunches';
 
 /** 44h/semana → 220h/mês (DSR embutido). Base do valor-hora. */
 export const MONTHLY_HOURS_DIVISOR = 220;
@@ -90,17 +91,19 @@ function isPunchOutOfRange(t: string): boolean {
  * - Sábado/domingo/feriado → tudo 1,5×.
  * - Dia útil → antes das 18:00 normal; depois das 18:00 vira 1,5×.
  *
- * Batidas (decisão do dono 2026-10-17 — pendências precisas):
- * - **Só 4+ pares** (ex.: 08:00,12:00,13:00,18:00) → soma os pares reais.
- * - **1, 2 ou 3 batidas** → pendência (RH completa na fila). Acaba a inferência
- *   de almoço em n=2 e a interpretação de n=3 (supercede 2026-09-12).
- * - **Ímpar ≥5** → pendência (auditoria 2026-07-30).
+ * Batidas:
+ * - **Par ≥4** (ex.: 08:00,12:00,13:00,18:00) → soma os pares reais.
+ * - **n=2 turno parcial** (só manhã / só tarde / curto) → paga o par, SEM
+ *   inferir almoço (decisão do dono 19/10/2026 — Mariane 13:06→18:06).
+ * - **n=2 jornada cheia** (entrou de manhã e saiu ≥18h) → pendência: faltam
+ *   marcas de almoço (mantém o espírito da 2026-10-17 sem travar meio período).
+ * - **1, 3 ou ímpar ≥5** → pendência (auditoria 2026-07-30 / 2026-10-17).
  *
  * Almoço (decisão 2026-06-02): com 4+ batidas, é **1h dentro de 12:00–14:00**.
  * Em dia longo (>6h) que cruza o meio-dia, garante **no mínimo 1h** de almoço —
  * se a pessoa bateu pausa MENOR que 1h nessa janela, desconta o que faltar; se
  * bateu pausa MAIOR, respeita a real. O desconto sai da hora normal; o que
- * sobrar sai do 1,5×.
+ * sobrar sai do 1,5×. Turno parcial n=2 não cruza essa janela → sem desconto.
  */
 export function splitDayMinutes(
   punches: string[],
@@ -116,8 +119,12 @@ export function splitDayMinutes(
 ): { normal: number; premium: number; incomplete: boolean } {
   const n = punches.length;
   if (n === 0) return { normal: 0, premium: 0, incomplete: false };
-  // 1 / 2 / 3 / ímpar ≥5 → fila de pendências. Só par ≥4 paga.
-  if (n < 4 || n % 2 !== 0) return { normal: 0, premium: 0, incomplete: true };
+  // Ímpar → fila. n=2 jornada cheia sem almoço → fila. n=2 parcial e par ≥4 pagam.
+  if (n % 2 !== 0) return { normal: 0, premium: 0, incomplete: true };
+  if (n === 2 && twoPunchesNeedLunchMarks(punches)) {
+    return { normal: 0, premium: 0, incomplete: true };
+  }
+  if (n < 2) return { normal: 0, premium: 0, incomplete: true };
   // Hora inexistente (ex.: '29:59') → PENDÊNCIA, nunca pagamento. Ver isPunchOutOfRange.
   if (punches.some(isPunchOutOfRange)) return { normal: 0, premium: 0, incomplete: true };
   // Ordena antes de parear (relógio fora de ordem). Virada à noite: saída de

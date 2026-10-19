@@ -1,10 +1,10 @@
 // interpretDayPunches.ts — lê uma lista plana de batidas e diz QUAL marcação
 // faltou, pra pré-preencher os 4 slots nomeados na UI de pendências.
 //
-// Decisão do dono 2026-10-17: 1, 2 ou 3 batidas SEMPRE são pendência — o RH
-// completa na fila. Acaba a inferência que pagava n=2 (almoço 1h) e n=3 com
-// saída real (supercede 2026-09-12). Este módulo ainda classifica *qual* slot
-// falta (mapThreePunchesToNamedSlots), mas threePunchesStayPending é sempre true.
+// Decisão 2026-10-17: n=3 SEMPRE pendência; n=2 jornada cheia (cruza almoço)
+// também. Em 19/10/2026 o dono liberou n=2 turno parcial (só manhã/tarde) —
+// ver twoPunchesNeedLunchMarks. Este módulo classifica *qual* slot falta em
+// n=3 (mapThreePunchesToNamedSlots); threePunchesStayPending continua true.
 
 export const LUNCH_START_MIN = 12 * 60;
 export const LUNCH_END_MIN = 13 * 60;
@@ -80,6 +80,34 @@ export function looksLikeWeekdayJourney(punches: string[]): boolean {
   const first = mins[0];
   const last = mins[mins.length - 1];
   return first < LUNCH_START_MIN && last >= WEEKDAY_EXIT_MIN;
+}
+
+/** Mesmo corte de `overnightPunches.OVERNIGHT_DAWN_CUTOFF_MIN` (evita import cíclico). */
+const DAWN_CUTOFF_MIN = 5 * 60;
+
+/**
+ * Duas batidas que AINDA precisam de marcas de almoço (ou revisão do RH).
+ *
+ * Pendência quando:
+ *  - cruza a janela de almoço (entrou antes das 12h e saiu ≥13h) sem bater
+ *    12:00/13:00 — jornada cheia / “faltou almoço”; OU
+ *  - é virada à noite (entrada diurna + saída na madrugada, ordem do relógio).
+ *
+ * Turno parcial NÃO entra: só manhã (08→12), só tarde (13:06→18:06), madrugada
+ * curta. Paga o par entrada→saída sem inventar almoço (Mariane, 19/10/2026).
+ */
+export function twoPunchesNeedLunchMarks(punches: string[]): boolean {
+  const raw: number[] = [];
+  for (const p of punches || []) {
+    const m = punchToMin(p);
+    if (m == null) return false;
+    raw.push(m);
+  }
+  if (raw.length !== 2) return false;
+  // Virada: 08:14 → 03:04(+1). Não confundir com turno 00:03→08:24.
+  if (raw[0] >= DAWN_CUTOFF_MIN && raw[1] < DAWN_CUTOFF_MIN) return true;
+  const [first, last] = raw[0] <= raw[1] ? raw : [raw[1], raw[0]];
+  return first < LUNCH_START_MIN && last >= LUNCH_END_MIN;
 }
 
 /**

@@ -3,6 +3,7 @@
  * Fonte única pra filtro e marca visual — espelha pendência de batida + virada + ausência.
  */
 import { detectOvernightCarries } from '@/lib/ponto/overnightPunches';
+import { twoPunchesNeedLunchMarks } from '@/lib/ponto/interpretDayPunches';
 
 export type DayCellStatus = 'ok' | 'needs_fix' | 'justified' | 'empty' | 'out_of_scope';
 
@@ -20,11 +21,19 @@ function validPunchCount(punches: string[]): number {
   }).length;
 }
 
-/** Dia com batidas irregulares: tudo que não for par ≥4 (decisão 2026-10-17). */
+/**
+ * Dia que ainda precisa de correção na grade Ajustar / Pendências.
+ * - ímpar / 1 / 3 → sim
+ * - n=2 jornada cheia sem almoço → sim
+ * - n=2 turno parcial (só tarde/manhã) → não (paga o par)
+ * - par ≥4 → não
+ */
 export function punchesNeedFix(punches: string[]): boolean {
   const n = validPunchCount(punches);
   if (n === 0) return false;
-  if (n < 4 || n % 2 === 1) return true;
+  if (n % 2 === 1) return true;
+  if (n === 2) return twoPunchesNeedLunchMarks(punches);
+  if (n < 4) return true;
   return false;
 }
 

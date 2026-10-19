@@ -67,8 +67,9 @@ export interface PendingCount {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Pendência = batida incompleta (inconsistent/irregular/partial) OU FALTA em dia
-// útil (absent). Decisão 2026-10-17: n=2 e n=3 também são irregular (sem inferir
-// almoço) — entram na fila até o RH completar 4 batidas ou marcar falta.
+// útil (absent). n=3 / ímpar / n=2 jornada cheia (sem almoço) = irregular.
+// n=2 turno parcial (só manhã/tarde) NÃO é pendência — calculate_day_summary paga
+// o par (20270101044300 / Mariane 19/10/2026).
 const PROBLEM_STATUSES: DayStatus[] = ['inconsistent', 'irregular', 'partial', 'absent'];
 
 const isPendingRow = (r: TimePending): boolean => {

@@ -3,6 +3,7 @@ import {
   interpretThreePunches,
   interpretDayPunches,
   looksLikeWeekdayJourney,
+  twoPunchesNeedLunchMarks,
   sortedPunchMinutes,
   threePunchesStayPending,
   mapThreePunchesToNamedSlots,
@@ -120,5 +121,26 @@ describe('threePunchesStayPending', () => {
     expect(threePunchesStayPending(['08:22', '13:00', '21:28'])).toBe(true);
     expect(threePunchesStayPending(['08:00', '12:00', '13:00'])).toBe(true);
     expect(threePunchesStayPending(['08:00'])).toBe(true);
+  });
+});
+
+describe('twoPunchesNeedLunchMarks', () => {
+  it('turno só tarde / só manhã NÃO precisa de almoço (Mariane)', () => {
+    expect(twoPunchesNeedLunchMarks(['13:06', '18:06'])).toBe(false);
+    expect(twoPunchesNeedLunchMarks(['08:00', '12:00'])).toBe(false);
+  });
+
+  it('jornada que cruza o almoço sem marcas → pendência', () => {
+    expect(twoPunchesNeedLunchMarks(['08:00', '18:00'])).toBe(true);
+    expect(twoPunchesNeedLunchMarks(['08:01', '20:15'])).toBe(true);
+    expect(twoPunchesNeedLunchMarks(['08:00', '13:00'])).toBe(true);
+  });
+
+  it('virada à noite (entrada diurna + saída madrugada) → pendência', () => {
+    expect(twoPunchesNeedLunchMarks(['08:14', '03:04'])).toBe(true);
+  });
+
+  it('madrugada curta 00:03→08:24 NÃO é virada', () => {
+    expect(twoPunchesNeedLunchMarks(['00:03', '08:24'])).toBe(false);
   });
 });

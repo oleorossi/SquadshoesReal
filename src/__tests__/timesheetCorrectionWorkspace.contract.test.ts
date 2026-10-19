@@ -54,7 +54,9 @@ describe('workspace único de ajuste do ponto', () => {
 describe('dayCellStatus', () => {
   it('classifica ímpar / ausência / ok / vazio em dia útil', () => {
     expect(punchesNeedFix(['08:00'])).toBe(true);
-    expect(punchesNeedFix(['08:00', '18:00'])).toBe(true); // n=2 → pendência (2026-10-17)
+    expect(punchesNeedFix(['08:00', '18:00'])).toBe(true); // n=2 jornada cheia → pendência
+    expect(punchesNeedFix(['13:06', '18:06'])).toBe(false); // turno só tarde → ok
+    expect(punchesNeedFix(['08:00', '12:00'])).toBe(false); // turno só manhã → ok
     expect(punchesNeedFix(['08:00', '12:00', '13:00', '18:00'])).toBe(false);
 
     expect(
@@ -88,7 +90,18 @@ describe('dayCellStatus', () => {
         withinEmployment: true,
         isFuture: false,
       }),
-    ).toBe('needs_fix'); // n=2 → pendência (2026-10-17)
+    ).toBe('needs_fix'); // n=2 jornada cheia → pendência
+
+    expect(
+      classifyDayCell({
+        punches: ['13:06', '18:06'],
+        hasAbsence: false,
+        overnightPending: false,
+        expectsWork: true,
+        withinEmployment: true,
+        isFuture: false,
+      }),
+    ).toBe('ok'); // turno só tarde
 
     expect(
       classifyDayCell({
