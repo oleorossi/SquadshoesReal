@@ -24,6 +24,7 @@ import {
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArtisanalStrapEditor, type ArtisanalStrapEditorMode, type ArtisanalStrapEditorOrigin } from '@/components/artisanal-straps/ArtisanalStrapEditor';
 import { ArtisanalStrapConversionEditor } from '@/components/artisanal-straps/ArtisanalStrapConversionEditor';
+import { MeasureGeometryFillSheet } from '@/components/artisanal-straps/MeasureGeometryFillSheet';
 import { ArtisanalStrapBatchMatrix } from '@/components/artisanal-straps/ArtisanalStrapBatchMatrix';
 import { ArtisanalStrapMigrationResolutionDialog } from '@/components/artisanal-straps/ArtisanalStrapMigrationDialogs';
 import { ArtisanalStrapLegacyProductMigrationDialog } from '@/components/artisanal-straps/ArtisanalStrapLegacyProductMigrationDialog';
@@ -1011,7 +1012,7 @@ export default function ArtisanalStraps() {
         </TabsContent>
       </Tabs>
 
-      {editorPurpose === 'conversion' ? (
+      {editorPurpose === 'conversion' && searchParams.get('legacyRecipeId') ? (
         <ArtisanalStrapConversionEditor
           open={editorOpen}
           onOpenChange={(open) => { if (!open) closeEditor(); }}
@@ -1027,6 +1028,14 @@ export default function ArtisanalStraps() {
             ? null
             : Number(searchParams.get('suggestedYieldMPerM'))}
           legacyRecipeId={searchParams.get('legacyRecipeId')}
+        />
+      ) : editorPurpose === 'conversion' ? (
+        <MeasureGeometryFillSheet
+          open={editorOpen}
+          onOpenChange={(open) => { if (!open) closeEditor(); }}
+          catalog={catalog}
+          capabilities={catalog.capabilities}
+          measureId={searchParams.get('measureId')}
         />
       ) : (
         <ArtisanalStrapEditor
@@ -1104,11 +1113,11 @@ function ConfigurationRail({
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-xs font-bold text-primary-foreground">1</span>
             <span>
-              <span className="block text-sm font-semibold text-foreground">Tipo, material e rendimento</span>
+              <span className="block text-sm font-semibold text-foreground">Tipo, medida e rendimento</span>
               <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                Um formulário lê as medidas físicas da napa, confirma a conversão e salva sem criar cores.
+                Um rendimento por bobina cobre todas as napas da mesma geometria — sem cadastrar material a material.
               </span>
-              <span className="mt-2 block text-xs font-semibold text-primary group-hover:underline">Abrir cadastro-base</span>
+              <span className="mt-2 block text-xs font-semibold text-primary group-hover:underline">Abrir rendimento da bobina</span>
             </span>
           </button>
         </li>
@@ -1328,6 +1337,7 @@ function CatalogTab({
                 laborCostPerM={Number(
                   maps.measures.get(row.measure_id)?.preco_artesanal_per_m,
                 ) || Number(row.strap_labor_cost_per_m) || 0}
+                openEditor={openEditor}
               />
             ))}
           </div>
@@ -1343,12 +1353,14 @@ function CatalogMeasureCard({
   canEditYield,
   forceOpen,
   laborCostPerM,
+  openEditor,
 }: {
   row: StrapMeasureYieldBoardRow;
   catalog: ArtisanalStrapCatalog;
   canEditYield: boolean;
   forceOpen?: boolean;
   laborCostPerM: number;
+  openEditor: (args?: OpenEditorArgs) => void;
 }) {
   const primary = useMemo(() => {
     if (!row.geometries.length) return null;
@@ -1419,6 +1431,22 @@ function CatalogMeasureCard({
         defaultOpen={forceOpen || row.missing_yield}
       />
 
+      {canEditYield && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-3 h-9 w-full"
+          onClick={() => openEditor({
+            purpose: 'conversion',
+            mode: 'edit',
+            measureId: row.measure_id,
+          })}
+        >
+          Abrir janela de rendimento
+        </Button>
+      )}
+
       {catalog.capabilities.can_see_financial_values && (
         <MeasureLaborCostControl
           measureId={row.measure_id}
@@ -1484,15 +1512,15 @@ function RecipesTab({
             onClick={() => openEditor({ purpose: 'conversion', mode: 'create' })}
             className="gap-2"
           >
-            <Plus className="h-4 w-4" /> Nova conversão
+            <Plus className="h-4 w-4" /> Rendimento por geometria
           </Button>
         )}
       </div>
       <Panel
         flush
-        eyebrow="RENDIMENTO"
+        eyebrow="HISTÓRICO"
         title="Conversões canônicas versionadas"
-        subtitle="Uma conversão por família, medida e napa-base, compartilhada por todas as cores."
+        subtitle="Registro legado por napa-base. O rendimento operacional grava-se por medida × bobina na aba Tipos e rendimento."
       >
         {recipes.length === 0 ? (
           <EmptyState

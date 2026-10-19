@@ -28,6 +28,7 @@ describe('strap measure geometry yield (Hub Configuração)', () => {
 
   it('Configuração usa board do grupo, não MeasureYieldControl de receita', () => {
     expect(hub).toContain('MeasureGeometryYieldPanel');
+    expect(hub).toContain('MeasureGeometryFillSheet');
     expect(hub).toContain('useStrapMeasureYieldBoard');
     expect(hub).toContain('Preencher faltantes');
     expect(hub).not.toContain('MeasureYieldControl');
@@ -35,6 +36,20 @@ describe('strap measure geometry yield (Hub Configuração)', () => {
     expect(panel).toContain('Salvar e espalhar');
     expect(hook).toContain("rpc('set_strap_measure_geometry_yield'");
     expect(hook).toContain("rpc('list_strap_measure_yield_board'");
+  });
+
+  it('janela de preenchimento grava por geometria e lista as napas cobertas', () => {
+    const fill = read('src/components/artisanal-straps/MeasureGeometryFillSheet.tsx');
+    expect(fill).toContain('Salvar e espalhar');
+    expect(fill).toContain('Napas que recebem este rendimento');
+    expect(fill).toContain('useSetStrapMeasureGeometryYield');
+    expect(fill).toContain('Sugestão teórica');
+    // Conversão por napa fica só no caminho legado (legacyRecipeId).
+    expect(hub).toContain("searchParams.get('legacyRecipeId')");
+    const conversionOpen = hub.indexOf('editorPurpose === \'conversion\' && searchParams.get(\'legacyRecipeId\')');
+    const geometryOpen = hub.indexOf('<MeasureGeometryFillSheet');
+    expect(conversionOpen).toBeGreaterThan(-1);
+    expect(geometryOpen).toBeGreaterThan(conversionOpen);
   });
 
   it('Operação tem Resumo (tiras + napa) e Detalhe', () => {
