@@ -2572,9 +2572,10 @@ export function computeConsumptionForItems(
           if (rulePid) {
             pid = rulePid;
           } else {
+            // Sem p.active: allProducts já vem de .eq('active', true) e a
+            // coluna não está no select (mesmo padrão do upperPin / F2-04).
             const colorMatch = (allProducts || []).find((p: any) =>
               p.group_id === groupId
-              && p.active !== false
               && normalizeColorKey(p.color || '') === normalizeColorKey(orderColor),
             );
             if (colorMatch) pid = colorMatch.id;
