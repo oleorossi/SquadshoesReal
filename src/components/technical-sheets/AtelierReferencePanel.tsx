@@ -403,12 +403,12 @@ function SectorCard({
   const support = atelierSheetSupport(sheet, sector);
   const active = !!row?.active;
   const orphan = active && !support.ok;
-  const [kitGroupIds, setKitGroupIds] = useState<string[]>(row?.kit_group_ids ?? []);
+  const [kitProductIds, setKitProductIds] = useState<string[]>(row?.kit_product_ids ?? []);
   const [price, setPrice] = useState<number | null>(row?.value_per_pair ?? null);
 
   useEffect(() => {
-    setKitGroupIds(row?.kit_group_ids ?? []);
-  }, [row?.kit_group_ids]);
+    setKitProductIds(row?.kit_product_ids ?? []);
+  }, [row?.kit_product_ids]);
   useEffect(() => setPrice(row?.value_per_pair ?? null), [row?.value_per_pair]);
 
   const busy = save.isPending;
@@ -421,17 +421,18 @@ function SectorCard({
     save.mutate({ referenceId: sheet.id, sector, active: next });
   };
 
-  const toggleKitGroup = (groupId: string) => {
+  const toggleKitProduct = (productId: string) => {
     if (!sheet.id) return;
-    const next = kitGroupIds.includes(groupId)
-      ? kitGroupIds.filter((k) => k !== groupId)
-      : [...kitGroupIds, groupId];
-    setKitGroupIds(next);
+    const next = kitProductIds.includes(productId)
+      ? kitProductIds.filter((k) => k !== productId)
+      : [...kitProductIds, productId];
+    setKitProductIds(next);
     save.mutate({
       referenceId: sheet.id,
       sector,
       active: true,
-      kitGroupIds: next,
+      kitProductIds: next,
+      kitGroupIds: [],
       materialComponents: next.length ? ['Componente Direto'] : null,
     });
   };
@@ -544,27 +545,27 @@ function SectorCard({
 
           <fieldset className="space-y-1.5">
             <legend className="text-xs font-medium text-foreground">
-              Kit deste setor — grupos de COMPONENTES (nada pré-marcado)
+              Kit deste setor — itens (SKU) de COMPONENTES (nada pré-marcado)
             </legend>
             {candLoading ? (
               <p className="text-[11px] text-muted-foreground">Carregando componentes da ficha…</p>
             ) : candidates.length === 0 ? (
               <p className="text-[11px] text-muted-foreground">
-                Nenhum componente na ficha. Cadastre na seção COMPONENTES (Engenharia) — só o grupo;
-                a cor resolve no pedido.
+                Nenhum componente com SKU na ficha. Cadastre na seção COMPONENTES (Engenharia) —
+                grupo e item final.
               </p>
             ) : (
               <ul className="max-h-40 space-y-1 overflow-y-auto">
                 {candidates.map((c) => {
-                  const gid = c.group_id;
-                  const on = !!gid && kitGroupIds.includes(gid);
+                  const pid = c.product_id;
+                  const on = !!pid && kitProductIds.includes(pid);
                   return (
-                    <li key={gid || c.product_id || c.group_name}>
+                    <li key={pid || c.group_id || c.product_name}>
                       <button
                         type="button"
                         aria-pressed={on}
-                        disabled={busy || disabled || !gid}
-                        onClick={() => gid && toggleKitGroup(gid)}
+                        disabled={busy || disabled || !pid}
+                        onClick={() => pid && toggleKitProduct(pid)}
                         className={cn(
                           'flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
                           on
@@ -573,7 +574,12 @@ function SectorCard({
                         )}
                       >
                         {on && <Check className="h-3 w-3 shrink-0" weight="bold" />}
-                        <span className="min-w-0 flex-1 truncate">{c.group_name || c.product_name}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {c.product_name || c.group_name}
+                          {c.group_name && c.product_name ? (
+                            <span className="text-muted-foreground"> · {c.group_name}</span>
+                          ) : null}
+                        </span>
                         <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                           {c.quantity_per_unit != null
                             ? `${Number(c.quantity_per_unit).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}${c.unit ? ` ${c.unit}` : ''}/par`

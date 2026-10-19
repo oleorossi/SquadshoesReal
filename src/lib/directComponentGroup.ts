@@ -1,7 +1,11 @@
 /**
- * COMPONENTES da ficha: cadastro por GRUPO; SKU resolve na cor do pedido.
- * Decisão do dono (grill Ateliê kit): sempre grupo, não pin de cor.
+ * COMPONENTES da ficha: SKU (product_id) obrigatório — débito exato.
+ * Pin vence sempre; Ateliê/PV não escolhem cor nessa linha.
+ * (Reverte Q11-a “só grupo”.)
  */
+
+const UUID_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 export interface DirectComponentLine {
   group_id?: string | null;
@@ -14,7 +18,7 @@ export interface DirectComponentLine {
   consumption_sector?: string | null;
 }
 
-/** Linha nova: só grupo + qtd + setor. */
+/** Linha nova: espera product_id antes do save. */
 export function emptyDirectComponentLine(): DirectComponentLine {
   return {
     group_id: null,
@@ -43,7 +47,37 @@ export function withGroupFromProduct(
   };
 }
 
-/** É cadastro por grupo (sem pin de SKU / cor)? */
+export function isValidDirectComponentProductId(
+  productId: string | null | undefined,
+): boolean {
+  return !!productId && UUID_RE.test(String(productId).trim());
+}
+
+/** Linha presente sem SKU pinado — inválida pro save. */
+export function isIncompleteDirectComponent(
+  line: DirectComponentLine | null | undefined,
+): boolean {
+  if (!line) return false;
+  return !isValidDirectComponentProductId(line.product_id);
+}
+
+/** Mensagem de validação pra save; null = ok. */
+export function validateDirectComponentsForSave(
+  lines: readonly DirectComponentLine[] | null | undefined,
+): string | null {
+  if (!lines?.length) return null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (isValidDirectComponentProductId(line?.product_id)) continue;
+    const label =
+      String(line?.group_name || line?.product_name || '').trim() ||
+      `Componente ${i + 1}`;
+    return `“${label}” precisa do item (SKU) final para débito em estoque. Escolha o grupo e o item antes de salvar.`;
+  }
+  return null;
+}
+
+/** @deprecated Q11-a morto — mantido só pra testes/legado de leitura. */
 export function isGroupOnlyDirectComponent(line: DirectComponentLine | null | undefined): boolean {
   if (!line) return false;
   return !!line.group_id && !line.product_id;
@@ -66,4 +100,17 @@ export function directComponentGroupIds(
     }
   }
   return [...out];
+}
+
+/** Ids de produto pinados (débito / kit Ateliê). */
+export function directComponentProductIds(
+  lines: readonly DirectComponentLine[] | null | undefined,
+): string[] {
+  if (!lines?.length) return [];
+  const out: string[] = [];
+  for (const line of lines) {
+    const id = String(line.product_id || '').trim();
+    if (UUID_RE.test(id)) out.push(id);
+  }
+  return out;
 }

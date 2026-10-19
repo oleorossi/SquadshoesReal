@@ -97,8 +97,6 @@ import { useBomOperations } from '@/hooks/useBomOperations';
 import { useSoleColorMappings, useUpsertSoleColorMapping } from '@/hooks/useSoleColorMappings';
  import { usePalmilhaColorMappings, useUpsertPalmilhaColorMapping, PALMILHA_DEFAULT_KEY } from '@/hooks/usePalmilhaColorMappings';
  import { useLiningColorMappings, useUpsertLiningColorMapping, LINING_DEFAULT_KEY } from '@/hooks/useLiningColorMappings';
- import { useComponentColorMappings, useAddComponentColorRow, useUpdateComponentColorRow, useDeleteComponentColorRow } from '@/hooks/useComponentColorMappings';
- import { useComponentColorDefaults } from '@/hooks/useComponentColorDefaults';
 import { useCostPolicies } from '@/hooks/useCostPolicies';
 import { useArtisanalStrapCatalog, useStrapBaseGroupCandidates } from '@/hooks/useArtisanalStraps';
 import { useProducts } from '@/hooks/useProducts';
@@ -152,8 +150,8 @@ import { getTechnicalSheetAuditGaps, type TechnicalSheetAuditRow } from '@/lib/t
 import { needsCabedalParConfirmation, CABEDAL_PAR_CONFIRM_MESSAGE } from '@/lib/cabedalParPeGuard';
 import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
-import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, DirectComponentGroupSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
-import { emptyDirectComponentLine } from '@/lib/directComponentGroup';
+import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
+import { emptyDirectComponentLine, validateDirectComponentsForSave } from '@/lib/directComponentGroup';
 import DublagemGlueSelect from '@/components/technical-sheets/DublagemGlueSelect';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
@@ -1607,10 +1605,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
    const upsertPalmilhaColor = useUpsertPalmilhaColorMapping();
    const { data: liningColorMappings = [] } = useLiningColorMappings(sheet.id);
    const upsertLiningColor = useUpsertLiningColorMapping();
-   const { data: componentColorMappings = [] } = useComponentColorMappings(sheet.id);
-   const addComponentColorRow = useAddComponentColorRow();
-   const updateComponentColorRow = useUpdateComponentColorRow();
-   const deleteComponentColorRow = useDeleteComponentColorRow();
     const [isSoleFachetado, setIsSoleFachetado] = useState(false);
  
   const { data: componentSheets = [] } = useComponentSheets();
@@ -2123,6 +2117,16 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         ),
         products,
       );
+      const directComponentsError = validateDirectComponentsForSave(
+        payload.direct_components as Parameters<typeof validateDirectComponentsForSave>[0],
+      );
+      if (directComponentsError) {
+        toast.error(directComponentsError, { duration: 8000 });
+        setAbaAtiva('engineering');
+        return;
+      }
+      // Pin de SKU é a única fonte — flag/mapa por cor ficam no banco mas mortos no vivo.
+      payload.component_colors_enabled = false;
       const hasUpperMaterial = String(payload.upper_material || '').trim().length > 0;
       if (hasUpperMaterial && !upperMaterialGroup) {
         toast.error(
@@ -3914,68 +3918,44 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
             <Separator />
 
-            {/* Componentes Diretos */}
+            {/* Componentes Diretos — SKU obrigatório (débito exato). */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Box className="h-3.5 w-3.5 text-green-600" />
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Componentes</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Componentes avulsos (ABS, fivelas, ilhós…). Cadastre o <strong className="text-foreground">grupo</strong>;
-                a cor do SKU resolve no pedido / liberação do Ateliê.
+                Componentes avulsos (ABS, fivelas, ilhós…). Escolha o <strong className="text-foreground">grupo</strong> e o{' '}
+                <strong className="text-foreground">item (SKU)</strong> — o débito usa exatamente esse produto.
               </p>
 
-              {/* Opt-in: componentes que variam por cor predominante (poucos modelos). */}
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                <Checkbox
-                  id="component-colors-enabled"
-                  checked={!!form.component_colors_enabled}
-                  onCheckedChange={v => updateField('component_colors_enabled', !!v)}
-                  className="mt-0.5"
-                />
-                <div className="space-y-0.5">
-                  <Label htmlFor="component-colors-enabled" className="text-sm font-medium cursor-pointer">
-                    Componentes variam por cor
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Ative quando os <strong className="text-foreground">grupos</strong> mudam conforme a cor predominante do pedido.
-                    A lista abaixo é o padrão pras cores sem regra própria.
-                  </p>
-                </div>
-              </div>
-
-              {form.component_colors_enabled && (
-                <p className="text-xs text-muted-foreground -mb-1">
-                  <span className="font-semibold uppercase tracking-wider">Padrão (fallback)</span> — usado só nas cores <em>sem</em> lista própria abaixo.
-                </p>
-              )}
               {(form.direct_components || []).map((comp: any, idx: number) => {
                 const unit = (comp.unit || 'un').toString().trim() || 'un';
                 return (
                 <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end border-l-2 border-green-400/30 pl-3">
-                  <DirectComponentGroupSelect
+                  <DirectComponentSelect
                     label={`Componente ${idx + 1}`}
-                    groupId={comp.group_id || null}
-                    groupName={comp.group_name || comp.product_name || null}
-                    onChange={(gid, gname, gUnit) => {
+                    value={comp.product_id || ''}
+                    fallbackLabel={comp.product_name || comp.group_name || ''}
+                    onChange={(pid, pname, price, pUnit) => {
+                      const prod = (products || []).find((p: any) => p.id === pid);
+                      const gid = prod?.group_id || null;
+                      const gname = (groups || []).find((g: any) => g.id === gid)?.name
+                        || prod?.groupName
+                        || null;
                       const arr = [...(form.direct_components || [])];
                       arr[idx] = {
                         ...arr[idx],
+                        product_id: pid,
+                        product_name: pname,
+                        unit_price: price,
+                        unit: pUnit || unit,
                         group_id: gid,
                         group_name: gname,
-                        product_id: null,
-                        product_name: gname,
-                        unit: gUnit,
-                        unit_price: 0,
                       };
                       updateField('direct_components', arr);
                     }}
                   />
-                  {!comp.group_id && comp.product_id && (
-                    <p className="text-[11px] text-amber-700 dark:text-amber-400 sm:col-span-3 -mt-2">
-                      Cadastro antigo com SKU pinado — escolha o grupo acima para seguir a cor do pedido.
-                    </p>
-                  )}
                   <div>
                     <Label className="text-xs text-muted-foreground">
                       Qtd por par <span className="font-mono">({unit})</span>
@@ -4018,21 +3998,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
               }}>
                 <Plus className="h-3.5 w-3.5" /> Adicionar Componente
               </Button>
-
-              {form.component_colors_enabled && (
-                <ComponentColorMappingPanel
-                  sheetId={sheet.id}
-                  corPredominanteId={form.cor_predominante_id}
-                  products={products}
-                  groups={groups}
-                  mappings={componentColorMappings}
-                  directComponents={Array.isArray(form.direct_components) ? form.direct_components : []}
-                  addRow={addComponentColorRow}
-                  updateRow={updateComponentColorRow}
-                  deleteRow={deleteComponentColorRow}
-                  onSetPredominante={(gid) => updateField('cor_predominante_id', gid)}
-                />
-              )}
             </div>
           </div>
 
@@ -5160,235 +5125,6 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
     </div>
   );
 }
-
-   /* ===== Component Color Mapping Panel (cor predominante → lista de componentes) =====
-      Opt-in (technical_sheets.component_colors_enabled). Cada cor lista a lista COMPLETA
-      de componentes; reusa DirectComponentSelect (grupo → produto) + NumberInput. */
-   function ComponentColorMappingPanel({ sheetId, corPredominanteId, products, groups, mappings, directComponents, addRow, updateRow, deleteRow, onSetPredominante }: {
-     sheetId: string;
-     corPredominanteId: string | null;
-     products: any[];
-     groups: any[];
-     mappings: any[];
-     /** direct_components da ficha (form) — base pra mostrar quais cores são
-      *  cobertas por regra GLOBAL (component_color_defaults) sem lista própria. */
-     directComponents?: any[];
-     addRow: any;
-     updateRow: any;
-     deleteRow: any;
-     onSetPredominante: (groupId: string) => void;
-   }) {
-     // Regras GLOBAIS por cor — badge informativo por cor sem lista própria.
-     const { data: globalColorRules = [] } = useComponentColorDefaults();
-     const cabedelColors = useMemo(() => {
-       if (!corPredominanteId) return [];
-       const groupProducts = products.filter((p: any) => p.active && p.group_id === corPredominanteId);
-       const colors = new Set<string>();
-       groupProducts.forEach((p: any) => {
-         if (p.color?.trim()) {
-           p.color.split(',').forEach((c: string) => { const t = c.trim(); if (t) colors.add(t); });
-         }
-       });
-       return Array.from(colors).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-     }, [corPredominanteId, products]);
-
-     // Grupos elegíveis pra "cor predominante": os que têm produtos ativos com cor
-     // (o grupo que carrega as cores do modelo — normalmente o material do cabedal).
-     const eligibleGroups = useMemo(() => {
-       const gids = new Set(
-         products.filter((p: any) => p.active && p.color?.trim() && p.group_id).map((p: any) => p.group_id),
-       );
-       return (groups || []).filter((g: any) => gids.has(g.id))
-         .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
-     }, [products, groups]);
-
-     // cor (lower/trim) → linhas de componente daquela cor
-     const byColor = useMemo(() => {
-       const m = new Map<string, any[]>();
-       for (const r of mappings) {
-         const k = (r.cabedal_color || '').trim().toLowerCase();
-         const arr = m.get(k) || [];
-         arr.push(r);
-         m.set(k, arr);
-       }
-       return m;
-     }, [mappings]);
-
-     // Cores SEM lista própria cobertas por regra GLOBAL (component_color_defaults):
-     // pra cada grupo usado nos direct_components da ficha, regra exata da cor >
-     // default do grupo. Mostra badge informativo — a regra age no motor de
-     // consumo sem precisar configurar nada aqui.
-     const globalRuleCoverage = useMemo(() => {
-       const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-       const dcGroupIds = new Set<string>();
-       for (const dc of directComponents || []) {
-         if (dc?.group_id) dcGroupIds.add(dc.group_id);
-         const p = products.find((x: any) => x.id === dc?.product_id);
-         if (p?.group_id) dcGroupIds.add(p.group_id);
-       }
-       const m = new Map<string, string[]>();
-       if (dcGroupIds.size === 0) return m;
-       for (const colorName of cabedelColors) {
-         const names: string[] = [];
-         for (const gid of dcGroupIds) {
-           const exact = globalColorRules.find(r => r.active && !r.is_default && r.group_id === gid && norm(r.cabedal_color) === norm(colorName));
-           const rule = exact || globalColorRules.find(r => r.active && r.is_default && r.group_id === gid);
-           if (rule) {
-             const p = products.find((x: any) => x.id === rule.product_id);
-             if (p?.name) names.push(p.name);
-           }
-         }
-         if (names.length > 0) m.set(colorName.toLowerCase(), names);
-       }
-       return m;
-     }, [directComponents, products, cabedelColors, globalColorRules]);
-
-     const configuredCount = cabedelColors.filter(c => (byColor.get(c.toLowerCase()) || []).length > 0).length;
-     const ruleCoveredCount = cabedelColors.filter(c =>
-       (byColor.get(c.toLowerCase()) || []).length === 0 && globalRuleCoverage.has(c.toLowerCase())).length;
-     const ready = !!corPredominanteId && cabedelColors.length > 0;
-
-     return (
-       <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
-         <div className="flex items-center gap-2">
-           <Wand2 className="h-4 w-4 text-primary" />
-           <h4 className="text-sm font-bold">Componentes por Cor</h4>
-           {ready && (
-             <Badge variant="outline" className="text-xs ml-auto">
-               {configuredCount}/{cabedelColors.length} configuradas{ruleCoveredCount > 0 ? ` · ${ruleCoveredCount} por regra global` : ''}
-             </Badge>
-           )}
-         </div>
-
-         {/* Grupo de cor predominante — fonte das cores do modelo (ex.: o material do
-             cabedal). É o mesmo campo usado pelas harmonizações de forração/palmilha/solado. */}
-         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-           <Label className="text-xs text-muted-foreground shrink-0">Grupo de cor predominante</Label>
-           <Select value={corPredominanteId || ''} onValueChange={(v) => onSetPredominante(v)}>
-             <SelectTrigger className="h-8 text-xs sm:max-w-xs"><SelectValue placeholder="Escolha o grupo que carrega as cores…" /></SelectTrigger>
-             <SelectContent>
-               {eligibleGroups.length === 0 && (
-                 <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum grupo com cores cadastradas</div>
-               )}
-               {eligibleGroups.map((g: any) => (
-                 <SelectItem key={g.id} value={g.id} className="text-xs">{g.name}</SelectItem>
-               ))}
-             </SelectContent>
-           </Select>
-         </div>
-
-         {!ready ? (
-           <p className="text-xs text-muted-foreground">
-             Escolha acima o grupo cujas cores o modelo usa (as mesmas escolhidas no pedido).
-             Cada cor vira um card pra listar seus componentes. Lembre de <strong className="text-foreground">Salvar</strong> a ficha depois.
-           </p>
-         ) : (
-         <>
-         <p className="text-xs text-muted-foreground">
-           Cada cor lista os componentes debitados quando ela for escolhida no pedido. Cor sem lista usa o padrão acima.
-         </p>
-         <div className="flex flex-wrap items-center gap-2 mb-1">
-           <Badge variant="secondary" className="text-[10px]">
-             {cabedelColors.filter(c => (byColor.get(c.toLowerCase()) || []).length > 0).length}/{cabedelColors.length} configuradas
-           </Badge>
-           <p className="text-[11px] text-muted-foreground">Só cores com lista própria (as vazias usam o padrão).</p>
-         </div>
-         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-           {cabedelColors.filter(colorName => {
-             const rows = byColor.get(colorName.toLowerCase()) || [];
-             return rows.length > 0 || globalRuleCoverage.has(colorName.toLowerCase());
-           }).map(colorName => {
-             const rows = byColor.get(colorName.toLowerCase()) || [];
-             return (
-               <div key={colorName} className="rounded-md border border-border bg-card p-3 space-y-2">
-                 <div className="flex items-center gap-2">
-                   <span className="text-xs font-semibold uppercase tracking-wider truncate">{colorName}</span>
-                   <Badge variant="secondary" className="text-[10px] ml-auto">{rows.length} {rows.length === 1 ? 'item' : 'itens'}</Badge>
-                   {rows.length === 0 && directComponents?.length > 0 && (
-                     <Button
-                       type="button"
-                       variant="outline"
-                       size="sm"
-                       className="h-7 text-[10px]"
-                       onClick={() => {
-                         for (const dc of directComponents) {
-                           // Grupo-only: resolve um SKU ativo do grupo (cor do card ou qualquer).
-                           let pid = dc?.product_id as string | undefined;
-                           if (!pid && dc?.group_id) {
-                             const inGroup = products.filter(
-                               (p: any) => p.active && p.group_id === dc.group_id,
-                             );
-                             const byColor = inGroup.find((p: any) =>
-                               (p.color || '').toLowerCase().includes(colorName.toLowerCase()),
-                             );
-                             pid = (byColor || inGroup[0])?.id;
-                           }
-                           if (!pid) continue;
-                           addRow.mutate({
-                             sheetId,
-                             cabedalColor: colorName,
-                             productId: pid,
-                             quantityPerUnit: Number(dc.quantity) || 1,
-                           });
-                         }
-                       }}
-                     >
-                       Aplicar padrão
-                     </Button>
-                   )}
-                 </div>
-                 {rows.length === 0 && (
-                   globalRuleCoverage.has(colorName.toLowerCase()) ? (
-                     <div className="space-y-1">
-                       <Badge variant="secondary" className="text-[10px]">
-                         padrão global: {globalRuleCoverage.get(colorName.toLowerCase())!.join(' · ')}
-                       </Badge>
-                       <p className="text-[11px] text-muted-foreground italic">
-                         Cor coberta por regra global (Padrões por Cor) — o consumo troca o SKU automaticamente; a quantidade segue a lista padrão.
-                       </p>
-                     </div>
-                   ) : (
-                     <p className="text-[11px] text-muted-foreground italic">Sem componentes próprios — usa a lista padrão acima.</p>
-                   )
-                 )}
-                 {rows.map((r: any) => {
-                   const prod = products.find((p: any) => p.id === r.product_id);
-                   const unit = (prod?.unit || 'un').toString().trim() || 'un';
-                   return (
-                     <div key={r.id} className="flex items-end gap-2 border-l-2 border-primary/20 pl-2">
-                       <div className="flex-1 min-w-0">
-                         <DirectComponentSelect
-                           label=""
-                           value={r.product_id || ''}
-                           fallbackLabel={prod?.name || r.product_name || ''}
-                           onChange={(pid) => { if (pid && pid !== r.product_id) updateRow.mutate({ id: r.id, sheetId, productId: pid }); }}
-                         />
-                       </div>
-                       <div className="w-16 shrink-0">
-                         <Label className="text-[10px] text-muted-foreground">Qtd ({unit})</Label>
-                         <NumberInput value={Number(r.quantity_per_unit) || 0}
-                           onChange={v => updateRow.mutate({ id: r.id, sheetId, quantityPerUnit: v })}
-                           className="mt-1 h-8 text-sm" placeholder="0" step={unit === 'un' ? '1' : '0.01'} />
-                       </div>
-                       <DeleteConfirmButton onConfirm={() => deleteRow.mutate({ id: r.id, sheetId })} title="Remover componente?" description="O componente sai da lista de materiais desta cor. Esta ação não pode ser desfeita." size="h-8 w-8 shrink-0" />
-                     </div>
-                   );
-                 })}
-                 <DirectComponentSelect
-                   key={`add-${colorName}-${rows.length}`}
-                   label="+ Adicionar componente"
-                   value=""
-                   onChange={(pid) => { if (pid) addRow.mutate({ sheetId, cabedalColor: colorName, productId: pid, quantityPerUnit: 1 }); }}
-                 />
-               </div>
-             );
-           })}
-         </div>
-         </>
-         )}
-       </div>
-     );
-   }
 
    /* ===== Forração Color Mapping Panel (cabedal color → lining color) ===== */
    function ForracaoColorMappingPanel({ sheetId, corPredominanteId, liningGroupName, liningColorMappings, upsertLining, products, groups }: {

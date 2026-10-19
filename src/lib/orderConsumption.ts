@@ -2514,106 +2514,41 @@ export function computeConsumptionForItems(
       });
     }
 
-    // Componentes Diretos (technical_sheets.direct_components) — itens cadastrados
-    // direto na ficha (ex: BINÓCULO 6MM com qty=8/par) que NÃO vivem no BOM
-    // (sheet_materials). Antes de 2026-06-06 esse caminho era ignorado pelo
-    // motor — direct_components só era lido em calculate_order_consumption SQL,
-    // gerando inconsistência: ficha pedia 8 binóculos/par e o modal/ficha de
-    // operador mostrava só o que vinha do BOM (qty=1 em outras refs).
-    // Componentes por cor (opt-in) OU direct_components (fallback). Espelha o
-    // gate do SQL (calculate_order_consumption_by_grade): com component_colors_enabled
-    // ligado e mapeamento pra a cor do pedido, a lista POR COR substitui
-    // direct_components por completo (cada cor lista tudo). Sem flag, ou cor sem
-    // mapeamento, cai em direct_components.
-    const hasOrderColor = !!orderColor && orderColor !== '—';
-    const perColorComponents = (hasOrderColor && sheet?.component_colors_enabled)
-      ? componentColorMap.get(`${item.reference_id}::${normalizeColorKey(orderColor)}`)
-      : undefined;
-    const usedPerColorComponents = !!(perColorComponents && perColorComponents.length > 0);
-    const directComponents = usedPerColorComponents
-      ? perColorComponents.map((r) => ({ product_id: r.productId, quantity: r.quantityPerUnit }))
-      : (Array.isArray(sheet?.direct_components) ? sheet.direct_components : []);
-    // Ficha com "componentes por cor" LIGADO mas SEM mapeamento pra a cor deste
-    // item: o fallback usa a lista GERAL, que costuma listar TODAS as variantes de
-    // cor do mesmo ornamento — e o par passa a consumir uma de cada. Foi o que
-    // aconteceu no PV-00147/DS22: só OFF WHITE estava mapeado, e o item CAPUCCINO
-    // caiu no fallback puxando ABS MARROM (8/par) + ABS TURQUEZA AZUL (8/par) =
-    // 16 ornamentos/par, inflando o ABS MARROM pra 4.608 (2.304 legítimos do OFF
-    // WHITE + 2.304 indevidos do CAPUCCINO). Não dá pra ADIVINHAR qual variante é
-    // a certa — quem sabe é o cadastro. Então mantemos o número (paridade com o
-    // SQL, que faz o mesmo fallback e já gravou as reservas) e MARCAMOS a linha,
-    // pra o modal parar de mostrar consumo inflado como se fosse normal.
-    const unmappedColorFallback = hasOrderColor
-      && !!sheet?.component_colors_enabled
-      && !usedPerColorComponents
-      && Array.isArray(sheet?.direct_components)
-      && sheet.direct_components.length > 0;
-    const unmappedColorWarning = unmappedColorFallback
-      ? `Cor "${orderColor}" sem mapeamento em Componentes por Cor desta ficha — consumo caiu na lista geral e pode estar somando variantes de cor que não vão neste par. Cadastre a cor em Materiais → Componentes por Cor.`
-      : undefined;
+    // Componentes Diretos (technical_sheets.direct_components) — SKU pinado
+    // obrigatório (débito exato). Pin vence sempre; não resolve por cor do PV
+    // nem por component_colors_enabled / component_color_defaults (fluxo morto).
+    const directComponents = Array.isArray(sheet?.direct_components)
+      ? sheet.direct_components
+      : [];
     const directProductIds = new Set<string>();
-    // O JSON legado pode repetir literalmente o mesmo produto (PV-00162/NL03
-    // tinha o ELÁSTICO 6MM três vezes). O SQL canônico ignora duplicatas do
-    // product_id ORIGINAL no fallback de direct_components, mas soma entradas
-    // ORIGINAIS distintas que uma regra global resolve para o mesmo SKU. Espelha
-    // `v_dc_seen`: marca só depois de quantidade válida e não aplica à lista
-    // explícita por cor, onde cada entrada é deliberada.
-    const seenFallbackDirectProductIds = new Set<string>();
+    // O JSON legado pode repetir o mesmo product_id; espelha v_dc_seen do SQL.
+    const seenDirectProductIds = new Set<string>();
     for (const dc of directComponents) {
-      let pid = (dc as any)?.product_id as string | null | undefined;
+      const pid = (dc as any)?.product_id as string | null | undefined;
       const groupId = (dc as any)?.group_id as string | null | undefined;
       const qtyPerPair = Number((dc as any)?.quantity) || 0;
       if (qtyPerPair <= 0) continue;
-      // Cadastro por GRUPO (Q11-a): sem product_id, resolve SKU pela cor do pedido.
-      if (!pid && groupId) {
-        if (hasOrderColor) {
-          const rulePid = componentColorDefaultMap.get(`${groupId}::${normalizeColorKey(orderColor)}`)
-            ?? componentColorDefaultMap.get(`${groupId}::*`);
-          if (rulePid) {
-            pid = rulePid;
-          } else {
-            // Sem p.active: allProducts já vem de .eq('active', true) e a
-            // coluna não está no select (mesmo padrão do upperPin / F2-04).
-            const colorMatch = (allProducts || []).find((p: any) =>
-              p.group_id === groupId
-              && normalizeColorKey(p.color || '') === normalizeColorKey(orderColor),
-            );
-            if (colorMatch) pid = colorMatch.id;
-          }
-        }
-        if (!pid) {
-          const gname = (dc as any)?.group_name
-            || (productGroups || []).find((g: any) => g.id === groupId)?.name
-            || 'Componente';
-          addConsumptionRow(consumptionMap, {
-            componentType: 'Outros',
-            groupName: gname,
-            materialName: gname,
-            productUnit: (dc as any)?.unit || 'un',
-            color: orderColor || '—',
-            totalQuantity: 0,
-            warning: `Componente "${gname}" cadastrado por grupo — sem SKU na cor "${orderColor || '—'}" do pedido. Cadastre a cor no grupo ou em Padrões por Cor.`,
-          });
-          continue;
-        }
+      if (!pid) {
+        const gname = (dc as any)?.group_name
+          || (dc as any)?.product_name
+          || (productGroups || []).find((g: any) => g.id === groupId)?.name
+          || 'Componente';
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Outros',
+          groupName: gname,
+          materialName: gname,
+          productUnit: (dc as any)?.unit || 'un',
+          color: orderColor || '—',
+          totalQuantity: 0,
+          warning: `Componente "${gname}" sem item (SKU) pinado — NÃO será reservado nem debitado. Abra a ficha → Componentes e escolha o item final.`,
+        });
+        continue;
       }
-      if (!pid) continue;
-      // Produto já coberto pelo item-padrão do solado → dedup (F2-01, espelha
-      // o v_covered_product_ids do SQL — o item-padrão é a fonte).
       if (stdCoveredProductIds.has(pid)) continue;
-      if (!usedPerColorComponents) {
-        if (seenFallbackDirectProductIds.has(pid)) continue;
-        seenFallbackDirectProductIds.add(pid);
-      }
+      if (seenDirectProductIds.has(pid)) continue;
+      seenDirectProductIds.add(pid);
       const prod = (allProducts || []).find((p: any) => p.id === pid);
       if (!prod) {
-        // CONS-8 (auditoria 2026-09-25, caso a): o product_id fixado na ficha
-        // não existe mais (ou está inativo) em products — 23 pares
-        // ficha/componente no banco vivo (EC06/I90/I91/S-039./ST15…). O
-        // `continue` mudo fazia o componente sumir do modal, da ficha de
-        // operador, da reserva e do débito: a ficha pedia 8 binóculos/par e
-        // ninguém via nada. Emite linha neutra de alerta (qtd 0), mesmo padrão
-        // do fachete sem specs — a ficha de operador filtra linhas assim.
         const orphanName = (dc as any)?.product_name || 'Componente sem cadastro';
         addConsumptionRow(consumptionMap, {
           componentType: 'Outros',
@@ -2626,45 +2561,18 @@ export function computeConsumptionForItems(
         });
         continue;
       }
-      // Padrão GLOBAL por cor (component_color_defaults, mig 20260928121000):
-      // só no fallback de direct_components (a lista por-cor da ficha VENCE) e
-      // com cor de pedido não-vazia, o grupo do componente pode ter regra pra
-      // cor (exata > default) → troca o SKU mantendo a QUANTIDADE da ficha.
-      // Entradas distintas que resolvem pro MESMO SKU somam via addConsumptionRow
-      // (chave = produto resolvido) — paridade com o colapso-soma do SQL.
-      // allProducts só tem produto ATIVO: regra pra produto inativo não resolve
-      // → mantém o original com aviso (paridade com o JOIN pr.active do SQL).
-      let effectiveProd = prod;
-      let ruleWarning: string | undefined;
-      if (!usedPerColorComponents && hasOrderColor && prod.group_id) {
-        const rulePid = componentColorDefaultMap.get(`${prod.group_id}::${normalizeColorKey(orderColor)}`)
-          ?? componentColorDefaultMap.get(`${prod.group_id}::*`);
-        if (rulePid) {
-          const ruleProd = (allProducts || []).find((p: any) => p.id === rulePid);
-          if (ruleProd) {
-            effectiveProd = ruleProd;
-          } else {
-            ruleWarning = 'Regra global de cor do grupo aponta produto inativo/apagado — usando o componente original da ficha. Corrija em Fichas Técnicas → Padrões por Cor.';
-          }
-        }
-      }
-      // Cobre o pid ORIGINAL e o RESOLVIDO: o dedup dc↔BOM sempre suprimiu o
-      // produto declarado na ficha — sem cobrir o original, a linha do BOM dele
-      // re-emergiria quando a regra troca o SKU (espelha o v_covered do SQL).
       directProductIds.add(pid);
-      directProductIds.add(effectiveProd.id);
-      const groupName = (productGroups || []).find((g: any) => g.id === effectiveProd.group_id)?.name
-        || effectiveProd.category || (dc as any)?.product_name || effectiveProd.name || 'Componente';
+      const groupName = (productGroups || []).find((g: any) => g.id === prod.group_id)?.name
+        || prod.category || (dc as any)?.product_name || prod.name || 'Componente';
       const totalQty = qtyPerPair * itemQuantity;
       addConsumptionRow(consumptionMap, {
-        componentType: classifyBomMaterial(groupName, effectiveProd.name || '', effectiveProd.category || ''),
+        componentType: classifyBomMaterial(groupName, prod.name || '', prod.category || ''),
         groupName,
-        materialName: effectiveProd.name || (dc as any)?.product_name || 'Componente',
-        productUnit: effectiveProd.unit || (dc as any)?.unit || 'un',
-        color: effectiveProd.color || '—',
+        materialName: prod.name || (dc as any)?.product_name || 'Componente',
+        productUnit: prod.unit || (dc as any)?.unit || 'un',
+        color: prod.color || '—',
         totalQuantity: totalQty,
-        productIds: [effectiveProd.id],
-        warning: ruleWarning || unmappedColorWarning,
+        productIds: [prod.id],
       });
     }
 

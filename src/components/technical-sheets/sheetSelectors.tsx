@@ -1049,8 +1049,8 @@ export function DirectComponentSelect({
 }
 
 /**
- * COMPONENTES — só GRUPO (Q11-a). A cor do SKU resolve no PV / liberação do Ateliê.
- * Não pede item colorido; qtd e setor ficam no formulário da ficha.
+ * @deprecated Q11-a revertido: Engineering usa DirectComponentSelect (SKU obrigatório).
+ * Mantido só se algum call-site legado ainda listar grupos.
  */
 export function DirectComponentGroupSelect({
   label,

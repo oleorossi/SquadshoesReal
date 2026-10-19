@@ -1007,7 +1007,7 @@ describe('calculateBomForOrders — direct_components e componentes por cor (BOM
     expect(total).toBe(8 * 720);
   });
 
-  it('component_colors_enabled + cor mapeada SUBSTITUI direct_components', async () => {
+  it('component_colors_enabled é ignorado — pin de direct_components vence', async () => {
     const t = withBinoculo(buildBomTables());
     t.products = [...(t.products as any[]), {
       id: 'p-strass', name: 'STRASS PRATA', color: 'PRATA', group_id: 'g-strass',
@@ -1023,16 +1023,12 @@ describe('calculateBomForOrders — direct_components e componentes por cor (BOM
     }];
     mockDb.tables = t;
     const rows = await calculateBomForOrders(['op1']);
-    expect(rows.find(r => r.groupName === 'STRASS')?.totalQuantity).toBe(4 * 720);
-    // A lista POR COR substitui direct_components por completo.
-    expect(rows.find(r => r.groupName === 'BINOCULO 6MM')).toBeUndefined();
+    expect(rows.find(r => r.groupName === 'BINOCULO 6MM')?.totalQuantity).toBe(8 * 720);
+    expect(rows.find(r => r.groupName === 'STRASS')).toBeUndefined();
   });
 });
 
-describe('calculateBomForOrders — padrões GLOBAIS por cor (component_color_defaults)', () => {
-  // Espelha o motor canônico/SQL (mig 20260928121000): no fallback de
-  // direct_components, regra ativa do grupo pra cor da OP troca o SKU
-  // mantendo a quantidade da ficha.
+describe('calculateBomForOrders — pin de SKU vence color defaults', () => {
   const withBinoculoColors = (t: Record<string, unknown[]>) => {
     t.products = [...(t.products as any[]),
       { id: 'p-bin', name: 'BINÓCULO 6MM DOURADO', color: 'DOURADO', group_id: 'g-bin', unit: 'un', quantity: 0, sole_classification: null },
@@ -1045,39 +1041,10 @@ describe('calculateBomForOrders — padrões GLOBAIS por cor (component_color_de
     return t;
   };
 
-  it('regra do grupo pra cor da OP troca o SKU no picking, mantendo a qty da ficha', async () => {
+  it('regra global de cor NÃO troca o SKU pinado', async () => {
     const t = withBinoculoColors(buildBomTables());
     t.component_color_defaults = [{
       group_id: 'g-bin', cabedal_color: 'Preto', product_id: 'p-bin-preto', is_default: false, active: true,
-    }];
-    mockDb.tables = t;
-    const rows = await calculateBomForOrders(['op1']); // OP na cor PRETO
-    const bin = rows.filter(r => r.groupName === 'BINOCULO 6MM');
-    expect(bin).toHaveLength(1);
-    expect(bin[0].materialName).toBe('BINÓCULO 6MM PRETO');
-    expect(bin[0].totalQuantity).toBe(8 * 720);
-  });
-
-  it('lista por-cor da ficha VENCE a regra global', async () => {
-    const t = withBinoculoColors(buildBomTables());
-    (t.technical_sheets[0] as any).component_colors_enabled = true;
-    t.technical_sheet_component_colors = [{
-      sheet_id: 'ts1', cabedal_color: 'PRETO', product_id: 'p-bin', quantity_per_unit: 8,
-    }];
-    t.component_color_defaults = [{
-      group_id: 'g-bin', cabedal_color: 'Preto', product_id: 'p-bin-preto', is_default: false, active: true,
-    }];
-    mockDb.tables = t;
-    const rows = await calculateBomForOrders(['op1']);
-    const bin = rows.filter(r => r.groupName === 'BINOCULO 6MM');
-    expect(bin).toHaveLength(1);
-    expect(bin[0].materialName).toBe('BINÓCULO 6MM DOURADO'); // escolha manual da ficha
-  });
-
-  it('regra apontando produto morto mantém o original com aviso', async () => {
-    const t = withBinoculoColors(buildBomTables());
-    t.component_color_defaults = [{
-      group_id: 'g-bin', cabedal_color: 'Preto', product_id: 'p-apagado', is_default: false, active: true,
     }];
     mockDb.tables = t;
     const rows = await calculateBomForOrders(['op1']);
@@ -1085,7 +1052,18 @@ describe('calculateBomForOrders — padrões GLOBAIS por cor (component_color_de
     expect(bin).toHaveLength(1);
     expect(bin[0].materialName).toBe('BINÓCULO 6MM DOURADO');
     expect(bin[0].totalQuantity).toBe(8 * 720);
-    expect(bin[0].warning).toMatch(/regra global/i);
+  });
+
+  it('linha sem product_id emite aviso e qty 0', async () => {
+    const t = withBinoculoColors(buildBomTables());
+    (t.technical_sheets[0] as any).direct_components = [{
+      group_id: 'g-bin', group_name: 'BINOCULO 6MM', product_id: null, quantity: 8,
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const warn = rows.find(r => /sem item \(SKU\) pinado/i.test(r.warning || ''));
+    expect(warn).toBeTruthy();
+    expect(warn!.totalQuantity).toBe(0);
   });
 });
 

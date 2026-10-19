@@ -869,21 +869,21 @@ describe('orderConsumption — motor canônico', () => {
     expect(binos[0].totalQuantity).toBe(8 * 24 + 1 * 24); // 192 (direct) + 24 (BOM) = 216
   });
 
-  describe('componentes por cor (opt-in) — paridade com o SQL', () => {
-    // Espelha o gate de calculate_order_consumption_by_grade: com a flag ligada e
-    // mapeamento pra a cor do pedido, a lista por cor SUBSTITUI direct_components.
-    function ctxComponentColors(): ConsumptionContext {
+  describe('COMPONENTES — SKU pinado obrigatório (débito exato)', () => {
+    function ctxPinned(): ConsumptionContext {
       const ctx = buildContext();
       ctx.productGroups.push({ id: 'g-comp', name: 'COMPONENTES', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
       ctx.allProducts.push(
-        { id: 'p-turq', name: 'ABS TURQUEZA AZUL 12MM', color: '', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
-        { id: 'p-marrom', name: 'ABS MARROM 12MM', color: '', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
-        { id: 'p-perola', name: 'REDONDO PEROLA 12MM', color: '', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
         { id: 'p-fallback', name: 'ELASTICO PADRAO', color: '', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
+        { id: 'p-turq', name: 'ABS TURQUEZA AZUL 12MM', color: '', group_id: 'g-comp', quantity: 0, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
       );
+      // Mapas legados — motores devem IGNORAR.
       ctx.componentColorMap = new Map([
-        ['sheet-C::caramelo', [{ productId: 'p-turq', quantityPerUnit: 8 }, { productId: 'p-marrom', quantityPerUnit: 8 }]],
-        ['sheet-C::off white', [{ productId: 'p-perola', quantityPerUnit: 8 }, { productId: 'p-marrom', quantityPerUnit: 8 }]],
+        ['sheet-C::caramelo', [{ productId: 'p-turq', quantityPerUnit: 8 }]],
+      ]);
+      ctx.componentColorDefaultMap = new Map([
+        ['g-comp::caramelo', 'p-turq'],
+        ['g-comp::*', 'p-turq'],
       ]);
       return ctx;
     }
@@ -892,259 +892,49 @@ describe('orderConsumption — motor canônico', () => {
       direct_components: [{ product_id: 'p-fallback', quantity: 2, unit: 'un', product_name: 'ELASTICO PADRAO' }],
       ...over,
     });
-    // O modal agrega componentes por grupo+cor+unidade (Turqueza e Marrom, ambos
-    // grupo COMPONENTES sem cor, fundem numa linha somada com o nome do 1º). O
-    // DÉBITO (SQL) permanece por product_id — a paridade aqui é sobre a QUANTIDADE
-    // agregada por cor + qual produto lidera a linha, o suficiente pra distinguir
-    // Caramelo (Turqueza) de Off White (Pérola) e do fallback (Elástico).
-    const compTotal = (rows: any[]) =>
-      rows.filter(r => r.groupName === 'COMPONENTES').reduce((s: number, r: any) => s + r.totalQuantity, 0);
-    const compNames = (rows: any[]) => rows.filter(r => r.groupName === 'COMPONENTES').map(r => r.materialName || '');
 
-    it('Caramelo debita Turqueza + Marrom (16/par no total), sem Pérola nem fallback', () => {
+    it('usa o product_id pinado mesmo com component_colors_enabled e mapa/defaults', () => {
       const rows = computeConsumptionForItems(
         [buildItem({ reference_id: 'sheet-C', color: 'CARAMELO', technical_sheets: sheetC() })],
-        ctxComponentColors(),
-      );
-      expect(compTotal(rows)).toBe((8 + 8) * 24); // 384 (turq 8 + marrom 8) × 24 pares
-      expect(compNames(rows).some(n => n.includes('TURQUEZA'))).toBe(true);
-      expect(compNames(rows).some(n => n.includes('PEROLA'))).toBe(false);
-      expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(false);
-    });
-
-    it('Off White debita Pérola + Marrom (16/par no total), sem Turqueza', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-C', color: 'OFF WHITE', technical_sheets: sheetC() })],
-        ctxComponentColors(),
-      );
-      expect(compTotal(rows)).toBe((8 + 8) * 24); // 384 (perola 8 + marrom 8)
-      expect(compNames(rows).some(n => n.includes('PEROLA'))).toBe(true);
-      expect(compNames(rows).some(n => n.includes('TURQUEZA'))).toBe(false);
-    });
-
-    it('cor sem mapeamento cai no fallback direct_components', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-C', color: 'AZUL', technical_sheets: sheetC() })],
-        ctxComponentColors(),
-      );
-      expect(compTotal(rows)).toBe(2 * 24); // 48 (só o Elástico padrão)
-      expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(true);
-      expect(compNames(rows).some(n => n.includes('TURQUEZA') || n.includes('PEROLA'))).toBe(false);
-    });
-
-    it('cor sem mapeamento MARCA aviso na linha (PV-00147/DS22 — CAPUCCINO)', () => {
-      // Regressão PV-00147: DS22 tinha a flag ligada e só OFF WHITE mapeado; o
-      // item CAPUCCINO caiu no fallback e puxou ABS MARROM + ABS TURQUEZA (as
-      // DUAS cores do mesmo ornamento) = 16/par em vez de 8/par. A quantidade
-      // continua a do fallback (paridade com o SQL, que já gravou as reservas),
-      // mas a linha precisa vir MARCADA pra a tela não exibir consumo inflado
-      // como se fosse normal.
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-C', color: 'AZUL', technical_sheets: sheetC() })],
-        ctxComponentColors(),
+        ctxPinned(),
       );
       const comp = rows.filter(r => r.groupName === 'COMPONENTES');
-      expect(comp.length).toBeGreaterThan(0);
-      expect(comp.every(r => !!r.warning)).toBe(true);
-      expect(comp[0].warning).toContain('AZUL');
-      expect(comp[0].warning).toMatch(/sem mapeamento/i);
+      expect(comp).toHaveLength(1);
+      expect(comp[0].materialName).toContain('ELASTICO PADRAO');
+      expect(comp[0].totalQuantity).toBe(2 * 24);
+      expect(comp[0].productIds).toEqual(['p-fallback']);
     });
 
-    it('cor MAPEADA não emite aviso de mapeamento faltando', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-C', color: 'OFF WHITE', technical_sheets: sheetC() })],
-        ctxComponentColors(),
-      );
-      const comp = rows.filter(r => r.groupName === 'COMPONENTES');
-      expect(comp.some(r => /sem mapeamento/i.test(r.warning || ''))).toBe(false);
-    });
-
-    it('ficha SEM a flag ligada não emite aviso de mapeamento (não é o caso do bug)', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-C', color: 'AZUL', technical_sheets: sheetC({ component_colors_enabled: false }) })],
-        ctxComponentColors(),
-      );
-      const comp = rows.filter(r => r.groupName === 'COMPONENTES');
-      expect(comp.some(r => /sem mapeamento/i.test(r.warning || ''))).toBe(false);
-    });
-
-    it('flag desligada: ignora o mapeamento e usa direct_components (regressão)', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-C', color: 'CARAMELO', technical_sheets: sheetC({ component_colors_enabled: false }) })],
-        ctxComponentColors(),
-      );
-      expect(compTotal(rows)).toBe(2 * 24); // 48 (fallback), mapeamento ignorado
-      expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(true);
-      expect(compNames(rows).some(n => n.includes('TURQUEZA'))).toBe(false);
-    });
-
-    it('match de cor insensível a acento/caixa/espaços de ponta (≡ SQL unaccent+btrim)', () => {
-      // Auditoria 2026-07-09: SQL casa via lower(btrim(extensions.unaccent(...)));
-      // o TS deve casar as MESMAS grafias via normalizeColorKey (' Óff Whíte ' →
-      // 'off white'). Espaço INTERNO duplicado não casa em nenhum dos dois — é
-      // achado de cadastro (cpc_cor_orfa_grupo_predominante), não divergência.
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-C', color: ' Óff Whíte ', technical_sheets: sheetC() })],
-        ctxComponentColors(),
-      );
-      expect(compTotal(rows)).toBe((8 + 8) * 24); // lista da cor, não o fallback
-      expect(compNames(rows).some(n => n.includes('PEROLA'))).toBe(true);
-      expect(compNames(rows).some(n => n.includes('ELASTICO PADRAO'))).toBe(false);
-    });
-
-    it('linha de componente carrega productIds dos produtos de ORIGEM', () => {
-      // A disponibilidade (consumptionRows.rowAvailable) mede o estoque SÓ desses
-      // ids. Sem eles, a linha caía no match por grupo+cor e — como a cor é '—' —
-      // somava o grupo INTEIRO: no PV-00147 a Fivela 12mm (disponível 0) exibia
-      // "em estoque 4.241", que era o estoque do Binóculo 10mm Strass, vizinho de
-      // grupo em COMPONENTES DIVERSOS.
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-C', color: 'OFF WHITE', technical_sheets: sheetC() })],
-        ctxComponentColors(),
-      );
-      const comp = rows.filter(r => r.groupName === 'COMPONENTES');
-      expect(comp.length).toBeGreaterThan(0);
-      const ids = comp.flatMap(r => r.productIds || []);
-      expect(ids).toContain('p-perola');
-      expect(ids).toContain('p-marrom');
-      // Só os produtos que ORIGINARAM a linha — nunca os vizinhos de grupo.
-      expect(ids).not.toContain('p-turq');
-      expect(ids).not.toContain('p-fallback');
-    });
-  });
-
-  describe('padrões GLOBAIS por cor (component_color_defaults) — paridade com o SQL', () => {
-    // Espelha o lookup do by_grade (mig 20260928121000): no fallback de
-    // direct_components, regra ativa do GRUPO do componente pra cor do pedido
-    // (exata > default) troca o SKU mantendo a quantidade da ficha. A lista
-    // por-cor da ficha (technical_sheet_component_colors) sempre vence.
-    function ctxGlobalDefaults(): ConsumptionContext {
-      const ctx = buildContext();
-      ctx.productGroups.push({ id: 'g-strass', name: 'TIRA STRASS 6MM', dimensions_length: null, dimensions_width: null, dimensions_unit: null } as any);
-      ctx.allProducts.push(
-        { id: 'p-fundo-transp', name: 'TIRA STRASS 6MM PRETO FUNDO TRANSPARENTE', color: 'PRETO', group_id: 'g-strass', quantity: 10, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
-        { id: 'p-fundo-preto', name: 'TIRA STRASS 6MM PRETO FUNDO PRETO', color: 'PRETO', group_id: 'g-strass', quantity: 50, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
-        { id: 'p-strass-branco', name: 'TIRA STRASS 6MM BRANCO', color: 'BRANCO', group_id: 'g-strass', quantity: 5, reserved_stock: 0, stock_grade: null, sole_classification: null, unit: 'un', category: 'Componente' } as any,
-      );
-      ctx.componentColorDefaultMap = new Map([
-        ['g-strass::preta', 'p-fundo-preto'],   // regra exata: cor Preta
-        ['g-strass::*', 'p-strass-branco'],     // default (catch-all) do grupo
-      ]);
-      return ctx;
-    }
-    const sheetG = (over: Record<string, any> = {}) => buildSheet({
-      id: 'sheet-G',
-      direct_components: [{ product_id: 'p-fundo-transp', quantity: 4, unit: 'un', product_name: 'TIRA STRASS 6MM PRETO FUNDO TRANSPARENTE' }],
-      ...over,
-    });
-    const strass = (rows: any[]) => rows.filter((r: any) => r.groupName === 'TIRA STRASS 6MM');
-
-    it('regra EXATA troca o SKU mantendo a quantidade da ficha (Preta → fundo preto)', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-G', color: 'PRETA', technical_sheets: sheetG() })],
-        ctxGlobalDefaults(),
-      );
-      const s = strass(rows);
-      expect(s).toHaveLength(1);
-      expect(s[0].materialName).toContain('FUNDO PRETO');
-      expect(s[0].totalQuantity).toBe(4 * 24); // quantidade da FICHA, intocada
-      // Disponibilidade mede o SKU RESOLVIDO, não o original da ficha.
-      expect(s[0].productIds).toContain('p-fundo-preto');
-      expect(s[0].productIds).not.toContain('p-fundo-transp');
-    });
-
-    it('cor sem regra exata cai no DEFAULT (catch-all) do grupo', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-G', color: 'VERMELHA', technical_sheets: sheetG() })],
-        ctxGlobalDefaults(),
-      );
-      const s = strass(rows);
-      expect(s).toHaveLength(1);
-      expect(s[0].materialName).toContain('BRANCO');
-      expect(s[0].totalQuantity).toBe(4 * 24);
-    });
-
-    it('lista por-cor da FICHA vence a regra global', () => {
-      const ctx = ctxGlobalDefaults();
-      ctx.componentColorMap = new Map([
-        ['sheet-G::preta', [{ productId: 'p-fundo-transp', quantityPerUnit: 4 }]],
-      ]);
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-G', color: 'PRETA', technical_sheets: sheetG({ component_colors_enabled: true }) })],
-        ctx,
-      );
-      const s = strass(rows);
-      expect(s).toHaveLength(1);
-      expect(s[0].materialName).toContain('FUNDO TRANSPARENTE'); // escolha manual da ficha
-      expect(s[0].materialName).not.toContain('FUNDO PRETO');
-    });
-
-    it('pedido SEM cor não aplica regra (nem o default)', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-G', color: '', technical_sheets: sheetG() })],
-        ctxGlobalDefaults(),
-      );
-      const s = strass(rows);
-      expect(s).toHaveLength(1);
-      expect(s[0].materialName).toContain('FUNDO TRANSPARENTE'); // original da ficha
-    });
-
-    it('COLAPSO SOMA: 2 entradas do mesmo grupo resolvem pro mesmo SKU e somam', () => {
-      // Ficha antiga listando 2 variantes do grupo (4/par + 3/par): com regra pra
-      // cor, ambas caem no SKU da regra → UMA linha com 7/par (sem a soma, o
-      // dedup derrubaria a 2ª em silêncio e o consumo cairia pela metade).
+    it('linha sem product_id emite aviso e qty 0', () => {
       const rows = computeConsumptionForItems(
         [buildItem({
-          reference_id: 'sheet-G', color: 'PRETA',
-          technical_sheets: sheetG({
+          reference_id: 'sheet-C', color: 'CARAMELO',
+          technical_sheets: sheetC({
+            direct_components: [{ group_id: 'g-comp', group_name: 'COMPONENTES', product_id: null, quantity: 2 }],
+          }),
+        })],
+        ctxPinned(),
+      );
+      const warn = rows.find(r => /sem item \(SKU\) pinado/i.test(r.warning || ''));
+      expect(warn).toBeTruthy();
+      expect(warn!.totalQuantity).toBe(0);
+    });
+
+    it('dois pins distintos somam linhas (sem swap por cor)', () => {
+      const rows = computeConsumptionForItems(
+        [buildItem({
+          reference_id: 'sheet-C', color: 'CARAMELO',
+          technical_sheets: sheetC({
             direct_components: [
-              { product_id: 'p-fundo-transp', quantity: 4, unit: 'un', product_name: 'TIRA STRASS 6MM PRETO FUNDO TRANSPARENTE' },
-              { product_id: 'p-strass-branco', quantity: 3, unit: 'un', product_name: 'TIRA STRASS 6MM BRANCO' },
+              { product_id: 'p-fallback', quantity: 2, unit: 'un', product_name: 'ELASTICO PADRAO' },
+              { product_id: 'p-turq', quantity: 3, unit: 'un', product_name: 'ABS TURQUEZA AZUL 12MM' },
             ],
           }),
         })],
-        ctxGlobalDefaults(),
+        ctxPinned(),
       );
-      const s = strass(rows);
-      expect(s).toHaveLength(1);
-      expect(s[0].materialName).toContain('FUNDO PRETO');
-      expect(s[0].totalQuantity).toBe((4 + 3) * 24);
-      expect(s[0].productIds).toEqual(['p-fundo-preto']);
-    });
-
-    it('regra apontando produto MORTO/inativo mantém o original com aviso', () => {
-      const ctx = ctxGlobalDefaults();
-      ctx.componentColorDefaultMap = new Map([['g-strass::preta', 'p-apagado']]);
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-G', color: 'PRETA', technical_sheets: sheetG() })],
-        ctx,
-      );
-      const s = strass(rows);
-      expect(s).toHaveLength(1);
-      expect(s[0].materialName).toContain('FUNDO TRANSPARENTE'); // original preservado
-      expect(s[0].totalQuantity).toBe(4 * 24);
-      expect(s[0].warning).toMatch(/regra global/i);
-    });
-
-    it('match da regra é insensível a acento/caixa/espaços (≡ SQL unaccent+btrim)', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-G', color: ' Prêta ', technical_sheets: sheetG() })],
-        ctxGlobalDefaults(),
-      );
-      const s = strass(rows);
-      expect(s).toHaveLength(1);
-      expect(s[0].materialName).toContain('FUNDO PRETO');
-    });
-
-    it('flag de componentes-por-cor LIGADA sem lista pra cor: regra global ainda aplica (e o aviso de cor sem mapeamento permanece)', () => {
-      const rows = computeConsumptionForItems(
-        [buildItem({ reference_id: 'sheet-G', color: 'PRETA', technical_sheets: sheetG({ component_colors_enabled: true }) })],
-        ctxGlobalDefaults(),
-      );
-      const s = strass(rows);
-      expect(s).toHaveLength(1);
-      expect(s[0].materialName).toContain('FUNDO PRETO');
-      expect(s[0].warning).toMatch(/sem mapeamento/i);
+      const total = rows.filter(r => r.groupName === 'COMPONENTES').reduce((s, r) => s + r.totalQuantity, 0);
+      expect(total).toBe((2 + 3) * 24);
     });
   });
 

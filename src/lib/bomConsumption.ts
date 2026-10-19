@@ -605,70 +605,8 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     }
   }
 
-  // Componentes por cor (opt-in via component_colors_enabled) — BOM-6. Chave
-  // (sheet_id::corNormalizada), mesma paridade de match do SQL/motor canônico.
-  const componentColorMap = new Map<string, Array<{ productId: string; quantityPerUnit: number }>>();
-  {
-    const componentColorMappingsResult = await supabase
-      .from('technical_sheet_component_colors' as never)
-      .select('sheet_id, cabedal_color, product_id, quantity_per_unit')
-      .in('sheet_id', refIds);
-    assertQuerySucceeded('componentes por cor', componentColorMappingsResult);
-    const componentColorMappings = componentColorMappingsResult.data || [];
-    for (const m of (componentColorMappings || []) as any[]) {
-      if (!m.product_id) continue;
-      const key = `${m.sheet_id}::${normalizeColorKey(m.cabedal_color)}`;
-      const arr = componentColorMap.get(key) || [];
-      arr.push({ productId: m.product_id, quantityPerUnit: Number(m.quantity_per_unit) || 0 });
-      componentColorMap.set(key, arr);
-    }
-  }
-
-  // Padrões GLOBAIS por cor (component_color_defaults) — regra por GRUPO, não
-  // por ficha: (group_id::corNormalizada) → product_id; linha is_default vira a
-  // chave catch-all (group_id::*). Regra exata vence o default. Espelha o
-  // lookup SQL do by_grade (mig 20260928121000) e o motor canônico
-  // (orderConsumption.ts).
-  const componentColorDefaultMap = new Map<string, string>();
-  {
-    const componentColorDefaultsResult = await supabase
-      .from('component_color_defaults' as never)
-      .select('group_id, cabedal_color, product_id, is_default')
-      .eq('active', true);
-    assertQuerySucceeded('padrões globais de componentes por cor', componentColorDefaultsResult);
-    const componentColorDefaults = componentColorDefaultsResult.data || [];
-    for (const d of (componentColorDefaults || []) as any[]) {
-      if (!d.group_id || !d.product_id) continue;
-      const key = d.is_default ? `${d.group_id}::*` : `${d.group_id}::${normalizeColorKey(d.cabedal_color)}`;
-      componentColorDefaultMap.set(key, d.product_id);
-    }
-  }
-
-  // Produtos citados por componentes-por-cor / defaults precisam estar no escopo.
-  {
-    const moreProducts: string[] = [];
-    const moreGroups: string[] = [];
-    for (const rows of componentColorMap.values()) {
-      for (const row of rows) moreProducts.push(row.productId);
-    }
-    for (const [key, pid] of componentColorDefaultMap.entries()) {
-      moreProducts.push(pid);
-      const gid = key.split('::')[0];
-      if (gid) moreGroups.push(gid);
-    }
-    const seen = new Set(allProducts.map((p: any) => p.id));
-    const missingProducts = moreProducts.filter((id) => id && !seen.has(id));
-    const missingGroups = moreGroups.filter((id) => id && !scopeGroupIds.has(id));
-    if (missingGroups.length > 0 || missingProducts.length > 0) {
-      const extra = await fetchScopedProductsOrThrow(supabase, missingGroups, missingProducts);
-      for (const p of extra) {
-        if (!seen.has(p.id)) {
-          allProducts.push(p);
-          seen.add(p.id);
-        }
-      }
-    }
-  }
+  // Componentes por cor / component_color_defaults: mortos no vivo (pin de
+  // direct_components.product_id é a única fonte). Dados ficam no banco.
 
   // Cor do FORRO mapeada por cor do cabedal — Forração, Forração Palmilha e
   // Fachete (paridade com o motor canônico / orderConsumption.ts).
@@ -1601,75 +1539,49 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       });
     }
 
-    // Componentes por cor (opt-in) OU direct_components (fallback) — BOM-6.
-    // Espelha o gate do motor canônico/SQL: com component_colors_enabled ligado
-    // e mapeamento pra cor do pedido, a lista POR COR substitui
-    // direct_components por completo; sem flag (ou cor sem mapeamento), cai em
-    // direct_components. Antes a Lista de Separação ignorava os dois caminhos —
-    // itens cadastrados direto na ficha (ex.: BINÓCULO 6MM 8/par) ficavam fora
-    // do picking.
-    const hasOrderColor = !!orderColor && orderColor !== '—';
-    const perColorComponents = (hasOrderColor && sheet?.component_colors_enabled)
-      ? componentColorMap.get(`${order.reference_id}::${normalizeColorKey(orderColor)}`)
-      : undefined;
-    const usedPerColorComponents = !!(perColorComponents && perColorComponents.length > 0);
-    const directComponents = usedPerColorComponents
-      ? perColorComponents.map((r) => ({ product_id: r.productId, quantity: r.quantityPerUnit }))
-      : (Array.isArray(sheet?.direct_components) ? sheet.direct_components : []);
-    // Cor sem mapeamento com "componentes por cor" LIGADO → fallback pra lista
-    // geral, que costuma listar TODAS as variantes de cor do ornamento (o par
-    // acaba consumindo uma de cada). Espelha o aviso do motor canônico
-    // (orderConsumption.ts) — caso PV-00147/DS22, cor CAPUCCINO não mapeada.
-    const unmappedColorWarning = (hasOrderColor
-      && !!sheet?.component_colors_enabled
-      && !usedPerColorComponents
-      && Array.isArray(sheet?.direct_components)
-      && sheet.direct_components.length > 0)
-      ? `Cor "${orderColor}" sem mapeamento em Componentes por Cor — separação pode incluir variantes de cor que não vão neste par.`
-      : undefined;
+    // Componentes Diretos — SKU pinado obrigatório (débito exato). Pin vence;
+    // ignora component_colors_enabled / component_color_defaults.
+    const directComponents = Array.isArray(sheet?.direct_components)
+      ? sheet.direct_components
+      : [];
     const directProductIds = new Set<string>();
+    const seenDirectProductIds = new Set<string>();
     for (const dc of directComponents) {
-      const pid = (dc as any)?.product_id;
+      const pid = (dc as any)?.product_id as string | null | undefined;
+      const groupId = (dc as any)?.group_id as string | null | undefined;
       const qtyPerPair = Number((dc as any)?.quantity) || 0;
-      if (!pid || qtyPerPair <= 0) continue;
-      // Produto já coberto pelo item-padrão do solado → dedup (F2-01).
+      if (qtyPerPair <= 0) continue;
+      if (!pid) {
+        const gname = (dc as any)?.group_name
+          || (dc as any)?.product_name
+          || groupNameById(groupId)
+          || 'Componente';
+        addConsumptionRow(consumptionMap, {
+          componentType: 'Outros',
+          groupName: gname,
+          materialName: gname,
+          productUnit: (dc as any)?.unit || 'un',
+          color: orderColor || '—',
+          totalQuantity: 0,
+          warning: `Componente "${gname}" sem item (SKU) pinado — NÃO será separado. Abra a ficha → Componentes e escolha o item final.`,
+        });
+        continue;
+      }
       if (stdCoveredProductIds.has(pid)) continue;
+      if (seenDirectProductIds.has(pid)) continue;
+      seenDirectProductIds.add(pid);
       const prod = (allProducts || []).find((p: any) => p.id === pid);
       if (!prod) continue;
-      // Padrão GLOBAL por cor (component_color_defaults, mig 20260928121000):
-      // só no fallback de direct_components (lista por-cor da ficha VENCE) e
-      // com cor não-vazia, regra do grupo (exata > default) troca o SKU
-      // mantendo a quantidade da ficha. Entradas que colapsam no mesmo SKU
-      // somam via addConsumptionRow. Regra pra produto inativo não resolve
-      // (allProducts só tem ativos) → mantém o original com aviso.
-      let effectiveProd = prod as any;
-      let ruleWarning: string | undefined;
-      if (!usedPerColorComponents && hasOrderColor && (prod as any).group_id) {
-        const rulePid = componentColorDefaultMap.get(`${(prod as any).group_id}::${normalizeColorKey(orderColor)}`)
-          ?? componentColorDefaultMap.get(`${(prod as any).group_id}::*`);
-        if (rulePid) {
-          const ruleProd = (allProducts || []).find((p: any) => p.id === rulePid);
-          if (ruleProd) {
-            effectiveProd = ruleProd as any;
-          } else {
-            ruleWarning = 'Regra global de cor do grupo aponta produto inativo/apagado — usando o componente original da ficha. Corrija em Fichas Técnicas → Padrões por Cor.';
-          }
-        }
-      }
-      // Cobre o pid original E o resolvido (dedup dc↔BOM — espelha o motor
-      // canônico e o v_covered do SQL).
       directProductIds.add(pid);
-      directProductIds.add(effectiveProd.id);
-      const dcGroupName = groupNameById(effectiveProd.group_id)
-        || (dc as any)?.product_name || effectiveProd.name || 'Componente';
+      const dcGroupName = groupNameById((prod as any).group_id)
+        || (dc as any)?.product_name || (prod as any).name || 'Componente';
       addConsumptionRow(consumptionMap, {
-        componentType: classifyBomMaterial(dcGroupName, effectiveProd.name || '', ''),
+        componentType: classifyBomMaterial(dcGroupName, (prod as any).name || '', ''),
         groupName: dcGroupName,
-        materialName: effectiveProd.name || (dc as any)?.product_name || 'Componente',
-        productUnit: effectiveProd.unit || (dc as any)?.unit || 'un',
-        color: effectiveProd.color || '—',
+        materialName: (prod as any).name || (dc as any)?.product_name || 'Componente',
+        productUnit: (prod as any).unit || (dc as any)?.unit || 'un',
+        color: (prod as any).color || '—',
         totalQuantity: qtyPerPair * itemQuantity,
-        warning: ruleWarning || unmappedColorWarning,
       });
     }
 
