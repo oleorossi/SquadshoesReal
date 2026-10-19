@@ -107,12 +107,16 @@ describe('rendimento de tira em lote por medida', () => {
     expect(batch).toContain("'new_material_only', true");
   });
 
-  it('liga a tela ao writer com as duas capabilities', () => {
+  it('o writer de lote por receita permanece; o Hub Configuração usa geometria do grupo', () => {
+    // Writer + MeasureYieldControl ainda existem (compat / Ateliê legado),
+    // mas o Hub Configuração passou a gravar via set_strap_measure_geometry_yield
+    // (medida × bobina → strap_group_napa_yields) — grill 19/10/2026.
     expect(writer).toContain("'confirm_artisanal_strap_measure_yield_for_all'");
     expect(control).toContain('confirmArtisanalStrapMeasureYield');
-    expect(hub).toContain('<MeasureYieldControl');
+    expect(hub).not.toContain('<MeasureYieldControl');
+    expect(hub).toContain('MeasureGeometryYieldPanel');
+    expect(hub).toContain('useStrapMeasureYieldBoard');
     expect(hub).toContain('catalog.capabilities.manage_strap_catalog === true');
-    expect(hub).toContain('catalog.capabilities.approve_strap_recipe === true');
   });
 
   it('a tela reidrata pela composição da lista, não pela identidade do array', () => {
