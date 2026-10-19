@@ -174,6 +174,7 @@ export function AtelierReferencePanel({
             loading={isLoading}
             disabled={!!dirty}
             hasKitColumns={hasKitColumns}
+            costuraActive={!!bySector.get('costura_cabedal')?.active}
             onGoToMaterials={onGoToMaterials}
           />
         ))}
@@ -380,6 +381,7 @@ function SectorCard({
   loading,
   disabled,
   hasKitColumns,
+  costuraActive,
   onGoToMaterials,
 }: {
   sector: AtelierSector;
@@ -388,6 +390,8 @@ function SectorCard({
   loading: boolean;
   disabled: boolean;
   hasKitColumns: boolean;
+  /** Costura ligada nesta ficha — bloqueia desligar Corte (Q13-a). */
+  costuraActive: boolean;
   onGoToMaterials?: () => void;
 }) {
   const isStreet = ATELIER_STREET_SECTORS.includes(sector);
@@ -399,38 +403,36 @@ function SectorCard({
   const support = atelierSheetSupport(sheet, sector);
   const active = !!row?.active;
   const orphan = active && !support.ok;
-  const [kitProductIds, setKitProductIds] = useState<string[]>(row?.kit_product_ids ?? []);
+  const [kitGroupIds, setKitGroupIds] = useState<string[]>(row?.kit_group_ids ?? []);
   const [price, setPrice] = useState<number | null>(row?.value_per_pair ?? null);
 
   useEffect(() => {
-    setKitProductIds(row?.kit_product_ids ?? []);
-  }, [row?.kit_product_ids]);
+    setKitGroupIds(row?.kit_group_ids ?? []);
+  }, [row?.kit_group_ids]);
   useEffect(() => setPrice(row?.value_per_pair ?? null), [row?.value_per_pair]);
 
   const busy = save.isPending;
   const id = `atelie-${sector}`;
+  const corteLockedByCostura = sector === 'corte_cabedal' && costuraActive && active;
 
   const toggle = (next: boolean) => {
     if (!sheet.id) return;
+    if (sector === 'corte_cabedal' && !next && costuraActive) return;
     save.mutate({ referenceId: sheet.id, sector, active: next });
   };
 
-  const toggleKitProduct = (productId: string) => {
+  const toggleKitGroup = (groupId: string) => {
     if (!sheet.id) return;
-    const next = kitProductIds.includes(productId)
-      ? kitProductIds.filter((k) => k !== productId)
-      : [...kitProductIds, productId];
-    setKitProductIds(next);
-    const labels = candidates
-      .filter((c) => next.includes(c.product_id))
-      .map((c) => c.component)
-      .filter(Boolean);
+    const next = kitGroupIds.includes(groupId)
+      ? kitGroupIds.filter((k) => k !== groupId)
+      : [...kitGroupIds, groupId];
+    setKitGroupIds(next);
     save.mutate({
       referenceId: sheet.id,
       sector,
       active: true,
-      kitProductIds: next,
-      materialComponents: labels.length ? [...new Set(labels)] : null,
+      kitGroupIds: next,
+      materialComponents: next.length ? ['Componente Direto'] : null,
     });
   };
 
@@ -469,11 +471,23 @@ function SectorCard({
           <Switch
             id={`${id}-switch`}
             checked={active}
-            disabled={loading || busy || disabled || (!active && (!support.ok || (isStreet && !hasKitColumns)))}
+            disabled={
+              loading
+              || busy
+              || disabled
+              || corteLockedByCostura
+              || (!active && (!support.ok || (isStreet && !hasKitColumns)))
+            }
             onCheckedChange={toggle}
           />
         </div>
       </div>
+
+      {corteLockedByCostura && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Costura ligada — Corte fica obrigatório (corte a fio sozinho: desligue a Costura).
+        </p>
+      )}
 
       {!support.ok && (
         <div className="mt-3 flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
@@ -530,25 +544,27 @@ function SectorCard({
 
           <fieldset className="space-y-1.5">
             <legend className="text-xs font-medium text-foreground">
-              Kit deste setor — escolha na ficha (nada pré-marcado)
+              Kit deste setor — grupos de COMPONENTES (nada pré-marcado)
             </legend>
             {candLoading ? (
-              <p className="text-[11px] text-muted-foreground">Carregando materiais da ficha…</p>
+              <p className="text-[11px] text-muted-foreground">Carregando componentes da ficha…</p>
             ) : candidates.length === 0 ? (
               <p className="text-[11px] text-muted-foreground">
-                Nenhum item na ficha (BOM). Cadastre em Materiais & Consumo.
+                Nenhum componente na ficha. Cadastre na seção COMPONENTES (Engenharia) — só o grupo;
+                a cor resolve no pedido.
               </p>
             ) : (
               <ul className="max-h-40 space-y-1 overflow-y-auto">
                 {candidates.map((c) => {
-                  const on = kitProductIds.includes(c.product_id);
+                  const gid = c.group_id;
+                  const on = !!gid && kitGroupIds.includes(gid);
                   return (
-                    <li key={c.product_id}>
+                    <li key={gid || c.product_id || c.group_name}>
                       <button
                         type="button"
                         aria-pressed={on}
-                        disabled={busy || disabled}
-                        onClick={() => toggleKitProduct(c.product_id)}
+                        disabled={busy || disabled || !gid}
+                        onClick={() => gid && toggleKitGroup(gid)}
                         className={cn(
                           'flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
                           on
@@ -557,7 +573,7 @@ function SectorCard({
                         )}
                       >
                         {on && <Check className="h-3 w-3 shrink-0" weight="bold" />}
-                        <span className="min-w-0 flex-1 truncate">{c.product_name}</span>
+                        <span className="min-w-0 flex-1 truncate">{c.group_name || c.product_name}</span>
                         <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                           {c.quantity_per_unit != null
                             ? `${Number(c.quantity_per_unit).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}${c.unit ? ` ${c.unit}` : ''}/par`
@@ -570,8 +586,9 @@ function SectorCard({
               </ul>
             )}
             <p className="text-[11px] text-muted-foreground">
-              Só os marcados saem do estoque no corte do lote. O resto segue na OP. Meta de pronto =
-              semana de faturamento − 7 dias (compra usa essa data).
+              Cabedal (napa) entra automático no corte. Os grupos marcados debitam na{' '}
+              <strong className="text-foreground">liberação</strong>, com a cor do pedido.
+              {sector === 'aviamento' && ' Aviamento inclui metragem de tiras no relatório.'}
             </p>
           </fieldset>
         </div>

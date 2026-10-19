@@ -29,6 +29,7 @@ export interface AtelierReferenceSectorRow {
   value_per_pair: number | null;
   material_components: string[] | null;
   kit_product_ids: string[] | null;
+  kit_group_ids: string[] | null;
   updated_at: string | null;
 }
 
@@ -60,6 +61,7 @@ export function useAtelierReferenceConfig(referenceId: string | null | undefined
           value_per_pair: r.value_per_pair ?? null,
           material_components: r.material_components ?? null,
           kit_product_ids: (r as { kit_product_ids?: string[] | null }).kit_product_ids ?? null,
+          kit_group_ids: (r as { kit_group_ids?: string[] | null }).kit_group_ids ?? null,
         })) as AtelierReferenceSectorRow[],
         hasKitColumns,
       };
@@ -77,6 +79,7 @@ export function useSaveAtelierReferenceSector() {
       valuePerPair?: number | null;
       materialComponents?: string[] | null;
       kitProductIds?: string[] | null;
+      kitGroupIds?: string[] | null;
     }) => {
       const payload: Record<string, unknown> = {
         reference_id: input.referenceId,
@@ -86,6 +89,19 @@ export function useSaveAtelierReferenceSector() {
       if (input.valuePerPair !== undefined) payload.value_per_pair = input.valuePerPair;
       if (input.materialComponents !== undefined) payload.material_components = input.materialComponents;
       if (input.kitProductIds !== undefined) payload.kit_product_ids = input.kitProductIds;
+      if (input.kitGroupIds !== undefined) payload.kit_group_ids = input.kitGroupIds;
+      // Costura on ⇒ Corte on (espelha o gatilho SQL).
+      if (input.sector === 'costura_cabedal' && input.active) {
+        const cortePayload = {
+          reference_id: input.referenceId,
+          sector: 'corte_cabedal',
+          active: true,
+        };
+        const { error: corteErr } = await supabase
+          .from('atelier_complex_references' as never)
+          .upsert(cortePayload as never, { onConflict: 'reference_id,sector' });
+        if (corteErr) throw corteErr;
+      }
       const { error } = await supabase
         .from('atelier_complex_references' as never)
         .upsert(payload as never, { onConflict: 'reference_id,sector' });
@@ -98,6 +114,7 @@ export function useSaveAtelierReferenceSector() {
         input.valuePerPair === undefined
         && input.materialComponents === undefined
         && input.kitProductIds === undefined
+        && input.kitGroupIds === undefined
       ) {
         toast.success(input.active ? 'Referência enviada ao Ateliê' : 'Referência tirada do Ateliê');
       }
@@ -108,8 +125,10 @@ export function useSaveAtelierReferenceSector() {
 }
 
 export interface AtelierKitCandidate {
-  product_id: string;
-  product_name: string;
+  group_id: string;
+  group_name: string;
+  product_id: string | null;
+  product_name: string | null;
   unit: string | null;
   component: string;
   quantity_per_unit: number | null;
@@ -162,10 +181,14 @@ export interface AtelierLotJob {
   sent_kit_lines?: AtelierSentKitLine[] | null;
 }
 
+export type AtelierKitGate = 'awaiting_components' | 'ready_to_send' | null;
+
 export interface AtelierLotRow {
   id: string;
   lot_number: string;
   status: 'open' | 'cut' | 'cancelled';
+  /** Após corte: aguardando componentes ou pronto para envio. */
+  kit_gate?: AtelierKitGate;
   reference_id: string;
   reference_code: string | null;
   reference_name: string | null;
@@ -206,13 +229,20 @@ export interface AtelierLotRow {
   }[];
 }
 
-/** Lotes do Ateliê (fila + aba da ficha). */
+/** Lotes do Ateliê (fila + aba da ficha). Refresh de kit_gate quando o estoque entra. */
 export function useAtelierLots() {
   return useQuery({
     queryKey: atelierKeys.lots(),
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('list_atelier_lots' as never);
-      if (error) throw error;
+      const { data, error } = await supabase.rpc(
+        'list_atelier_lots_with_gate_refresh' as never,
+      );
+      if (error) {
+        // Fallback se a migration ainda não aplicou o wrapper.
+        const fallback = await supabase.rpc('list_atelier_lots' as never);
+        if (fallback.error) throw error;
+        return (fallback.data ?? []) as unknown as AtelierLotRow[];
+      }
       return ((data ?? []) as unknown as AtelierLotRow[]);
     },
     staleTime: 15_000,
@@ -347,7 +377,7 @@ export function useRemoveAtelierReference() {
   });
 }
 
-/** Confirma o corte do LOTE: debita o kit de cada item (pendência se faltar). */
+/** Confirma o corte do LOTE: debita só Cabedal (napa). COMPONENTES na liberação. */
 export function useConfirmAtelierLotCut() {
   const qc = useQueryClient();
   return useMutation({
@@ -357,20 +387,50 @@ export function useConfirmAtelierLotCut() {
         { p_lot_id: lotId } as never,
       );
       if (error) throw error;
-      return data as { lot_number?: string; items?: number; pending_lines?: number } | null;
+      return data as {
+        lot_number?: string;
+        items?: number;
+        pending_lines?: number;
+        kit_gate?: string;
+      } | null;
     },
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
       const pend = data?.pending_lines ?? 0;
-      if (pend > 0) {
+      const gate = data?.kit_gate;
+      if (gate === 'awaiting_components') {
+        toast.success(
+          `${data?.lot_number ?? 'Lote'} cortado (napa) · aguardando componentes/tiras em estoque`,
+        );
+      } else if (pend > 0) {
         toast.warning(
-          `${data?.lot_number ?? 'Lote'} cortado · ${pend} material(is) com falta — a OP completa o que faltou`,
+          `${data?.lot_number ?? 'Lote'} cortado · ${pend} material(is) com falta de napa`,
         );
       } else {
-        toast.success(`${data?.lot_number ?? 'Lote'} cortado · material debitado`);
+        toast.success(`${data?.lot_number ?? 'Lote'} cortado · napa debitada · pronto para envio`);
       }
     },
     onError: (e: Error) => toast.error(e.message || 'Falha ao confirmar o corte'),
+  });
+}
+
+/** Debita COMPONENTES/tiras do kit e libera o lote para envio. */
+export function useConfirmAtelierLotRelease() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (lotId: string) => {
+      const { data, error } = await supabase.rpc(
+        'atelier_confirm_lot_release' as never,
+        { p_lot_id: lotId } as never,
+      );
+      if (error) throw error;
+      return data as { lot_number?: string; lines?: number; kit_gate?: string } | null;
+    },
+    onSuccess: (data) => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      toast.success(`${data?.lot_number ?? 'Lote'} · kit liberado para envio`);
+    },
+    onError: (e: Error) => toast.error(e.message || 'Falha ao liberar o kit'),
   });
 }
 
@@ -383,7 +443,7 @@ export interface AtelierKitLine {
   available: number;
 }
 
-/** Kit do lote antes do corte: necessidade × estoque. */
+/** Prévia do corte (só Cabedal / napa). */
 export function useAtelierLotKitPreview(lotId: string | null) {
   return useQuery({
     queryKey: [...atelierKeys.all, 'kit', lotId ?? ''] as const,
@@ -391,6 +451,22 @@ export function useAtelierLotKitPreview(lotId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase.rpc(
         'atelier_lot_kit_preview' as never,
+        { p_lot_id: lotId } as never,
+      );
+      if (error) throw error;
+      return (data ?? []) as unknown as AtelierKitLine[];
+    },
+  });
+}
+
+/** Prévia da liberação (COMPONENTES + Tiras). */
+export function useAtelierLotReleasePreview(lotId: string | null) {
+  return useQuery({
+    queryKey: [...atelierKeys.all, 'release-kit', lotId ?? ''] as const,
+    enabled: !!lotId,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc(
+        'atelier_lot_release_lines' as never,
         { p_lot_id: lotId } as never,
       );
       if (error) throw error;

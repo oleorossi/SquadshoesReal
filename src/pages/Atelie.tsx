@@ -734,7 +734,11 @@ function FilaView() {
   const byColumn = useMemo(() => {
     const m = new Map<string, AtelierLotRow[]>();
     for (const lot of filteredLots) {
-      const col = atelierLotColumn(lot.status, lot.jobs.map((j) => j.pipeline_status));
+      const col = atelierLotColumn(
+        lot.status,
+        lot.jobs.map((j) => j.pipeline_status),
+        lot.kit_gate,
+      );
       m.set(col, [...(m.get(col) ?? []), lot]);
     }
     return m;

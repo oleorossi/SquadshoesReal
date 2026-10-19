@@ -152,7 +152,8 @@ import { getTechnicalSheetAuditGaps, type TechnicalSheetAuditRow } from '@/lib/t
 import { needsCabedalParConfirmation, CABEDAL_PAR_CONFIRM_MESSAGE } from '@/lib/cabedalParPeGuard';
 import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
-import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
+import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, DirectComponentGroupSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
+import { emptyDirectComponentLine } from '@/lib/directComponentGroup';
 import DublagemGlueSelect from '@/components/technical-sheets/DublagemGlueSelect';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
@@ -3920,7 +3921,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Componentes</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Componentes avulsos (ABS, fivelas, ilhós, elástico…). A unidade vem do cadastro do produto (un, m, cm, kg…).
+                Componentes avulsos (ABS, fivelas, ilhós…). Cadastre o <strong className="text-foreground">grupo</strong>;
+                a cor do SKU resolve no pedido / liberação do Ateliê.
               </p>
 
               {/* Opt-in: componentes que variam por cor predominante (poucos modelos). */}
@@ -3936,8 +3938,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     Componentes variam por cor
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Ative para modelos cujos componentes mudam conforme a <strong className="text-foreground">cor predominante</strong> escolhida no pedido
-                    (ex.: DS05 — Caramelo usa peças diferentes de Off White). A lista abaixo vira o padrão pras cores sem configuração própria.
+                    Ative quando os <strong className="text-foreground">grupos</strong> mudam conforme a cor predominante do pedido.
+                    A lista abaixo é o padrão pras cores sem regra própria.
                   </p>
                 </div>
               </div>
@@ -3948,33 +3950,30 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </p>
               )}
               {(form.direct_components || []).map((comp: any, idx: number) => {
-                // Preço e unidade vêm do produto VIVO, não do snapshot gravado no
-                // JSONB da ficha: o snapshot só é reescrito quando o componente é
-                // re-selecionado no dropdown, então corrigir o cadastro do material
-                // não refletia aqui — a ficha seguia exibindo o custo velho. O
-                // custeio real (calculate_order_cost_item) já lê products.unit_price
-                // ao vivo; isto só alinha a UI com ele. Snapshot vira fallback pra
-                // componente cujo produto foi desativado/removido.
-                const liveProd = (products as any[]).find((p: any) => p.id === comp.product_id);
-                const unit = ((liveProd?.unit ?? comp.unit) || 'un').toString().trim() || 'un';
-                const unitPrice = Number(liveProd?.unit_price ?? comp.unit_price) || 0;
+                const unit = (comp.unit || 'un').toString().trim() || 'un';
                 return (
                 <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end border-l-2 border-green-400/30 pl-3">
-                  <DirectComponentSelect
+                  <DirectComponentGroupSelect
                     label={`Componente ${idx + 1}`}
-                    value={comp.product_id || ''}
-                    fallbackLabel={comp.product_name || ''}
-                    onChange={(pid, pname, price, prodUnit) => {
+                    groupId={comp.group_id || null}
+                    groupName={comp.group_name || comp.product_name || null}
+                    onChange={(gid, gname, gUnit) => {
                       const arr = [...(form.direct_components || [])];
-                      arr[idx] = { ...arr[idx], product_id: pid, product_name: pname, unit_price: price, unit: prodUnit };
+                      arr[idx] = {
+                        ...arr[idx],
+                        group_id: gid,
+                        group_name: gname,
+                        product_id: null,
+                        product_name: gname,
+                        unit: gUnit,
+                        unit_price: 0,
+                      };
                       updateField('direct_components', arr);
                     }}
                   />
-                  {comp.product_id && (!liveProd || liveProd.active === false) && (
+                  {!comp.group_id && comp.product_id && (
                     <p className="text-[11px] text-amber-700 dark:text-amber-400 sm:col-span-3 -mt-2">
-                      {liveProd?.active === false
-                        ? `“${comp.product_name || liveProd?.name || 'Componente'}” está inativo no estoque — some na lista ativa do seletor, mas o consumo SQL ainda debita.`
-                        : `“${comp.product_name || 'Componente'}” não existe mais no estoque — vínculo só no JSON da ficha.`}
+                      Cadastro antigo com SKU pinado — escolha o grupo acima para seguir a cor do pedido.
                     </p>
                   )}
                   <div>
@@ -4004,17 +4003,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                     </Select>
                   </div>
                   <div className="flex items-end gap-2">
-                    {unitPrice > 0 && comp.quantity > 0 && (
-                      // Mostra a conta inteira (qtd × R$/unidade), não só o total:
-                      // "= R$ 20,00/par" sozinho não denuncia que o custo cadastrado
-                      // está na unidade errada. Com "20 cm × R$ 1,0000/cm" na frente,
-                      // um preço digitado por metro num produto em cm salta aos olhos.
-                      <span className="text-xs text-muted-foreground font-mono mb-2">
-                        {comp.quantity} {unit} × {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(unitPrice)}/{unit}
-                        {' = '}
-                        <strong className="text-foreground">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(unitPrice * comp.quantity)}/par</strong>
-                      </span>
-                    )}
                     <Button variant="ghost" size="icon" aria-label="Remover componente" className="h-9 w-9 text-destructive hover:text-destructive" onClick={() => {
                       const arr = [...(form.direct_components || [])];
                       arr.splice(idx, 1);
@@ -4026,7 +4014,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 </div>
               );})}
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
-                      updateField('direct_components', [...(form.direct_components || []), { product_id: '', product_name: '', quantity: 1, unit_price: 0, unit: 'un', consumption_sector: 'Aviamento' }]);
+                      updateField('direct_components', [...(form.direct_components || []), emptyDirectComponentLine()]);
               }}>
                 <Plus className="h-3.5 w-3.5" /> Adicionar Componente
               </Button>
@@ -5234,6 +5222,7 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
        const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
        const dcGroupIds = new Set<string>();
        for (const dc of directComponents || []) {
+         if (dc?.group_id) dcGroupIds.add(dc.group_id);
          const p = products.find((x: any) => x.id === dc?.product_id);
          if (p?.group_id) dcGroupIds.add(p.group_id);
        }
@@ -5298,14 +5287,55 @@ function InsolePlateProductSelect({ label, value, onChange }: { label: string; v
          <p className="text-xs text-muted-foreground">
            Cada cor lista os componentes debitados quando ela for escolhida no pedido. Cor sem lista usa o padrão acima.
          </p>
+         <div className="flex flex-wrap items-center gap-2 mb-1">
+           <Badge variant="secondary" className="text-[10px]">
+             {cabedelColors.filter(c => (byColor.get(c.toLowerCase()) || []).length > 0).length}/{cabedelColors.length} configuradas
+           </Badge>
+           <p className="text-[11px] text-muted-foreground">Só cores com lista própria (as vazias usam o padrão).</p>
+         </div>
          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-           {cabedelColors.map(colorName => {
+           {cabedelColors.filter(colorName => {
+             const rows = byColor.get(colorName.toLowerCase()) || [];
+             return rows.length > 0 || globalRuleCoverage.has(colorName.toLowerCase());
+           }).map(colorName => {
              const rows = byColor.get(colorName.toLowerCase()) || [];
              return (
                <div key={colorName} className="rounded-md border border-border bg-card p-3 space-y-2">
                  <div className="flex items-center gap-2">
                    <span className="text-xs font-semibold uppercase tracking-wider truncate">{colorName}</span>
                    <Badge variant="secondary" className="text-[10px] ml-auto">{rows.length} {rows.length === 1 ? 'item' : 'itens'}</Badge>
+                   {rows.length === 0 && directComponents?.length > 0 && (
+                     <Button
+                       type="button"
+                       variant="outline"
+                       size="sm"
+                       className="h-7 text-[10px]"
+                       onClick={() => {
+                         for (const dc of directComponents) {
+                           // Grupo-only: resolve um SKU ativo do grupo (cor do card ou qualquer).
+                           let pid = dc?.product_id as string | undefined;
+                           if (!pid && dc?.group_id) {
+                             const inGroup = products.filter(
+                               (p: any) => p.active && p.group_id === dc.group_id,
+                             );
+                             const byColor = inGroup.find((p: any) =>
+                               (p.color || '').toLowerCase().includes(colorName.toLowerCase()),
+                             );
+                             pid = (byColor || inGroup[0])?.id;
+                           }
+                           if (!pid) continue;
+                           addRow.mutate({
+                             sheetId,
+                             cabedalColor: colorName,
+                             productId: pid,
+                             quantityPerUnit: Number(dc.quantity) || 1,
+                           });
+                         }
+                       }}
+                     >
+                       Aplicar padrão
+                     </Button>
+                   )}
                  </div>
                  {rows.length === 0 && (
                    globalRuleCoverage.has(colorName.toLowerCase()) ? (

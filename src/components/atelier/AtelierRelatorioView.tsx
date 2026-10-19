@@ -52,7 +52,10 @@ import { daysUntilDeadline } from '@/lib/production/productionSequence';
 import { cn } from '@/lib/utils';
 import {
   useAtelierLots,
+  useAtelierLotKitPreview,
+  useAtelierLotReleasePreview,
   useConfirmAtelierLotCut,
+  useConfirmAtelierLotRelease,
   useMarkAtelierInternalDone,
   useMarkAtelierInternalStart,
   useMarkAtelierRealized,
@@ -96,7 +99,7 @@ function KitQtyList({ lot }: { lot: AtelierLotRow }) {
   if (!lot.debits.length) {
     return (
       <p className="text-[10px] text-muted-foreground">
-        Kit sem débito ainda — quantidades aparecem após o corte.
+        Sem débito ainda — napa no corte; componentes/tiras na liberação.
       </p>
     );
   }
@@ -104,6 +107,7 @@ function KitQtyList({ lot }: { lot: AtelierLotRow }) {
     <ul className="flex flex-wrap gap-1">
       {lot.debits.map((d) => {
         const short = Number(d.pending_qty) > 0;
+        const kind = d.component ? String(d.component) : null;
         return (
           <li
             key={d.product_id}
@@ -115,6 +119,9 @@ function KitQtyList({ lot }: { lot: AtelierLotRow }) {
             )}
           >
             <span className="font-medium">{d.product_name}</span>
+            {kind && (
+              <span className="ml-1 text-muted-foreground">· {kind}</span>
+            )}
             <span
               className={cn(
                 'ml-1 font-mono tabular-nums',
@@ -415,7 +422,13 @@ function InternalJobOk({
 
 function CutOk({ lot }: { lot: AtelierLotRow }) {
   const cutMut = useConfirmAtelierLotCut();
-  if (lot.status === 'cut' || lot.status === 'cancelled') {
+  const releaseMut = useConfirmAtelierLotRelease();
+  const { data: cutPreview = [] } = useAtelierLotKitPreview(lot.status === 'open' ? lot.id : null);
+  const { data: releasePreview = [] } = useAtelierLotReleasePreview(
+    lot.status === 'cut' ? lot.id : null,
+  );
+
+  if (lot.status === 'cancelled') {
     return (
       <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-foreground text-[10px] font-bold text-background">
@@ -423,13 +436,68 @@ function CutOk({ lot }: { lot: AtelierLotRow }) {
         </span>
         <p className="min-w-0 flex-1 text-[11px] text-foreground">
           <Scissors className="mr-1 inline h-3 w-3" />
-          Corte na fábrica · {lot.status === 'cut' ? 'feito' : 'cancelado'}
-          {lot.cut_at ? ` · ${formatDay(lot.cut_at)}` : ''}
+          Corte na fábrica · cancelado
         </p>
-        <CheckCircle className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden />
       </div>
     );
   }
+
+  if (lot.status === 'cut') {
+    const awaiting = lot.kit_gate === 'awaiting_components';
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-foreground text-[10px] font-bold text-background">
+            1
+          </span>
+          <p className="min-w-0 flex-1 text-[11px] text-foreground">
+            <Scissors className="mr-1 inline h-3 w-3" />
+            Corte (napa) · feito
+            {lot.cut_at ? ` · ${formatDay(lot.cut_at)}` : ''}
+            {awaiting
+              ? ' · aguardando componentes/tiras'
+              : ' · pronto para envio'}
+          </p>
+          <CheckCircle className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden />
+        </div>
+        {releasePreview.length > 0 && (
+          <ul className="rounded-md border border-dashed border-border px-2 py-1.5 text-[10px] text-muted-foreground">
+            <li className="mb-0.5 font-medium text-foreground">Prévia do kit (liberação)</li>
+            {releasePreview.map((l) => (
+              <li key={l.product_id} className="font-mono">
+                {l.product_name} · {Number(l.required).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}
+                {l.unit ? ` ${l.unit}` : ''} · {l.component}
+                {Number(l.available) + 1e-9 < Number(l.required) ? ' · falta estoque' : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+        {awaiting && (
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">
+            Quando os componentes entrarem no estoque, o lote libera sozinho. Ou confira agora:
+          </p>
+        )}
+        {awaiting && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-3 text-[11px]"
+            disabled={releaseMut.isPending}
+            onClick={() => releaseMut.mutate(lot.id)}
+          >
+            {releaseMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            Conferir estoque / Liberar kit
+          </Button>
+        )}
+        {releaseMut.isError && (
+          <p role="alert" className="text-[11px] text-destructive">
+            {(releaseMut.error as Error)?.message || 'Ainda falta estoque.'}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1.5 rounded-md border border-foreground/25 bg-card px-2 py-1.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -439,7 +507,7 @@ function CutOk({ lot }: { lot: AtelierLotRow }) {
           </span>
           <p className="text-[11px] font-medium text-foreground">
             Corte na fábrica
-            <span className="ml-1 font-normal text-muted-foreground">— kit sai do estoque</span>
+            <span className="ml-1 font-normal text-muted-foreground">— debita só a napa (cabedal)</span>
           </p>
         </div>
         <Button
@@ -449,7 +517,7 @@ function CutOk({ lot }: { lot: AtelierLotRow }) {
           onClick={() => {
             if (
               !window.confirm(
-                `Confirmar o corte do ${lot.lot_number}? O material do kit sai do estoque agora.`,
+                `Confirmar o corte do ${lot.lot_number}? Só a napa sai do estoque agora. Componentes na liberação.`,
               )
             ) {
               return;
@@ -465,6 +533,17 @@ function CutOk({ lot }: { lot: AtelierLotRow }) {
           OK · Cortar
         </Button>
       </div>
+      {cutPreview.length > 0 && (
+        <ul className="text-[10px] text-muted-foreground">
+          <li className="mb-0.5 font-medium text-foreground">Prévia · metragem / tipo</li>
+          {cutPreview.map((l) => (
+            <li key={l.product_id} className="font-mono">
+              {l.product_name} · {Number(l.required).toLocaleString('pt-BR', { maximumFractionDigits: 3 })}
+              {l.unit ? ` ${l.unit}` : ''} · {l.component}
+            </li>
+          ))}
+        </ul>
+      )}
       {cutMut.isError && (
         <p role="alert" className="text-[11px] text-destructive">
           {(cutMut.error as Error)?.message || 'Falha ao confirmar o corte. Tente de novo.'}
@@ -774,6 +853,7 @@ export function AtelierRelatorioView() {
                         const col = atelierLotColumn(
                           lot.status,
                           lot.jobs.map((j) => j.pipeline_status),
+                          lot.kit_gate,
                         );
                         const jobs = (lot.jobs ?? []).filter((j) => jobMatchesTab(j, tab));
                         const shortage = lotHasKitShortage(lot.debits);

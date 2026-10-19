@@ -88,8 +88,8 @@ describe('Ateliê — interno × prestador + kit da ficha', () => {
 
     const ficha = readFileSync('src/components/technical-sheets/AtelierReferencePanel.tsx', 'utf8');
     expect(ficha).toContain('useAtelierSheetKitCandidates');
-    expect(ficha).toContain('kitProductIds');
-    expect(ficha).toContain('kit_product_ids');
+    expect(ficha).toContain('kitGroupIds');
+    expect(ficha).toContain('kit_group_ids');
 
     const pv = readFileSync('src/components/sale-orders/ItemAtelierModeSection.tsx', 'utf8');
     expect(pv).toContain('AtelierExecutionMode');

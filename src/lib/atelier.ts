@@ -97,11 +97,23 @@ const PIPELINE_ORDER: Record<AtelierPipelineStatus, number> = {
 export function atelierLotColumn(
   lotStatus: 'open' | 'cut' | 'cancelled',
   jobStatuses: AtelierPipelineStatus[],
+  kitGate?: 'awaiting_components' | 'ready_to_send' | null,
 ): AtelierPipelineStatus {
   if (lotStatus === 'open') return 'awaiting_cut';
+  // Cortado mas aguardando componentes: permanece na coluna "Cortado".
+  if (lotStatus === 'cut' && kitGate === 'awaiting_components') return 'cut';
   const live = jobStatuses.filter((s) => s !== 'cancelled');
   if (live.length === 0) return 'cut';
   return live.reduce((min, s) => (PIPELINE_ORDER[s] < PIPELINE_ORDER[min] ? s : min), live[0]);
+}
+
+/** Rótulo do gate de kit após o corte. */
+export function atelierKitGateLabel(
+  kitGate: 'awaiting_components' | 'ready_to_send' | null | undefined,
+): string | null {
+  if (kitGate === 'awaiting_components') return 'Cortado · aguardando componentes';
+  if (kitGate === 'ready_to_send') return 'Cortado · pronto para envio';
+  return null;
 }
 
 export function atelierKanbanBadgeLabel(status: string | null | undefined): string | null {

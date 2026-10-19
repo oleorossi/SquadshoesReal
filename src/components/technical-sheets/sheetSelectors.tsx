@@ -1048,6 +1048,126 @@ export function DirectComponentSelect({
   );
 }
 
+/**
+ * COMPONENTES — só GRUPO (Q11-a). A cor do SKU resolve no PV / liberação do Ateliê.
+ * Não pede item colorido; qtd e setor ficam no formulário da ficha.
+ */
+export function DirectComponentGroupSelect({
+  label,
+  groupId,
+  groupName,
+  onChange,
+}: {
+  label: string;
+  groupId: string | null | undefined;
+  groupName?: string | null;
+  onChange: (groupId: string, groupName: string, unit: string) => void;
+}) {
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ['direct_component_groups_active'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('group_id, unit, product_groups!products_group_id_fkey(id, name)')
+        .eq('active', true)
+        .not('group_id', 'is', null);
+      if (error) throw error;
+      const m = new Map<string, { id: string; name: string; unit: string }>();
+      for (const row of data || []) {
+        const g = (row as { product_groups?: { id?: string; name?: string } | null }).product_groups;
+        const gid = g?.id || (row as { group_id?: string }).group_id;
+        const gname = g?.name;
+        if (!gid || !gname || m.has(gid)) continue;
+        m.set(gid, {
+          id: gid,
+          name: gname,
+          unit: ((row as { unit?: string }).unit || 'un').toString().trim() || 'un',
+        });
+      }
+      return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+    },
+    staleTime: 60_000,
+  });
+
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => {
+    if (!search.trim()) return groups;
+    const hits = groups.filter((g) => searchMatchesAllTerms(search, g.name));
+    return rankBySearchScore(hits, search, (g) => g.name);
+  }, [groups, search]);
+  const cap = useMemo(() => capSearchResults(filtered, SEARCH_RENDER_CAP), [filtered]);
+  const selected = groups.find((g) => g.id === groupId);
+  const trigger = selected?.name || groupName || 'Selecionar grupo…';
+
+  return (
+    <div>
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">
+        Só o grupo — a cor do item sai do pedido na hora do envio.
+      </p>
+      <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="mt-1 h-9 w-full justify-between text-sm font-normal"
+            disabled={isLoading}
+          >
+            <span className="truncate">{isLoading ? 'Carregando…' : trigger}</span>
+            <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[350px] p-0" align="start">
+          <Command shouldFilter={false} label="Buscar grupo de componente…">
+            <SearchLocatorStrip
+              label="Localizar grupo"
+              matchedCount={cap.totalMatched}
+              totalCount={groups.length}
+              hasQuery={!!search.trim()}
+            />
+            <CommandInput placeholder="Buscar grupo…" value={search} onValueChange={setSearch} />
+            <CommandList>
+              <CommandEmpty>
+                {search ? (
+                  <span className="flex flex-col items-center gap-2">
+                    <span>Nenhum resultado para "{search}"</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+                  </span>
+                ) : (
+                  'Nenhum grupo com item ativo.'
+                )}
+              </CommandEmpty>
+              <CommandGroup heading="Grupos">
+                {cap.visible.map((g) => (
+                  <CommandItem
+                    key={g.id}
+                    value={g.id}
+                    onSelect={() => {
+                      onChange(g.id, g.name, g.unit);
+                      setOpen(false);
+                      setSearch('');
+                    }}
+                  >
+                    <Check className={cn('mr-2 h-4 w-4', groupId === g.id ? 'opacity-100' : 'opacity-0')} />
+                    <span className="text-sm"><HighlightMatch text={g.name} term={search} /></span>
+                  </CommandItem>
+                ))}
+                {cap.capped && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    {searchRefineHint(cap.totalMatched, cap.cap)}
+                  </div>
+                )}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 /* ===== BOM / Materials ===== */
 /**
  * Editor inline de NCM por produto.

@@ -2560,9 +2560,43 @@ export function computeConsumptionForItems(
     // explícita por cor, onde cada entrada é deliberada.
     const seenFallbackDirectProductIds = new Set<string>();
     for (const dc of directComponents) {
-      const pid = (dc as any)?.product_id;
+      let pid = (dc as any)?.product_id as string | null | undefined;
+      const groupId = (dc as any)?.group_id as string | null | undefined;
       const qtyPerPair = Number((dc as any)?.quantity) || 0;
-      if (!pid || qtyPerPair <= 0) continue;
+      if (qtyPerPair <= 0) continue;
+      // Cadastro por GRUPO (Q11-a): sem product_id, resolve SKU pela cor do pedido.
+      if (!pid && groupId) {
+        if (hasOrderColor) {
+          const rulePid = componentColorDefaultMap.get(`${groupId}::${normalizeColorKey(orderColor)}`)
+            ?? componentColorDefaultMap.get(`${groupId}::*`);
+          if (rulePid) {
+            pid = rulePid;
+          } else {
+            const colorMatch = (allProducts || []).find((p: any) =>
+              p.group_id === groupId
+              && p.active !== false
+              && normalizeColorKey(p.color || '') === normalizeColorKey(orderColor),
+            );
+            if (colorMatch) pid = colorMatch.id;
+          }
+        }
+        if (!pid) {
+          const gname = (dc as any)?.group_name
+            || (productGroups || []).find((g: any) => g.id === groupId)?.name
+            || 'Componente';
+          addConsumptionRow(consumptionMap, {
+            componentType: 'Outros',
+            groupName: gname,
+            materialName: gname,
+            productUnit: (dc as any)?.unit || 'un',
+            color: orderColor || '—',
+            totalQuantity: 0,
+            warning: `Componente "${gname}" cadastrado por grupo — sem SKU na cor "${orderColor || '—'}" do pedido. Cadastre a cor no grupo ou em Padrões por Cor.`,
+          });
+          continue;
+        }
+      }
+      if (!pid) continue;
       // Produto já coberto pelo item-padrão do solado → dedup (F2-01, espelha
       // o v_covered_product_ids do SQL — o item-padrão é a fonte).
       if (stdCoveredProductIds.has(pid)) continue;
