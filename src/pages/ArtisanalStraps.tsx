@@ -40,11 +40,17 @@ import {
   StrapSuspendDialog,
 } from '@/components/artisanal-straps/ArtisanalStrapExternalOperations';
 import { MeasureLaborCostControl } from '@/components/artisanal-straps/MeasureLaborCostControl';
-import {
-  MeasureYieldControl,
-  type MeasureYieldRecipeRow,
-} from '@/components/artisanal-straps/MeasureYieldControl';
+import { MeasureGeometryYieldPanel } from '@/components/artisanal-straps/MeasureGeometryYieldPanel';
 import { StrapIdentityTrail } from '@/components/artisanal-straps/StrapIdentityTrail';
+import {
+  useSetStrapMeasureGeometryYield,
+  useStrapMeasureYieldBoard,
+  type StrapMeasureYieldBoardRow,
+} from '@/hooks/useStrapMeasureYieldBoard';
+import {
+  formatStrapNapaGeometryLabel,
+  type StrapNapaGeometryKey,
+} from '@/lib/strapNapaGeometry';
 import { StrapStatusBadge } from '@/components/artisanal-straps/StrapStatusBadge';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { HubTabsList } from '@/components/layout/HubTabs';
@@ -1163,185 +1169,265 @@ function CatalogTab({
   openEditor: (args?: OpenEditorArgs) => void;
 }) {
   const [search, setSearch] = useState('');
+  const [onlyMissing, setOnlyMissing] = useState(false);
+  const [openMissingIds, setOpenMissingIds] = useState<Set<string>>(new Set());
+  const boardQuery = useStrapMeasureYieldBoard(true);
+  const fillMissing = useSetStrapMeasureGeometryYield();
   const maps = useMemo(() => mapsFor(catalog), [catalog]);
-  const currentRecipes = catalog.recipes.filter((recipe) => (
-    recipe.status === 'approved' && !recipe.valid_to
-  ));
-  const visibleMeasures = catalog.measures
-    .filter((measure) => {
-      const type = maps.types.get(measure.strap_type_id);
-      const materials = currentRecipes
-        .filter((recipe) => recipe.measure_id === measure.id)
-        .map((recipe) => maps.groups.get(recipe.base_group_id)?.name);
-      return includesSearch(search, type?.name, measure.display_name, ...materials);
+
+  const boardRows = boardQuery.data || [];
+  const missingCount = boardRows.filter((row) => row.missing_yield).length;
+
+  const visibleRows = boardRows
+    .filter((row) => {
+      if (onlyMissing && !row.missing_yield) return false;
+      const familyNames = row.families.map((f) => f.napa_group_name);
+      return includesSearch(
+        search,
+        row.type_name,
+        row.display_name,
+        row.strap_group_name,
+        ...familyNames,
+      );
     })
-    .sort((left, right) => {
-      const leftType = maps.types.get(left.strap_type_id)?.name || '';
-      const rightType = maps.types.get(right.strap_type_id)?.name || '';
-      return `${leftType} ${left.display_name}`.localeCompare(`${rightType} ${right.display_name}`, 'pt-BR');
-    });
+    .sort((left, right) => (
+      `${left.type_name} ${left.display_name}`.localeCompare(
+        `${right.type_name} ${right.display_name}`,
+        'pt-BR',
+      )
+    ));
+
+  const canEditYield = catalog.capabilities.manage_strap_catalog === true;
+
+  const handleFillMissing = async () => {
+    const targets = boardRows.filter((row) => row.missing_yield && row.uses_napa && row.strap_group_id);
+    for (const row of targets) {
+      const primary = [...row.geometries].sort((a, b) => b.family_count - a.family_count)[0];
+      if (!primary) continue;
+      const band = Number(row.cut_band_width_mm) || 0;
+      const geom: StrapNapaGeometryKey = {
+        minMm: Number(primary.geom_min_mm) || 0,
+        maxMm: Number(primary.geom_max_mm) || 0,
+      };
+      const theoretical = geom.maxMm > 0 && band > 0
+        ? Math.floor(geom.maxMm / band)
+        : 0;
+      if (!(theoretical > 0)) {
+        setOpenMissingIds((prev) => new Set(prev).add(row.measure_id));
+        continue;
+      }
+      try {
+        await fillMissing.mutateAsync({
+          measureId: row.measure_id,
+          yieldMPerM: theoretical,
+          cutBandWidthMm: band > 0 ? band : null,
+          geometryWidthMm: geom.maxMm,
+          geometryLengthMm: geom.minMm,
+        });
+      } catch {
+        setOpenMissingIds((prev) => new Set(prev).add(row.measure_id));
+      }
+    }
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <SearchInput
           className="w-full sm:max-w-sm"
           value={search}
           onChange={setSearch}
-          placeholder="Buscar tipo ou material…"
-          resultCount={visibleMeasures.length}
-          totalCount={catalog.measures.length}
+          placeholder="Buscar tipo, medida ou napa…"
+          resultCount={visibleRows.length}
+          totalCount={boardRows.length}
         />
-        {catalog.capabilities.manage_strap_catalog && (
+        <div className="flex flex-wrap gap-2">
           <Button
+            type="button"
             size="sm"
-            onClick={() => openEditor({ purpose: 'conversion', mode: 'create' })}
-            className="gap-2"
+            variant={onlyMissing ? 'default' : 'outline'}
+            className="h-9"
+            onClick={() => setOnlyMissing((v) => !v)}
           >
-            <Plus className="h-4 w-4" /> Cadastrar tipo e material
+            {onlyMissing ? 'Mostrando faltantes' : `Faltantes${missingCount ? ` (${missingCount})` : ''}`}
           </Button>
-        )}
+          {canEditYield && missingCount > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-9 gap-2"
+              disabled={fillMissing.isPending || boardQuery.isLoading}
+              onClick={() => void handleFillMissing()}
+            >
+              <RefreshCw className={cn('h-4 w-4', fillMissing.isPending && 'animate-spin')} />
+              Preencher faltantes (teórico)
+            </Button>
+          )}
+          {catalog.capabilities.manage_strap_catalog && (
+            <Button
+              size="sm"
+              onClick={() => openEditor({ purpose: 'conversion', mode: 'create' })}
+              className="h-9 gap-2"
+            >
+              <Plus className="h-4 w-4" /> Nova medida
+            </Button>
+          )}
+        </div>
       </div>
 
       <Panel
-        eyebrow="CADASTRO"
-        title="Tipos de tira e materiais possíveis"
-        subtitle="Escolha o tipo, vincule os materiais que podem originá-lo e confirme o rendimento. Cor e estoque de tira pronta ficam fora deste cadastro."
+        eyebrow="RENDIMENTO"
+        title="Tipos de tira × geometria da bobina"
+        subtitle="Um rendimento por medida e bobina (ex.: 1370×1000 mm) cobre Soft, Glow, Sudani… — 1000×1370 conta igual. Cores vêm do cadastro de cada napa no PV."
       >
-        {visibleMeasures.length === 0 ? (
+        {boardQuery.isLoading ? (
+          <TableSkeleton rows={5} />
+        ) : boardQuery.isError ? (
+          <Alert variant="destructive">
+            <Warning className="h-4 w-4" />
+            <AlertTitle>Board de rendimento indisponível</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>Não foi possível carregar as medidas e geometrias.</p>
+              <Button size="sm" variant="outline" onClick={() => boardQuery.refetch()} className="gap-2">
+                <RefreshCw className="h-4 w-4" /> Tentar novamente
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : visibleRows.length === 0 ? (
           <EmptyState
             icon={TreeStructure}
-            title={search ? 'Nenhum tipo ou material encontrado' : 'Nenhum tipo de tira cadastrado'}
-            description={search
-              ? 'Ajuste os termos da busca.'
-              : 'Cadastre o tipo, escolha um material do estoque e confirme o primeiro rendimento.'}
-            action={search
-              ? <Button variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
+            title={search || onlyMissing ? 'Nenhuma medida neste filtro' : 'Nenhuma medida cadastrada'}
+            description={search || onlyMissing
+              ? 'Ajuste a busca ou o filtro de faltantes.'
+              : 'Cadastre o tipo/medida para informar o rendimento da bobina.'}
+            action={(search || onlyMissing)
+              ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setSearch(''); setOnlyMissing(false); }}
+                >
+                  Limpar filtros
+                </Button>
+              )
               : catalog.capabilities.manage_strap_catalog
-                ? <Button size="sm" onClick={() => openEditor({ purpose: 'conversion' })}>Cadastrar primeiro tipo</Button>
+                ? <Button size="sm" onClick={() => openEditor({ purpose: 'conversion' })}>Cadastrar medida</Button>
                 : undefined}
             size="sm"
           />
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
-            {visibleMeasures.map((measure) => {
-              const type = maps.types.get(measure.strap_type_id);
-              const materialRecipes = currentRecipes
-                .filter((recipe) => recipe.measure_id === measure.id)
-                .sort((left, right) => (
-                  (maps.groups.get(left.base_group_id)?.name || '').localeCompare(
-                    maps.groups.get(right.base_group_id)?.name || '',
-                    'pt-BR',
-                  )
-                ));
-              // Achata o que o controle de lote precisa. A largura vem do
-              // SNAPSHOT da receita vigente — a mesma que a linha acima mostra.
-              // O servidor reconfere contra a Ficha de Componente na hora de
-              // gravar e recusa o lote inteiro se ela tiver mudado.
-              const yieldRows: MeasureYieldRecipeRow[] = materialRecipes.map((recipe) => ({
-                recipeId: recipe.id,
-                baseGroupId: recipe.base_group_id,
-                baseGroupName: maps.groups.get(recipe.base_group_id)?.name || 'Material-base',
-                usableWidthMm: Number(recipe.usable_base_width_mm_snapshot) || 0,
-                cutBandWidthMm: Number(recipe.cut_band_width_mm) || 0,
-                confirmedYieldMPerM: Number(recipe.confirmed_yield_m_per_m) || 0,
-              }));
-              return (
-                <article key={measure.id} className="rounded-lg border border-border bg-card p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Tipo de tira</p>
-                      <h3 className="text-base font-bold text-foreground">
-                        {type?.name || 'Tipo'} · {measure.display_name}
-                      </h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Largura final {Number(measure.finished_width_mm).toLocaleString('pt-BR')} mm
-                        {catalog.capabilities.can_see_financial_values
-                          && Number(measure.preco_artesanal_per_m) > 0
-                          ? ` · MO ${formatCurrencyValue(measure.preco_artesanal_per_m)}/m (todas as Napas)`
-                          : ''}
-                      </p>
-                    </div>
-                    <Badge variant={type?.active && measure.active ? 'default' : 'secondary'}>
-                      {type?.active && measure.active ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                  </div>
-                  <div className="mt-4 space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                      Materiais possíveis
-                    </p>
-                    {materialRecipes.length === 0 ? (
-                      <p className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
-                        Nenhum material confirmado.
-                      </p>
-                    ) : materialRecipes.map((recipe) => (
-                      <button
-                        key={recipe.id}
-                        type="button"
-                        onClick={() => openEditor({
-                          purpose: 'conversion',
-                          mode: 'edit',
-                          recipeId: recipe.id,
-                        })}
-                        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold">
-                            {maps.groups.get(recipe.base_group_id)?.name || 'Material-base'}
-                          </span>
-                          <span className="block text-[10px] text-muted-foreground">
-                            Ficha física {Number(recipe.usable_base_width_mm_snapshot).toLocaleString('pt-BR')} mm
-                            {' · '}banda {Number(recipe.cut_band_width_mm).toLocaleString('pt-BR')} mm
-                          </span>
-                        </span>
-                        <span className="text-right">
-                          <span className="block font-mono text-sm font-bold text-primary">
-                            {Number(recipe.confirmed_yield_m_per_m).toLocaleString('pt-BR')} m/m
-                          </span>
-                          <span className="block text-[10px] text-muted-foreground">
-                            {recipe.status === 'approved' ? 'Confirmado' : 'Em revisão'}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  <MeasureYieldControl
-                    measureId={measure.id}
-                    measureLabel={`${type?.name || 'Tipo'} · ${measure.display_name}`}
-                    recipes={yieldRows}
-                    canEdit={catalog.capabilities.manage_strap_catalog === true
-                      && catalog.capabilities.approve_strap_recipe === true}
-                  />
-                  {catalog.capabilities.can_see_financial_values && (
-                    <MeasureLaborCostControl
-                      measureId={measure.id}
-                      measureLabel={`${type?.name || 'Tipo'} · ${measure.display_name}`}
-                      currentLaborCostPerM={Number(measure.preco_artesanal_per_m) || 0}
-                      canEdit={catalog.capabilities.manage_strap_catalog === true}
-                    />
-                  )}
-                  {catalog.capabilities.manage_strap_catalog && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-3 w-full gap-2"
-                      onClick={() => openEditor({
-                        purpose: 'conversion',
-                        mode: 'create',
-                        measureId: measure.id,
-                      })}
-                    >
-                      <Plus className="h-4 w-4" /> Adicionar material possível
-                    </Button>
-                  )}
-                </article>
-              );
-            })}
+            {visibleRows.map((row) => (
+              <CatalogMeasureCard
+                key={row.measure_id}
+                row={row}
+                catalog={catalog}
+                canEditYield={canEditYield}
+                forceOpen={openMissingIds.has(row.measure_id)}
+                laborCostPerM={Number(
+                  maps.measures.get(row.measure_id)?.preco_artesanal_per_m,
+                ) || Number(row.strap_labor_cost_per_m) || 0}
+              />
+            ))}
           </div>
         )}
       </Panel>
     </div>
+  );
+}
+
+function CatalogMeasureCard({
+  row,
+  catalog,
+  canEditYield,
+  forceOpen,
+  laborCostPerM,
+}: {
+  row: StrapMeasureYieldBoardRow;
+  catalog: ArtisanalStrapCatalog;
+  canEditYield: boolean;
+  forceOpen?: boolean;
+  laborCostPerM: number;
+}) {
+  const primary = useMemo(() => {
+    if (!row.geometries.length) return null;
+    return [...row.geometries].sort((a, b) => b.family_count - a.family_count)[0];
+  }, [row.geometries]);
+  const geomLabel = primary
+    ? formatStrapNapaGeometryLabel({
+      minMm: Number(primary.geom_min_mm) || 0,
+      maxMm: Number(primary.geom_max_mm) || 0,
+    })
+    : null;
+  const families = primary?.family_names
+    ?? row.families.map((f) => f.napa_group_name);
+
+  return (
+    <article className="rounded-lg border border-border bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Tipo de tira</p>
+          <h3 className="text-base font-bold text-foreground">
+            {row.type_name} · {row.display_name}
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Largura final {Number(row.finished_width_mm).toLocaleString('pt-BR')} mm
+            {geomLabel ? ` · bobina ${geomLabel}` : ''}
+            {catalog.capabilities.can_see_financial_values && laborCostPerM > 0
+              ? ` · MO ${formatCurrencyValue(laborCostPerM)}/m`
+              : ''}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Badge variant={row.measure_active ? 'default' : 'secondary'}>
+            {row.measure_active ? 'Ativo' : 'Inativo'}
+          </Badge>
+          {row.missing_yield && row.uses_napa && (
+            <Badge variant="outline" className="border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200">
+              Falta rendimento
+            </Badge>
+          )}
+          {row.has_yield && (
+            <span className="font-mono text-sm font-bold text-primary">
+              {Number(row.sample_yield_m_per_m || 0).toLocaleString('pt-BR')} m/m
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+          Famílias de napa ({families.length})
+        </p>
+        {families.length === 0 ? (
+          <p className="mt-1 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+            {row.uses_napa
+              ? 'Nenhuma napa elegível com ficha de componente nesta geometria.'
+              : 'Tira sem napa (ex.: strass).'}
+          </p>
+        ) : (
+          <p className="mt-1 text-sm text-foreground">
+            {families.join(' · ')}
+          </p>
+        )}
+      </div>
+
+      <MeasureGeometryYieldPanel
+        row={row}
+        canEdit={canEditYield}
+        defaultOpen={forceOpen || row.missing_yield}
+      />
+
+      {catalog.capabilities.can_see_financial_values && (
+        <MeasureLaborCostControl
+          measureId={row.measure_id}
+          measureLabel={`${row.type_name} · ${row.display_name}`}
+          currentLaborCostPerM={laborCostPerM}
+          canEdit={catalog.capabilities.manage_strap_catalog === true}
+        />
+      )}
+    </article>
   );
 }
 
@@ -1764,8 +1850,24 @@ function DemandsTab({
 }) {
   const [search, setSearch] = useState('');
   const [source, setSource] = useState<'all' | 'internal' | 'buy_ready'>('all');
+  const [viewMode, setViewMode] = useState<'resumo' | 'detalhe'>('resumo');
   const maps = useMemo(() => mapsFor(catalog), [catalog]);
-  const demands = (query.data?.demands || []).filter((demand) => {
+  const boardQuery = useStrapMeasureYieldBoard(true);
+  const yieldByMeasure = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of boardQuery.data || []) {
+      if (row.sample_yield_m_per_m && row.sample_yield_m_per_m > 0) {
+        map.set(row.measure_id, Number(row.sample_yield_m_per_m));
+      }
+    }
+    return map;
+  }, [boardQuery.data]);
+
+  const openDemands = (query.data?.demands || []).filter(
+    (demand) => !['fulfilled', 'cancelled', 'superseded'].includes(demand.status),
+  );
+
+  const demands = openDemands.filter((demand) => {
     const variant = maps.variants.get(demand.strap_variant_id);
     const identity = identityForVariant(catalog, variant);
     const sourceMatches = source === 'all' || demand.source_mode === source;
@@ -1781,6 +1883,97 @@ function DemandsTab({
       demand.status,
     );
   });
+
+  type StrapAgg = {
+    key: string;
+    typeName: string;
+    measureName: string;
+    measureId: string | undefined;
+    colorName: string;
+    baseName: string;
+    sourceMode: string;
+    strapM: number;
+    shortageM: number;
+    yieldMPerM: number | null;
+    napaM: number | null;
+    count: number;
+  };
+
+  type NapaAgg = {
+    key: string;
+    baseName: string;
+    napaM: number;
+    strapM: number;
+    missingYield: boolean;
+  };
+
+  const strapSummary = useMemo(() => {
+    const byKey = new Map<string, StrapAgg>();
+    for (const demand of demands) {
+      const variant = maps.variants.get(demand.strap_variant_id);
+      const identity = identityForVariant(catalog, variant);
+      const measureId = variant?.measure_id;
+      const yieldM = measureId ? (yieldByMeasure.get(measureId) ?? null) : null;
+      const shortage = Number(demand.replenishment_required_m) || 0;
+      const strapM = shortage > 0 ? shortage : (Number(demand.required_m) || 0);
+      const key = [
+        identity.typeName,
+        identity.measureName,
+        identity.colorName,
+        identity.baseName,
+        demand.source_mode,
+      ].join('|');
+      const prev = byKey.get(key);
+      if (prev) {
+        prev.strapM += strapM;
+        prev.shortageM += shortage;
+        prev.count += 1;
+        if (prev.yieldMPerM && prev.yieldMPerM > 0) {
+          prev.napaM = prev.strapM / prev.yieldMPerM;
+        }
+      } else {
+        byKey.set(key, {
+          key,
+          typeName: identity.typeName || 'Tipo',
+          measureName: identity.measureName || 'Medida',
+          measureId,
+          colorName: identity.colorName || '—',
+          baseName: identity.baseName || '—',
+          sourceMode: demand.source_mode,
+          strapM,
+          shortageM: shortage,
+          yieldMPerM: yieldM,
+          napaM: yieldM && yieldM > 0 ? strapM / yieldM : null,
+          count: 1,
+        });
+      }
+    }
+    return [...byKey.values()].sort((a, b) => b.strapM - a.strapM);
+  }, [demands, maps.variants, catalog, yieldByMeasure]);
+
+  const napaSummary = useMemo(() => {
+    const byBase = new Map<string, NapaAgg>();
+    for (const row of strapSummary) {
+      if (row.sourceMode === 'buy_ready') continue;
+      const key = row.baseName || 'Napa';
+      const prev = byBase.get(key);
+      const napaAdd = row.napaM;
+      if (prev) {
+        prev.strapM += row.strapM;
+        if (napaAdd != null) prev.napaM += napaAdd;
+        else prev.missingYield = true;
+      } else {
+        byBase.set(key, {
+          key,
+          baseName: key,
+          napaM: napaAdd ?? 0,
+          strapM: row.strapM,
+          missingYield: napaAdd == null,
+        });
+      }
+    }
+    return [...byBase.values()].sort((a, b) => b.napaM - a.napaM);
+  }, [strapSummary]);
 
   if (query.isLoading) return <TableSkeleton rows={7} />;
   if (query.isError) {
@@ -1800,45 +1993,171 @@ function DemandsTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <SearchInput
           className="w-full sm:max-w-sm"
           value={search}
           onChange={setSearch}
           placeholder="Buscar PV, variante ou status…"
-          resultCount={demands.length}
+          resultCount={viewMode === 'detalhe' ? demands.length : strapSummary.length}
           totalCount={query.data?.demands.length || 0}
         />
         <Select value={source} onValueChange={(value) => setSource(value as typeof source)}>
           <SelectTrigger className="w-full sm:w-52"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as origens</SelectItem>
-            <SelectItem value="internal">Prestador</SelectItem>
+            <SelectItem value="internal">Prestador / fábrica</SelectItem>
             <SelectItem value="buy_ready">Comprar pronto</SelectItem>
           </SelectContent>
         </Select>
+        <div className="flex gap-1 rounded-md border border-border p-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={viewMode === 'resumo' ? 'default' : 'ghost'}
+            className="h-8"
+            onClick={() => setViewMode('resumo')}
+          >
+            Resumo
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={viewMode === 'detalhe' ? 'default' : 'ghost'}
+            className="h-8"
+            onClick={() => setViewMode('detalhe')}
+          >
+            Detalhe ({demands.length})
+          </Button>
+        </div>
       </div>
 
-      <Panel
-        eyebrow="NECESSIDADE E COBERTURA"
-        title="Demandas abertas"
-        subtitle="Pedidos de venda e reposição do estoque mínimo continuam separados, mesmo quando compartilham lote ou ordem de compra."
-      >
-        {demands.length === 0 ? (
-          <EmptyState icon={ListChecks} title="Nenhuma demanda encontrada" description="Ajuste os filtros ou aguarde o processamento dos novos pedidos." size="sm" />
-        ) : (
-          <div className="space-y-3">
-            {demands.map((demand) => (
-              <DemandCard key={`${demand.origin_type}-${demand.id}`} demand={demand} catalog={catalog} />
-            ))}
-          </div>
-        )}
-      </Panel>
+      {viewMode === 'resumo' ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <Panel
+            eyebrow="TIRAS A FAZER"
+            title="Medida × cor"
+            subtitle="Agregado das demandas abertas. Expanda o Detalhe para ver cada PV."
+          >
+            {strapSummary.length === 0 ? (
+              <EmptyState icon={ListChecks} title="Nada a produzir" description="Não há demanda aberta neste filtro." size="sm" />
+            ) : (
+              <div className="space-y-2">
+                {strapSummary.map((row) => (
+                  <div
+                    key={row.key}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md border border-border bg-muted/20 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {row.typeName} · {row.measureName}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {row.colorName}
+                        {row.baseName !== '—' ? ` · base ${row.baseName}` : ''}
+                        {' · '}
+                        {row.sourceMode === 'buy_ready' ? 'Comprar pronto' : 'Produzir'}
+                        {' · '}{row.count} demanda{row.count === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-sm font-bold">{formatMeters(row.strapM)}</p>
+                      {row.sourceMode !== 'buy_ready' && (
+                        <p className={cn(
+                          'text-[11px]',
+                          row.napaM == null ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground',
+                        )}>
+                          {row.napaM == null
+                            ? 'Napa: rendimento pendente'
+                            : `Napa ${formatMeters(row.napaM)}`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            eyebrow="NAPA A PEDIR"
+            title="Metros por família"
+            subtitle="tira ÷ rendimento do grupo. Sem rendimento fica âmbar — cadastre em Configuração."
+          >
+            {napaSummary.length === 0 ? (
+              <EmptyState
+                icon={Package}
+                title="Sem napa a comprar"
+                description="Só entram demandas de prestador/fábrica com base de napa."
+                size="sm"
+              />
+            ) : (
+              <div className="space-y-2">
+                {napaSummary.map((row) => (
+                  <div
+                    key={row.key}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">{row.baseName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Cobre {formatMeters(row.strapM)} de tira
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      {row.missingYield ? (
+                        <Badge variant="outline" className="border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200">
+                          Rendimento pendente
+                        </Badge>
+                      ) : (
+                        <p className="font-mono text-sm font-bold">{formatMeters(row.napaM)}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </div>
+      ) : (
+        <Panel
+          eyebrow="NECESSIDADE E COBERTURA"
+          title="Demandas abertas"
+          subtitle="Linha a linha por PV e reposição. Use Resumo para enxergar o lote."
+        >
+          {demands.length === 0 ? (
+            <EmptyState icon={ListChecks} title="Nenhuma demanda encontrada" description="Ajuste os filtros ou aguarde o processamento dos novos pedidos." size="sm" />
+          ) : (
+            <div className="space-y-3">
+              {demands.map((demand) => (
+                <DemandCard
+                  key={`${demand.origin_type}-${demand.id}`}
+                  demand={demand}
+                  catalog={catalog}
+                  yieldMPerM={(() => {
+                    const variant = maps.variants.get(demand.strap_variant_id);
+                    const measureId = variant?.measure_id;
+                    return measureId ? (yieldByMeasure.get(measureId) ?? null) : null;
+                  })()}
+                />
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
     </div>
   );
 }
 
-function DemandCard({ demand, catalog }: { demand: OperationalStrapDemand; catalog: ArtisanalStrapCatalog }) {
+function DemandCard({
+  demand,
+  catalog,
+  yieldMPerM,
+}: {
+  demand: OperationalStrapDemand;
+  catalog: ArtisanalStrapCatalog;
+  yieldMPerM?: number | null;
+}) {
   const variant = catalog.variants.find((item) => item.id === demand.strap_variant_id);
   const identity = identityForVariant(catalog, variant);
   const required = Number(demand.required_m) || 0;
@@ -1847,6 +2166,10 @@ function DemandCard({ demand, catalog }: { demand: OperationalStrapDemand; catal
     + (Number(demand.committed_finished_inbound_m) || 0);
   const shortage = Number(demand.replenishment_required_m) || 0;
   const criticality = demand.criticality || 'Normal';
+  const strapForNapa = shortage > 0 ? shortage : required;
+  const napaM = yieldMPerM && yieldMPerM > 0 && demand.source_mode !== 'buy_ready'
+    ? strapForNapa / yieldMPerM
+    : null;
 
   return (
     <article className="rounded-lg border border-border bg-card p-3 sm:p-4">
@@ -1868,7 +2191,7 @@ function DemandCard({ demand, catalog }: { demand: OperationalStrapDemand; catal
           </div>
           <StrapIdentityTrail {...identity} compact className="mt-3" />
         </div>
-        <div className="grid grid-cols-3 gap-1 rounded-md border border-border bg-muted/20 p-1 lg:min-w-[300px]">
+        <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-muted/20 p-1 sm:grid-cols-4 lg:min-w-[360px]">
           <div className="rounded bg-card px-2 py-2 text-center">
             <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Necessário</p>
             <p className="font-mono text-sm font-bold">{formatMeters(required)}</p>
@@ -1881,12 +2204,28 @@ function DemandCard({ demand, catalog }: { demand: OperationalStrapDemand; catal
             <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Falta</p>
             <p className="font-mono text-sm font-bold">{formatMeters(shortage)}</p>
           </div>
+          <div className="rounded bg-card px-2 py-2 text-center">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Napa</p>
+            <p className={cn(
+              'font-mono text-sm font-bold',
+              demand.source_mode !== 'buy_ready' && napaM == null && 'text-amber-700 dark:text-amber-300',
+            )}>
+              {demand.source_mode === 'buy_ready'
+                ? '—'
+                : napaM == null
+                  ? '?'
+                  : formatMeters(napaM)}
+            </p>
+          </div>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
         <span>Início principal: <strong className="text-foreground">{formatDate(demand.main_production_start)}</strong></span>
         <span>Necessidade: <strong className="text-foreground">{formatDate(demand.needed_at)}</strong></span>
         <span>Revisão: <strong className="text-foreground">{demand.schedule_revision}</strong></span>
+        {yieldMPerM != null && yieldMPerM > 0 && demand.source_mode !== 'buy_ready' && (
+          <span>Rendimento: <strong className="text-foreground">{yieldMPerM.toLocaleString('pt-BR')} m/m</strong></span>
+        )}
       </div>
     </article>
   );
