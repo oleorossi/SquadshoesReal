@@ -38,12 +38,25 @@ describe('strap measure geometry yield (Hub Configuração)', () => {
     expect(hook).toContain("rpc('list_strap_measure_yield_board'");
   });
 
-  it('janela de preenchimento grava por geometria e lista as napas cobertas', () => {
+  it('janela de preenchimento é wizard 2 passos: rendimento + cores (= variante Hub)', () => {
     const fill = read('src/components/artisanal-straps/MeasureGeometryFillSheet.tsx');
-    expect(fill).toContain('Salvar e espalhar');
+    const ensure = read('src/lib/ensureStrapMeasureStockGroup.ts');
+    const bindMig = read('supabase/migrations/20270101044200_bind-strap-finished-product-group.sql');
+
+    expect(fill).toContain('Salvar rendimento');
+    expect(fill).toContain('Concluir cores');
     expect(fill).toContain('Napas que recebem este rendimento');
     expect(fill).toContain('useSetStrapMeasureGeometryYield');
     expect(fill).toContain('Sugestão teórica');
+    expect(fill).toContain('DEFAULT_STRAP_NAPA_GEOMETRY');
+    expect(fill).toContain('ensureStrapMeasureStockGroup');
+    expect(fill).toContain('save_artisanal_strap_catalog_bundle');
+    expect(fill).toContain('bind_strap_finished_product_group');
+    expect(fill).toContain("identity_basis: 'reference_base'");
+    expect(ensure).toContain('strapStockGroupName');
+    expect(ensure).toContain('strap_hub_measure_group_map');
+    expect(bindMig).toContain('bind_strap_finished_product_group');
+
     // Conversão por napa fica só no caminho legado (legacyRecipeId).
     expect(hub).toContain("searchParams.get('legacyRecipeId')");
     const conversionOpen = hub.indexOf('editorPurpose === \'conversion\' && searchParams.get(\'legacyRecipeId\')');
