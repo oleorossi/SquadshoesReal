@@ -588,6 +588,19 @@ export function useReleaseCorteLookahead() {
       );
       if (error) throw error;
       const raw = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+      // Soft só de materiais de corte (spec unificada): trim pós-promote.
+      const orderPayloads = Array.isArray(raw.orders) ? raw.orders : [];
+      for (const entry of orderPayloads) {
+        const orderId =
+          entry && typeof entry === 'object'
+            ? String((entry as { order_id?: string }).order_id || '')
+            : '';
+        if (!orderId) continue;
+        await supabase.rpc(
+          'trim_corte_ahead_soft_reservations' as never,
+          { p_order_id: orderId } as never,
+        );
+      }
       return {
         created: Number(raw.created) || 0,
         skipped: raw.skipped,
@@ -596,6 +609,7 @@ export function useReleaseCorteLookahead() {
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: ['production_queue_detail'] });
       void qc.invalidateQueries({ queryKey: corteLookaheadKeys.all });
+      void qc.invalidateQueries({ queryKey: ['corte-fila-wip'] });
       const n = Number(data?.created) || 0;
       toast.success(
         n === 1
