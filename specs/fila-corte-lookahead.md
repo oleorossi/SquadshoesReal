@@ -4,6 +4,11 @@
 > Corte: puxar demanda futura de PV aprovado, priorizar o que fecha pedido para
 > faturar, só com material livre, e liberar OP marcada como adiantada.
 >
+> **⚠ Superseded em parte (21/10/2026)** por
+> [`fila-corte-unificada.md`](fila-corte-unificada.md): 3 bancadas (Cabedal /
+> Fibra / Forração), bloco WIP + adiantamento, trava pós-corte, hard+ledger,
+> reuso de peça cortada. O que não contradisser a unificada permanece válido.
+>
 > **Status implementação (29/09/2026):** v1 entregue —
 > rota `/producao/corte-lookahead`, hook `useCorteLookahead`, RPC
 > `release_corte_lookahead_items` (flag `orders.is_ahead_of_schedule`), badge/filtro

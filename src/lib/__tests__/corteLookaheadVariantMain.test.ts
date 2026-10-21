@@ -124,7 +124,7 @@ describe('resolveCorteMaterialPins — espelho dos resolvedores do motor', () =>
     // mig 20261027120800_drop-variant-drives-insole. Dar ramo `main` à palmilha
     // "por simetria" poria a tela à frente de resolve_insole_material_for_variant.
     const pins = resolveCorteMaterialPins({
-      sector: 'Corte Palmilha',
+      sector: 'Corte Fibra',
       sheet: SHEET_S300,
       variant: VARIANTE_GLOW,
     });

@@ -13,16 +13,18 @@ import {
 } from '@/lib/materialConsumption';
 import { compareProductionSequence } from '@/lib/production/productionSequence';
 
+/** Bancadas internas da Fila unificada (specs/fila-corte-unificada.md). */
 export const CORTE_LOOKAHEAD_SECTORS = [
   'Corte Cabedal',
-  'Corte Forração',
-  'Corte Palmilha',
   'Corte Fibra',
+  'Corte Forração',
 ] as const;
 
 export type CorteLookaheadSector = (typeof CORTE_LOOKAHEAD_SECTORS)[number];
 
-export type CorteMaterialKind = 'upper' | 'lining' | 'insole' | 'fiber';
+export type CorteMaterialKind = 'upper' | 'lining' | 'fiber';
+
+export type CorteCutKind = 'cabedal' | 'fibra' | 'forracao';
 
 export function corteMaterialKind(sector: CorteLookaheadSector): CorteMaterialKind {
   switch (sector) {
@@ -30,10 +32,19 @@ export function corteMaterialKind(sector: CorteLookaheadSector): CorteMaterialKi
       return 'upper';
     case 'Corte Forração':
       return 'lining';
-    case 'Corte Palmilha':
-      return 'insole';
     case 'Corte Fibra':
       return 'fiber';
+  }
+}
+
+export function corteCutKindFromSector(sector: CorteLookaheadSector): CorteCutKind {
+  switch (sector) {
+    case 'Corte Cabedal':
+      return 'cabedal';
+    case 'Corte Fibra':
+      return 'fibra';
+    case 'Corte Forração':
+      return 'forracao';
   }
 }
 
@@ -41,8 +52,7 @@ export function corteMaterialKind(sector: CorteLookaheadSector): CorteMaterialKi
 const SECTOR_ALIASES: Record<string, string[]> = {
   'Corte Cabedal': ['Corte Cabedal'],
   'Corte Forração': ['Corte Forração', 'Palmilha · Forração'],
-  'Corte Palmilha': ['Corte Palmilha'],
-  'Corte Fibra': ['Corte Fibra', 'Palmilha · Fibra'],
+  'Corte Fibra': ['Corte Fibra', 'Palmilha · Fibra', 'Corte Palmilha'],
 };
 
 export function sheetHasCorteSector(
@@ -445,9 +455,9 @@ export function resolveCorteMaterialPins(input: {
       null,
     );
   }
-  if (kind === 'insole') {
-    // Sem ramo `main`: espelha `resolve_insole_material_for_variant`, e
-    // `variant_drives_insole` não existe mais (mig 20261027120800).
+  if (kind === 'fiber') {
+    // Fibra/palmilha: sem ramo `main` — espelha `resolve_insole_material_for_variant`
+    // (`variant_drives_insole` removida na mig 20261027120800).
     return resolve(
       v?.insole_material_product_id,
       v?.insole_material_group_id,
@@ -456,7 +466,7 @@ export function resolveCorteMaterialPins(input: {
       null,
     );
   }
-  // Fibra: na v1 não há pin dedicado na ficha — o hook tenta casar produto
+  // Fallback fibra sem pin: o hook tenta casar produto
   // ativo do grupo/placa por cor; sem pin fica gap de cadastro.
   return { productId: null, groupId: null };
 }

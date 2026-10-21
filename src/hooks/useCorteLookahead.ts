@@ -166,10 +166,9 @@ function consumptionForSector(sector: CorteLookaheadSector, sheet: SheetLite): n
       return sheet.upper_consumption;
     case 'Corte Forração':
       return sheet.lining_consumption;
-    case 'Corte Palmilha':
-      return sheet.insole_consumption;
     case 'Corte Fibra':
-      return 0;
+      // Fibra usa consumo de palmilha/placa da ficha (alias Corte Palmilha).
+      return sheet.insole_consumption;
   }
 }
 
@@ -179,10 +178,8 @@ function materialNameForSector(sector: CorteLookaheadSector, sheet: SheetLite): 
       return sheet.upper_material;
     case 'Corte Forração':
       return sheet.lining_material;
-    case 'Corte Palmilha':
-      return sheet.insole_material;
     case 'Corte Fibra':
-      return null;
+      return sheet.insole_material;
   }
 }
 
