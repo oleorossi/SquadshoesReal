@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 interface Props {
   soleGroupId: string;
   /** Classificação do solado pra orientar quais materiais sugerir (não bloqueia) */
-  soleClassification?: 'tradicional' | 'palmilha_pronta' | 'conjugado';
+  soleClassification?: 'tradicional' | 'palmilha_pronta' | 'palmilha_pronta_unicolor_padronizado' | 'conjugado';
 }
 
 type AppliesTo = 'any' | 'palmilha_cortada' | 'palmilha_pronta';
@@ -475,7 +475,10 @@ export function SoleStandardMaterialsEditor({ soleGroupId, soleClassification }:
         const isHighlighted = soleClassification && (
           (group === 'any') ||
           (group === 'palmilha_cortada' && (soleClassification === 'tradicional' || soleClassification === 'conjugado')) ||
-          (group === 'palmilha_pronta' && soleClassification === 'palmilha_pronta')
+          (group === 'palmilha_pronta' && (
+            soleClassification === 'palmilha_pronta'
+            || soleClassification === 'palmilha_pronta_unicolor_padronizado'
+          ))
         );
         return (
           <div key={group} className={cn(

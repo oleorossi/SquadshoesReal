@@ -70,7 +70,7 @@ export function rolesForSole(
   isFachetado?: boolean | null,
 ): SoleRole[] {
   const roles: SoleRole[] = ['forro_cabedal'];
-  if (classification !== 'palmilha_pronta') {
+  if (classification !== 'palmilha_pronta' && classification !== 'palmilha_pronta_unicolor_padronizado') {
     roles.push('placa_palmilha', 'forracao_palmilha');
   }
   if (isFachetado) roles.push('fachete');

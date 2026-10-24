@@ -152,6 +152,13 @@ import { Link as Link2, Info } from '@phosphor-icons/react';
 import { SoleSizeConjugationsEditor } from '@/components/inventory/SoleSizeConjugationsEditor';
 import { ComponentGroupSelect, GroupMaterialSelect, SoleClassificationBadge, SoleProductSelect, DirectComponentSelect, NcmInlineEditor } from '@/components/technical-sheets/sheetSelectors';
 import { emptyDirectComponentLine, validateDirectComponentsForSave } from '@/lib/directComponentGroup';
+import {
+  UNICOLOR_SOLE_CLASSIFICATION,
+  UNICOLOR_SOLE_COLOR,
+  UNICOLOR_SOLE_LABEL,
+  isUnicolorPadronizadoClassification,
+} from '@/lib/soleClassification';
+import { updateSoleProfile } from '@/services/soleProfileService';
 import DublagemGlueSelect from '@/components/technical-sheets/DublagemGlueSelect';
 const STATUSES = ['Ativo', 'Em desenvolvimento', 'Descontinuado'] as const;
 const STATUS_FICHA = ['rascunho', 'em_revisao', 'validada', 'publicada'] as const;
@@ -2777,6 +2784,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                      const soleProd = products.find(p => p.id === productId);
                      setIsSoleFachetado(!!soleProd?.is_fachetado);
 
+                     if (isUnicolorPadronizadoClassification((soleProd as any)?.sole_classification)) {
+                       updateField('insole_ready_made', true);
+                       updateField('sole_consumption', 1);
+                     }
+
                      // Auto-fill lining/insole specs from sole technical specs
                      autoFillFromSoleSpecs(productId);
                      // Cola, linha, EVA e os demais itens padrão permanecem
@@ -2789,6 +2801,65 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                    }
                  }}
               />
+              {(() => {
+                const soleProd = form.primary_sole_id
+                  ? products.find((p) => p.id === form.primary_sole_id)
+                  : form.sole_group_id
+                    ? products.find((p) => p.group_id === form.sole_group_id && String(p.category || '').toLowerCase().includes('solado'))
+                    : null;
+                const soleClass = (soleProd as any)?.sole_classification;
+                const isUnicolor = isUnicolorPadronizadoClassification(soleClass);
+                if (!soleProd) return null;
+                if (isUnicolor) {
+                  return (
+                    <div className="sm:col-span-3 rounded-md border border-violet-500/30 bg-violet-500/5 px-3 py-2 text-xs space-y-1">
+                      <p className="font-medium text-foreground">{UNICOLOR_SOLE_LABEL}</p>
+                      <p className="text-muted-foreground">
+                        Cor do solado travada em <strong>{UNICOLOR_SOLE_COLOR}</strong>. Preencha só o cabedal
+                        (tira ou área); palmilha/fibra/forração ficam no kit do solado.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Label className="text-xs text-muted-foreground">Cor do solado</Label>
+                        <Input value={UNICOLOR_SOLE_COLOR} disabled className="h-8 w-40 text-sm font-medium" />
+                      </div>
+                    </div>
+                  );
+                }
+                // Atalho só quando ainda é tradicional (ou sem classificação).
+                if (soleClass && soleClass !== 'tradicional') return null;
+                return (
+                  <div className="sm:col-span-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs flex flex-wrap items-center gap-2">
+                    <span className="text-muted-foreground">
+                      Se este solado for kit comprado (sempre caramelo):
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={async () => {
+                        try {
+                          await updateSoleProfile(soleProd.id, {
+                            sole_classification: UNICOLOR_SOLE_CLASSIFICATION,
+                            insole_mode: 'pronta_na_cor',
+                          });
+                          updateField('insole_ready_made', true);
+                          updateField('sole_consumption', 1);
+                          toast.success(`Solado classificado como ${UNICOLOR_SOLE_LABEL}`);
+                          queryClient.invalidateQueries({ queryKey: ['products'] });
+                        } catch (err: any) {
+                          toast.error(err?.message || 'Não foi possível classificar o solado');
+                        }
+                      }}
+                    >
+                      Classificar como {UNICOLOR_SOLE_LABEL}
+                    </Button>
+                    <Link to="/solados" className="underline text-muted-foreground">
+                      Abrir Solados
+                    </Link>
+                  </div>
+                );
+              })()}
               <div>
                 <Label className="text-xs text-muted-foreground">Processo de Colagem</Label>
                 <Select value={form.sole_process || ''} onValueChange={v => updateField('sole_process', v)}>
@@ -4060,28 +4131,41 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                  <h3 className="text-sm font-semibold">Harmonização de Cores</h3>
                </div>
                <div className="grid grid-cols-1 gap-6">
-                 {/* Palmilha Mapping */}
-                  <PalmilhaColorMappingPanel
-                    sheetId={sheet.id}
-                    corPredominanteId={form.cor_predominante_id}
-                    corSoladoId={form.cor_solado_id}
-                    insoleGroupName={form.insole_material || ''}
-                    palmilhaColorMappings={palmilhaColorMappings}
-                    upsertPalmilha={upsertPalmilhaColor}
-                    products={products}
-                    groups={groups}
-                  />
- 
-                 {/* Forração Mapping */}
-                 <ForracaoColorMappingPanel
-                   sheetId={sheet.id}
-                   corPredominanteId={form.cor_predominante_id}
-                   liningGroupName={form.lining_material || ''}
-                   liningColorMappings={liningColorMappings}
-                   upsertLining={upsertLiningColor}
-                   products={products}
-                   groups={groups}
-                 />
+                 {/* Palmilha/Forração mapping — unicolor não usa coligação por cor */}
+                  {(() => {
+                    const sole = products.find((p) => p.id === form.primary_sole_id)
+                      || products.find((p) => p.group_id === form.sole_group_id);
+                    if (isUnicolorPadronizadoClassification((sole as any)?.sole_classification)) {
+                      return (
+                        <p className="text-xs text-muted-foreground">
+                          Solado {UNICOLOR_SOLE_LABEL}: sem mapeamento de cor de palmilha/forração — kit sempre {UNICOLOR_SOLE_COLOR}.
+                        </p>
+                      );
+                    }
+                    return (
+                      <>
+                        <PalmilhaColorMappingPanel
+                          sheetId={sheet.id}
+                          corPredominanteId={form.cor_predominante_id}
+                          corSoladoId={form.cor_solado_id}
+                          insoleGroupName={form.insole_material || ''}
+                          palmilhaColorMappings={palmilhaColorMappings}
+                          upsertPalmilha={upsertPalmilhaColor}
+                          products={products}
+                          groups={groups}
+                        />
+                        <ForracaoColorMappingPanel
+                          sheetId={sheet.id}
+                          corPredominanteId={form.cor_predominante_id}
+                          liningGroupName={form.lining_material || ''}
+                          liningColorMappings={liningColorMappings}
+                          upsertLining={upsertLiningColor}
+                          products={products}
+                          groups={groups}
+                        />
+                      </>
+                    );
+                  })()}
                </div>
              </div>
           </div>

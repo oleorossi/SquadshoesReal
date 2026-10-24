@@ -45999,7 +45999,7 @@ export type Database = {
         | "silk"
         | "colagem"
         | "expedicao"
-      sole_classification_enum: "tradicional" | "palmilha_pronta" | "conjugado"
+      sole_classification_enum: "tradicional" | "palmilha_pronta" | "palmilha_pronta_unicolor_padronizado" | "conjugado"
       sole_material_applies_enum: "any" | "palmilha_cortada" | "palmilha_pronta"
       stage_status_enum: "pending" | "in_progress" | "completed" | "blocked"
       tarifa_tipo: "POR_KG" | "POR_M3" | "FIXO"
@@ -46165,7 +46165,7 @@ export const Constants = {
         "colagem",
         "expedicao",
       ],
-      sole_classification_enum: ["tradicional", "palmilha_pronta", "conjugado"],
+      sole_classification_enum: ["tradicional", "palmilha_pronta", "palmilha_pronta_unicolor_padronizado", "conjugado"],
       sole_material_applies_enum: [
         "any",
         "palmilha_cortada",

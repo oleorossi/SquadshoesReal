@@ -2188,7 +2188,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const isEffectiveReadyMade = (sheetId: string | null | undefined, cabedalColor: string | null | undefined): boolean => {
     if (!sheetId) return false;
     if (readyMadeLookup.get(sheetId) === true) return true;
-    return resolveSoleForOrder(sheetId, cabedalColor)?.soleClassification === 'palmilha_pronta';
+    const cls = resolveSoleForOrder(sheetId, cabedalColor)?.soleClassification;
+    return cls === 'palmilha_pronta' || cls === 'palmilha_pronta_unicolor_padronizado';
   };
 
   // B1 — roteiro da ficha (technical_sheets.production_sectors): a OP só entra
