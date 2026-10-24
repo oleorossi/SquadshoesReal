@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { SoleClassification } from '@/lib/soleClassification';
 
 export interface SoleProfilePatch {
   name?: string;
@@ -16,7 +17,7 @@ export interface SoleProfilePatch {
   is_standard_sole_item?: boolean;
   is_fachetado?: boolean;
   insole_mode?: 'cortar' | 'pronta_na_cor';
-  sole_classification?: 'tradicional' | 'palmilha_pronta' | 'conjugado';
+  sole_classification?: SoleClassification;
   fachete_material_group_id?: string | null;
 }
 

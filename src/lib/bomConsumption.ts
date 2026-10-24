@@ -39,6 +39,7 @@ import {
   parseCanonicalStrapDemandPreview,
 } from '@/lib/canonicalStrapDemandPreview';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isPalmilhaProntaClassification } from '@/lib/soleClassification';
 
 export type ConsumptionRow = {
   componentType: string;
@@ -1217,7 +1218,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       ? (allProducts || []).find((p: any) => p.id === soleProductIdForInsole)
       : null;
     const isPalmilhaPronta = (sheet?.insole_ready_made === true)
-      || ((insoleSoleProd as any)?.sole_classification === 'palmilha_pronta');
+      || isPalmilhaProntaClassification((insoleSoleProd as any)?.sole_classification);
     if (!isPalmilhaPronta) {
       const insoleGroupName = insoleVariantGroup || sheet?.insole_material || '';
       let insoleGroup = (productGroups || []).find((g: any) => g.name === insoleGroupName);

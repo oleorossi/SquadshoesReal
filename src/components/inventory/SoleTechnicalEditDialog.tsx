@@ -16,6 +16,13 @@ import { Wrench, Truck, CurrencyDollar as DollarSign, Ruler, Gear as Settings2, 
 import { Switch } from '@/components/ui/switch';
 import { SoleStandardMaterialsEditor } from './SoleStandardMaterialsEditor';
 import { updateSoleProfile } from '@/services/soleProfileService';
+import {
+  UNICOLOR_SOLE_CLASSIFICATION,
+  UNICOLOR_SOLE_LABEL,
+  isPalmilhaProntaClassification,
+  isSoleClassification,
+  type SoleClassification,
+} from '@/lib/soleClassification';
 
 interface Props {
   open: boolean;
@@ -38,8 +45,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
    const [isStandardItem, setIsStandardItem] = useState<boolean>(false);
    const [isFachetado, setIsFachetado] = useState<boolean>(false);
   const [insoleMode, setInsoleMode] = useState<'cortar' | 'pronta_na_cor'>('cortar');
-  // Tipo do solado (Fase 1+ da reformulação): tradicional / palmilha_pronta / conjugado
-  const [soleClassification, setSoleClassification] = useState<'tradicional' | 'palmilha_pronta' | 'conjugado'>('tradicional');
+  const [soleClassification, setSoleClassification] = useState<SoleClassification>('tradicional');
 
   useEffect(() => {
     if (product && open) {
@@ -53,15 +59,16 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
        setIsStandardItem((product as any).is_standard_sole_item || false);
        setIsFachetado((product as any).is_fachetado || false);
       setInsoleMode(((product as any).insole_mode as 'cortar' | 'pronta_na_cor') || 'cortar');
-      setSoleClassification(((product as any).sole_classification as 'tradicional' | 'palmilha_pronta' | 'conjugado') || 'tradicional');
+      const rawClass = (product as any).sole_classification;
+      setSoleClassification(isSoleClassification(rawClass) ? rawClass : 'tradicional');
     }
   }, [product, open]);
 
   // Quando muda a classificação, deriva o insole_mode automaticamente:
-  // palmilha_pronta → pronta_na_cor; resto → cortar.
-  const handleClassificationChange = (value: 'tradicional' | 'palmilha_pronta' | 'conjugado') => {
+  // palmilha_pronta / unicolor → pronta_na_cor; resto → cortar.
+  const handleClassificationChange = (value: SoleClassification) => {
     setSoleClassification(value);
-    if (value === 'palmilha_pronta') {
+    if (isPalmilhaProntaClassification(value)) {
       setInsoleMode('pronta_na_cor');
     } else {
       setInsoleMode('cortar');
@@ -137,6 +144,14 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
                     <div className="text-xs text-muted-foreground">Palmilha já vem pronta (un) · coligação cor cabedal/palmilha</div>
                   </div>
                 </SelectItem>
+                <SelectItem value={UNICOLOR_SOLE_CLASSIFICATION}>
+                  <div className="py-1">
+                    <div className="font-semibold">{UNICOLOR_SOLE_LABEL}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Kit comprado (solado+palmilha+fibra) · sempre CARAMELO · sem forração
+                    </div>
+                  </div>
+                </SelectItem>
                 <SelectItem value="conjugado">
                   <div className="py-1">
                     <div className="font-semibold">Conjugado</div>
@@ -150,6 +165,12 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
                 <strong>Atenção:</strong> Solados deste tipo têm coligação <em>cor cabedal → cor palmilha</em>.
                 Configure essa coligação na <strong>ficha técnica</strong> (campo "Cores Palmilha"). O sistema vai usar essa
                 tabela pra escolher a palmilha certa quando emitir a ficha de produção.
+              </div>
+            )}
+            {soleClassification === UNICOLOR_SOLE_CLASSIFICATION && (
+              <div className="text-xs text-foreground/80 bg-amber-500/10 border border-amber-500/30 rounded p-2">
+                <strong>Kit unicolor:</strong> exige SKU <em>CARAMELO</em> ativo neste solado. A ficha só preenche
+                cabedal; Placa fibra / Solado / Forração saem da Precificação; débito = 1 par do solado caramelo.
               </div>
             )}
             {soleClassification === 'conjugado' && (
@@ -275,7 +296,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
               </p>
             </div>
           )}
-          {soleClassification === 'palmilha_pronta' && (
+          {isPalmilhaProntaClassification(soleClassification) && (
             <div className="text-xs text-muted-foreground italic">
               Modo da palmilha definido automaticamente como <strong>Pronta na cor</strong> por causa do tipo do solado.
             </div>
