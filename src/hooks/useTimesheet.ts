@@ -28,6 +28,7 @@ interface ArchiveRpcResult {
   inserted?: number;
   updated?: number;
   skipped?: number;
+  skipped_protected?: number;
   unmatched?: number;
   total?: number;
 }
@@ -155,6 +156,8 @@ export interface TimeRecord {
   punches: string[];
   import_batch: string;
   created_at: string;
+  /** Dia ajustado manualmente: reimport do TXT não sobrescreve batidas. */
+  reimport_protected?: boolean;
 }
 
 export interface ParsedEmployee {
@@ -1519,12 +1522,16 @@ export function useImportTimeRecords() {
         const updatedCount = Number.isFinite(Number(result?.updated)) ? Number(result?.updated) : 0;
         const unmatchedCount = Number.isFinite(Number(result?.unmatched)) ? Number(result?.unmatched) : 0;
         if (Number.isFinite(Number(result?.skipped))) skipped = Number(result?.skipped);
+        const skippedProtected = Number.isFinite(Number(result?.skipped_protected))
+          ? Number(result?.skipped_protected)
+          : 0;
 
         return {
           batchId,
           inserted: insertedCount,
           updated: updatedCount,
           skipped,
+          skipped_protected: skippedProtected,
           unmatched: unmatchedCount,
           archivedFilePath,
           endDate,
@@ -1590,13 +1597,15 @@ export function useImportTimeRecords() {
         toast.warning(
           `Nenhum registro NOVO. ${result.skipped > 0 ? `As ${result.skipped} batidas do arquivo` : 'O arquivo'}` +
           `${ate ? ` (vai até ${ate})` : ''} já estavam no sistema. Se você esperava dias mais recentes, a ` +
-          `exportação do relógio não os incluiu — gere um download novo cobrindo até hoje, ou lance manualmente na aba Lançamento.`,
+          `exportação do relógio não os incluiu — gere um download novo cobrindo até hoje, ou lance manualmente em Corrigir.`,
           { duration: 14000 },
         );
       } else if (result.skipped > 0) {
         toast.success(
           `${result.inserted} registro(s) novo(s)${result.updated > 0 ? ` e ${result.updated} atualizado(s)` : ''}` +
-          `${ate ? ` (até ${ate})` : ''}. ${result.skipped} ignorado(s).${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
+          `${ate ? ` (até ${ate})` : ''}. ${result.skipped} ignorado(s)` +
+          `${result.skipped_protected ? ` (${result.skipped_protected} protegido(s) do reimport)` : ''}.` +
+          `${result.archivedFilePath ? ' Arquivo arquivado.' : ''}`
         );
       } else {
         toast.success(

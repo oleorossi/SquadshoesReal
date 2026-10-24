@@ -91,17 +91,29 @@ function absenceCovers(
   );
 }
 
-function statusMark(status: DayCellStatus): { label: string; className: string } | null {
+function statusMark(
+  status: DayCellStatus,
+  reimportProtected?: boolean,
+): { label: string; className: string } | null {
   if (status === 'needs_fix') {
     return {
       label: '!',
-      className: 'bg-amber-500/15 text-amber-600 border-amber-500/40 dark:text-amber-400',
+      className: cn(
+        'bg-amber-500/15 text-amber-600 border-amber-500/40 dark:text-amber-400',
+        reimportProtected && 'ring-1 ring-primary/40',
+      ),
     };
   }
   if (status === 'justified') {
     return {
       label: 'J',
       className: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400',
+    };
+  }
+  if (reimportProtected) {
+    return {
+      label: 'P',
+      className: 'bg-primary/10 text-primary border-primary/30',
     };
   }
   if (status === 'ok') {
@@ -119,7 +131,7 @@ interface CellTarget {
 }
 
 /**
- * Workspace único de Ajustar: grade mês × pessoa + filtro + DayAdjustDialog.
+ * Workspace único de Corrigir: grade mês × pessoa + filtro (só pendências | todos) + DayAdjustDialog.
  */
 export default function AdjustmentWorkspace() {
   const { data: schedules = [] } = useWorkSchedules();
@@ -132,7 +144,7 @@ export default function AdjustmentWorkspace() {
     d.setHours(12, 0, 0, 0);
     return d;
   });
-  const [filter, setFilter] = useState<DayCellFilter>('all');
+  const [filter, setFilter] = useState<DayCellFilter>('needs_fix');
   const [search, setSearch] = useState('');
   const [cellTarget, setCellTarget] = useState<CellTarget | null>(null);
 
@@ -327,10 +339,10 @@ export default function AdjustmentWorkspace() {
       <div className="rounded-xl border border-border/70 bg-card p-4 shadow-sm space-y-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <span className="eyebrow text-[9px]">Ajustar o período</span>
+            <span className="eyebrow text-[9px]">Corrigir o período</span>
             <h2 className="mt-0.5 text-base font-bold capitalize">{monthLabel}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Clique no dia para completar batida ou justificar ausência.
+              Clique no dia para completar batida, lançar horário manual ou justificar ausência.
               {needsFixCount > 0 && (
                 <>
                   {' '}
@@ -383,9 +395,8 @@ export default function AdjustmentWorkspace() {
           >
             {(
               [
+                { value: 'needs_fix' as const, label: 'Só pendências' },
                 { value: 'all' as const, label: 'Todos' },
-                { value: 'needs_fix' as const, label: 'Precisam ajuste' },
-                { value: 'ok' as const, label: 'Já ok' },
               ] as const
             ).map(opt => (
               <button
@@ -492,15 +503,22 @@ export default function AdjustmentWorkspace() {
                     </td>
                     {monthDates.map((dateStr, di) => {
                       const status = statuses[di];
-                      const mark = statusMark(status);
                       const canEdit = status !== 'out_of_scope';
                       const rec = recordMap.get(`${employee.id}|${dateStr}`);
+                      const reimportProtected = !!rec?.reimport_protected;
+                      const mark = statusMark(status, reimportProtected);
                       const punchPreview = rec
                         ? ((rec.punches as string[]) || [])
                             .map(p => String(p).replace(/\*$/, ''))
                             .slice(0, 2)
                             .join(' ')
                         : '';
+                      const titleParts = [
+                        punchPreview || null,
+                        status === 'needs_fix' ? 'Precisa de ajuste' : null,
+                        status === 'justified' ? 'Justificado' : null,
+                        reimportProtected ? 'Protegido do reimport' : null,
+                      ].filter(Boolean);
 
                       return (
                         <td
@@ -513,15 +531,7 @@ export default function AdjustmentWorkspace() {
                               : 'cursor-not-allowed opacity-40',
                           )}
                           onClick={() => canEdit && openCell(employee, dateStr)}
-                          title={
-                            punchPreview
-                              ? punchPreview
-                              : status === 'needs_fix'
-                                ? 'Precisa de ajuste'
-                                : status === 'justified'
-                                  ? 'Justificado'
-                                  : undefined
-                          }
+                          title={titleParts.length ? titleParts.join(' · ') : undefined}
                         >
                           {mark ? (
                             <span

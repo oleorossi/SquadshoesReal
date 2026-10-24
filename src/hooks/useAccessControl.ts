@@ -136,11 +136,12 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/terceiros': 'terceirizados',            // nome canônico anterior → redireciona pro hub
   '/terceiros-na-rua': 'terceirizados',     // legado → redireciona pro hub
   '/terceiros/relatorios': 'terceirizados', // legado → redireciona pro hub
-  '/rh/pendencias-ponto': 'rh', // redirect legado → /rh?tab=ponto&subtab=pendencias
-  '/rh?tab=ponto&subtab=pendencias': 'rh',
-  '/rh?tab=ponto&subtab=manual': 'rh',
+  '/rh/pendencias-ponto': 'rh', // redirect legado → /rh?tab=ponto&subtab=corrigir
+  '/rh?tab=ponto&subtab=corrigir': 'rh',
+  '/rh?tab=ponto&subtab=pendencias': 'rh', // alias → corrigir
+  '/rh?tab=ponto&subtab=manual': 'rh', // alias → corrigir
   '/rh/fechamento-semanal': 'rh',
-  '/rh/ausencias': 'rh', // redirect legado → Ajustar
+  '/rh/ausencias': 'rh', // redirect legado → Corrigir
   '/producao/visao-agregada': 'producao',
   '/inventory': 'estoque',
   '/production': 'producao',

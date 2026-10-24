@@ -7,6 +7,11 @@ import {
   rowHasNeedsFix,
   rowIsAllSettled,
 } from '@/lib/ponto/dayCellStatus';
+import {
+  manualReasonStorageKey,
+  readStickyManualReason,
+  writeStickyManualReason,
+} from '@/lib/ponto/manualReasonSticky';
 
 const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
@@ -14,40 +19,72 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 const PAGE = read('src/pages/Timesheet.tsx');
 const WORKSPACE = read('src/components/timesheet/AdjustmentWorkspace.tsx');
 const DIALOG = read('src/components/timesheet/DayAdjustDialog.tsx');
+const ESPELHO = read('src/pages/EspelhoPontoPage.tsx');
+const MIGRATION = read('supabase/migrations/20270101044600_ponto-reimport-protected.sql');
 
-describe('workspace único de ajuste do ponto', () => {
-  it('fluxo Importar → Pendências → Ajustar, sem Central/correction modes', () => {
-    expect(PAGE).toContain("values: ['records', 'pendencias', 'manual', 'arquivos', 'config']");
-    expect(PAGE).toContain("label: 'Pendências'");
-    expect(PAGE).toContain("label: 'Ajustar'");
-    expect(PAGE).toContain('Importar → Pendências → Ajustar');
-    expect(PAGE).toContain('<TabsContent value="pendencias"><PendingPunchesWorkspace /></TabsContent>');
-    expect(PAGE).toContain('<TabsContent value="manual"><AdjustmentWorkspace /></TabsContent>');
-    expect(PAGE).toContain("pending: 'pendencias'");
+describe('workspace único de correção do ponto', () => {
+  it('fluxo Importar → Corrigir, sem dualidade Pendências/Ajustar', () => {
+    expect(PAGE).toContain("values: ['records', 'corrigir', 'arquivos', 'config']");
+    expect(PAGE).toContain("label: 'Corrigir'");
+    expect(PAGE).toContain('Importar → Corrigir');
+    expect(PAGE).toContain('<TabsContent value="corrigir"><AdjustmentWorkspace /></TabsContent>');
+    expect(PAGE).toContain("pendencias: 'corrigir'");
+    expect(PAGE).toContain("manual: 'corrigir'");
+    expect(PAGE).toContain("ausencias: 'corrigir'");
+    expect(PAGE).not.toContain('<PendingPunchesWorkspace');
+    expect(PAGE).not.toContain("label: 'Pendências'");
+    expect(PAGE).not.toContain("label: 'Ajustar'");
     expect(PAGE).not.toContain('param: \'correction\'');
     expect(PAGE).not.toMatch(/Central de correção/);
     expect(PAGE).not.toMatch(/OvernightCarryPanel/);
     expect(PAGE).not.toMatch(/ExceptionsTab/);
     expect(PAGE).not.toMatch(/<ManualEntryTab/);
-    expect(PAGE).not.toContain("values: ['queue', 'overnight', 'calendar', 'exceptions']");
   });
 
-  it('alias ausencias cai em Ajustar', () => {
-    expect(PAGE).toContain('ausencias: \'manual\'');
-  });
-
-  it('workspace monta grade mês × pessoa com filtro', () => {
-    expect(WORKSPACE).toContain('Ajustar o período');
-    expect(WORKSPACE).toContain("value: 'needs_fix'");
-    expect(WORKSPACE).toContain('Precisam ajuste');
+  it('workspace monta grade com filtro Só pendências (default) | Todos', () => {
+    expect(WORKSPACE).toContain('Corrigir o período');
+    expect(WORKSPACE).toContain("useState<DayCellFilter>('needs_fix')");
+    expect(WORKSPACE).toContain("label: 'Só pendências'");
+    expect(WORKSPACE).toContain("label: 'Todos'");
     expect(WORKSPACE).toContain('DayAdjustDialog');
+    expect(WORKSPACE).toContain('reimport_protected');
   });
 
-  it('dialog oferece batidas XOR ausência e atalho de virada', () => {
+  it('dialog edita batidas XOR ausência, sticky de motivo, unlock de reimport', () => {
     expect(DIALOG).toContain('Saída na madrugada seguinte');
     expect(DIALOG).toContain("DayAdjustMode = 'punches' | 'absence'");
     expect(DIALOG).toContain('Virada à noite');
     expect(DIALOG).toContain('ABSENCE_KIND_OPTIONS');
+    expect(DIALOG).toContain('writeStickyManualReason');
+    expect(DIALOG).toContain('readStickyManualReason');
+    expect(DIALOG).toContain('set_time_record_reimport_protection');
+    expect(DIALOG).toContain('Permitir reimport deste dia');
+    expect(DIALOG).toContain('OverrideHistoryButton');
+  });
+
+  it('espelho esconde batidas brutas na impressão', () => {
+    expect(ESPELHO).toContain('print:hidden">Batidas brutas</th>');
+    expect(ESPELHO).toMatch(/print:hidden[\s\S]*punchesRaw|punchesRaw[\s\S]*print:hidden/);
+  });
+
+  it('migration define coluna, skip no import e RPC de unlock', () => {
+    expect(MIGRATION).toContain('reimport_protected boolean NOT NULL DEFAULT false');
+    expect(MIGRATION).toContain('skipped_protected');
+    expect(MIGRATION).toContain('set_time_record_reimport_protection');
+    expect(MIGRATION).toContain('reimport_protected = true');
+  });
+});
+
+describe('manualReasonSticky', () => {
+  it('grava e lê por employeeId na sessionStorage', () => {
+    const id = 'emp-sticky-test';
+    sessionStorage.removeItem(manualReasonStorageKey(id));
+    expect(readStickyManualReason(id)).toBe('');
+    writeStickyManualReason(id, 'ab'); // curto demais
+    expect(readStickyManualReason(id)).toBe('');
+    writeStickyManualReason(id, 'confirmado em filmagem');
+    expect(readStickyManualReason(id)).toBe('confirmado em filmagem');
+    sessionStorage.removeItem(manualReasonStorageKey(id));
   });
 });
 

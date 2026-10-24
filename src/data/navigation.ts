@@ -155,7 +155,7 @@ export const navigationCatalog: NavigationResource[] = [
   // Ajuste de batidas/ausências (workspace único do Ponto). Sem resolver,
   // o dia não desconta nem paga — risco de pagar quem ainda deve horas.
   // Destino final (não o redirect legado /rh/pendencias-ponto).
-  { path: '/rh?tab=ponto&subtab=pendencias', label: 'Pendências de Ponto', group: 'RH', icon: Clock, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Timesheet') },
+  { path: '/rh?tab=ponto&subtab=corrigir', label: 'Corrigir Ponto', group: 'RH', icon: Clock, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Timesheet') },
 
   // Sistema (admin)
   { path: '/admin/aprovacao-ordens-compra', label: 'Aprovação de Ordens de Compra', group: 'Sistema', icon: CheckCircle, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchaseOrderApprovals') },
@@ -325,7 +325,7 @@ const hubsDeclarados: NavigationHub[] = [
     icon: UsersThree,
     groups: ['RH'],
     children: [
-      resource('/rh?tab=ponto&subtab=pendencias'),
+      resource('/rh?tab=ponto&subtab=corrigir'),
       resource('/fichas-montadores'),
       resource('/terceirizados'),
     ],

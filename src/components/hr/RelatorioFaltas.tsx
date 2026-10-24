@@ -381,7 +381,7 @@ export default function RelatorioFaltas() {
               ({totals.pendingFunc} funcionário{totals.pendingFunc === 1 ? '' : 's'})
             </p>
             <Button asChild size="sm" variant="outline" className="h-7 text-xs">
-              <Link to="/rh?tab=ponto&subtab=pendencias">Resolver em Pendências</Link>
+              <Link to="/rh?tab=ponto&subtab=corrigir">Resolver em Corrigir</Link>
             </Button>
           </div>
           <ul className="space-y-1 max-h-28 overflow-y-auto">

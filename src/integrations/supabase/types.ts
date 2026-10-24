@@ -33402,6 +33402,7 @@ export type Database = {
           import_batch: string
           punches: Json
           record_date: string
+          reimport_protected: boolean
         }
         Insert: {
           created_at?: string
@@ -33413,6 +33414,7 @@ export type Database = {
           import_batch?: string
           punches?: Json
           record_date: string
+          reimport_protected?: boolean
         }
         Update: {
           created_at?: string
@@ -33424,6 +33426,7 @@ export type Database = {
           import_batch?: string
           punches?: Json
           record_date?: string
+          reimport_protected?: boolean
         }
         Relationships: [
           {
@@ -42505,6 +42508,14 @@ export type Database = {
         Args: { p_order_id: string; p_stage_names: string[] }
         Returns: number
       }
+      set_time_record_reimport_protection: {
+        Args: {
+          p_time_record_id: string
+          p_protected: boolean
+          p_reason: string
+        }
+        Returns: Json
+      }
       complete_punches: {
         Args: {
           p_punches: string[]
@@ -42521,6 +42532,7 @@ export type Database = {
           import_batch: string
           punches: Json
           record_date: string
+          reimport_protected: boolean
         }
         SetofOptions: {
           from: "*"

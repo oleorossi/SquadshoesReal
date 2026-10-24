@@ -381,8 +381,11 @@ export default function EspelhoPontoPage() {
               <tr className="bg-black/10">
                 <th className="border border-black px-1 py-1 w-10">Dia</th>
                 <th className="border border-black px-1 py-1 w-10">DOW</th>
-                <th className="border border-black px-1 py-1">Batidas brutas</th>
-                <th className="border border-black px-1 py-1">Batidas tratadas</th>
+                <th className="border border-black px-1 py-1 print:hidden">Batidas brutas</th>
+                <th className="border border-black px-1 py-1">
+                  <span className="print:hidden">Batidas tratadas</span>
+                  <span className="hidden print:inline">Batidas</span>
+                </th>
                 <th className="border border-black px-1 py-1 w-14">Previsto</th>
                 <th className="border border-black px-1 py-1 w-14">Trabalhado</th>
                 <th className="border border-black px-1 py-1 w-14">Saldo</th>
@@ -394,7 +397,7 @@ export default function EspelhoPontoPage() {
                 <tr key={d.date} className={d.status === 'Falta' ? 'bg-rose-50' : d.status === 'Pendência' ? 'bg-amber-50' : ''}>
                   <td className="border border-black px-1 py-0.5 text-center">{format(parseISO(d.date), 'dd/MM')}</td>
                   <td className="border border-black px-1 py-0.5 text-center text-[7pt]">{d.dayLabel}</td>
-                  <td className="border border-black px-1 py-0.5 font-mono text-[7pt]">
+                  <td className="border border-black px-1 py-0.5 font-mono text-[7pt] print:hidden">
                     {d.punchesRaw.length > 0 ? d.punchesRaw.join(' ') : '—'}
                   </td>
                   <td className="border border-black px-1 py-0.5 font-mono text-[7pt]">
@@ -411,7 +414,8 @@ export default function EspelhoPontoPage() {
             </tbody>
             <tfoot>
               <tr className="bg-black/10 font-bold">
-                <td colSpan={4} className="border border-black px-1 py-1 text-right text-[8pt]">TOTAIS</td>
+                <td colSpan={4} className="border border-black px-1 py-1 text-right text-[8pt] print:hidden">TOTAIS</td>
+                <td colSpan={3} className="border border-black px-1 py-1 text-right text-[8pt] hidden print:table-cell">TOTAIS</td>
                 <td className="border border-black px-1 py-1 text-right font-mono">{fmtMin(totals.expected)}</td>
                 <td className="border border-black px-1 py-1 text-right font-mono">{fmtMin(totals.worked)}</td>
                 <td className={`border border-black px-1 py-1 text-right font-mono ${totals.balance > 0 ? 'text-emerald-700' : totals.balance < 0 ? 'text-rose-700' : ''}`}>

@@ -1,5 +1,4 @@
 import AdjustmentWorkspace from '@/components/timesheet/AdjustmentWorkspace';
-import PendingPunchesWorkspace from '@/components/timesheet/PendingPunchesWorkspace';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -401,7 +400,7 @@ function WorkdaySwapsTab() {
           <h3 className="text-lg font-semibold">Trocas de Dia (fábrica)</h3>
           <p className="text-xs text-muted-foreground">
             Pontes e compensações que valem pra <span className="font-medium text-foreground">todos</span>.
-            Virada à noite de uma pessoa: use <span className="font-medium text-foreground">Ajustar</span> (atalho na janela do dia).
+            Virada à noite de uma pessoa: use <span className="font-medium text-foreground">Corrigir</span> (atalho na janela do dia).
           </p>
         </div>
         <Button size="sm" onClick={() => setAdding(!adding)} className="gap-1.5">
@@ -1707,16 +1706,18 @@ function TimesheetRecordsTab() {
 export default function Timesheet() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { value: activeTab, setValue: setActiveTab } = useUrlTabState({
-    values: ['records', 'pendencias', 'manual', 'arquivos', 'config'] as const,
+    values: ['records', 'corrigir', 'arquivos', 'config'] as const,
     defaultValue: 'records',
     param: 'subtab',
     clearOnChange: ['correction'],
     aliases: {
       overview: 'records',
-      late: 'pendencias',
-      occurrences: 'pendencias',
-      pending: 'pendencias',
-      ausencias: 'manual',
+      late: 'corrigir',
+      occurrences: 'corrigir',
+      pending: 'corrigir',
+      pendencias: 'corrigir',
+      manual: 'corrigir',
+      ausencias: 'corrigir',
       reports: 'records',
       overtime: 'records',
       calendario: 'records',
@@ -1746,18 +1747,11 @@ export default function Timesheet() {
       step: '1',
     },
     {
-      value: 'pendencias',
-      label: 'Pendências',
-      description: 'Complete batidas inválidas do mês.',
-      icon: AlertTriangle,
-      step: '2',
-    },
-    {
-      value: 'manual',
-      label: 'Ajustar',
-      description: 'Edição livre do período.',
+      value: 'corrigir',
+      label: 'Corrigir',
+      description: 'Pendências e ajustes manuais do período.',
       icon: ClipboardEdit,
-      step: undefined,
+      step: '2',
     },
     {
       value: 'arquivos',
@@ -1785,7 +1779,7 @@ export default function Timesheet() {
               <AlarmClock className="h-4 w-4 text-primary" />
               <div>
                 <span className="eyebrow block text-[9px]">Fluxo do ponto</span>
-                <span className="block text-[10px] text-muted-foreground">Importar → Pendências → Ajustar</span>
+                <span className="block text-[10px] text-muted-foreground">Importar → Corrigir</span>
               </div>
             </div>
             <TabsList
@@ -1806,7 +1800,7 @@ export default function Timesheet() {
                   {section.step}
                 </span>
                 <span className="truncate">{section.label}</span>
-                {section.value === 'pendencias' && pendingTotal > 0 && (
+                {section.value === 'corrigir' && pendingTotal > 0 && (
                   <>
                     <span
                       className={cn('h-2 w-2 shrink-0 rounded-full sm:hidden', overdueTotal > 0 ? 'bg-destructive' : 'bg-amber-500')}
@@ -1851,8 +1845,7 @@ export default function Timesheet() {
         </div>
 
         <TabsContent value="records"><TimesheetRecordsTab /></TabsContent>
-        <TabsContent value="pendencias"><PendingPunchesWorkspace /></TabsContent>
-        <TabsContent value="manual"><AdjustmentWorkspace /></TabsContent>
+        <TabsContent value="corrigir"><AdjustmentWorkspace /></TabsContent>
         <TabsContent value="arquivos"><ImportHistoryPanel /></TabsContent>
         <TabsContent value="config" className="space-y-6">
           <HolidaysTab />

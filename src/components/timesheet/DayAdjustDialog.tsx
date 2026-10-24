@@ -10,6 +10,7 @@ import {
   Clock,
   Moon,
   FirstAid,
+  LockSimpleOpen as Unlock,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,8 @@ import { cn } from '@/lib/utils';
 import type { TimeRecord, WorkSchedule } from '@/hooks/useTimesheet';
 import { mapThreePunchesToNamedSlots } from '@/lib/ponto/interpretDayPunches';
 import { detectOvernightCarries } from '@/lib/ponto/overnightPunches';
+import { readStickyManualReason, writeStickyManualReason } from '@/lib/ponto/manualReasonSticky';
+import { OverrideHistoryButton } from '@/components/timesheet/OverrideHistoryButton';
 import {
   useCreateAbsence,
   useDeleteAbsence,
@@ -138,14 +141,8 @@ function slotsToPunches(slots: Slots, slotManual: SlotManual, extras: string[]):
 
 const manualClient = supabase as unknown as {
   rpc: (
-    name: 'upsert_manual_time_record',
-    args: {
-      p_employee_id: string;
-      p_record_date: string;
-      p_punches: string[];
-      p_reason: string;
-      p_time_record_id: string | null;
-    },
+    name: 'upsert_manual_time_record' | 'set_time_record_reimport_protection',
+    args: Record<string, unknown>,
   ) => Promise<{ error: { message: string } | null }>;
 };
 
@@ -179,6 +176,7 @@ export default function DayAdjustDialog({
   const [absenceType, setAbsenceType] = useState<AbsenceKind>('atestado');
   const [absenceEnd, setAbsenceEnd] = useState(dateStr);
   const [absenceNotes, setAbsenceNotes] = useState('');
+  const [localProtected, setLocalProtected] = useState(!!existingRecord?.reimport_protected);
 
   const overnightCarry = useMemo(() => {
     const byDate = new Map<string, string[]>();
@@ -201,12 +199,18 @@ export default function DayAdjustDialog({
     setSlotManual(mapped.slotManual);
     setExtras(mapped.extras);
     setNewPunch('');
-    setManualReason(overnightCarry ? 'Virada à noite' : '');
+    const sticky = readStickyManualReason(employeeId);
+    setManualReason(overnightCarry ? 'Virada à noite' : sticky);
     setMode(coveringAbsence ? 'absence' : 'punches');
     setAbsenceType((coveringAbsence?.absence_type as AbsenceKind) || 'atestado');
     setAbsenceEnd(coveringAbsence?.end_date || dateStr);
     setAbsenceNotes(coveringAbsence?.notes || '');
-  }, [open, existingRecord, coveringAbsence, dateStr, overnightCarry]);
+  }, [open, existingRecord, coveringAbsence, dateStr, overnightCarry, employeeId]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLocalProtected(!!existingRecord?.reimport_protected);
+  }, [open, existingRecord?.reimport_protected, existingRecord?.id]);
 
   const punchCount =
     SLOT_DEFS.filter(({ key }) => slots[key].trim()).length + extras.length;
@@ -261,14 +265,17 @@ export default function DayAdjustDialog({
     try {
       const punches = slotsToPunches(slots, slotManual, extras);
       if (!existingRecord && punches.length === 0) throw new Error('Adicione pelo menos uma batida.');
+      const reason = manualReason.trim();
       const { error } = await manualClient.rpc('upsert_manual_time_record', {
         p_employee_id: employeeId,
         p_record_date: dateStr,
         p_punches: punches,
-        p_reason: manualReason.trim(),
+        p_reason: reason,
         p_time_record_id: existingRecord?.id || null,
       });
       if (error) throw new Error(error.message);
+      writeStickyManualReason(employeeId, reason);
+      setLocalProtected(true);
       toast.success('Registro salvo!');
       invalidate();
       onOpenChange(false);
@@ -287,19 +294,48 @@ export default function DayAdjustDialog({
     }
     setSaving(true);
     try {
+      const reason = manualReason.trim();
       const { error } = await manualClient.rpc('upsert_manual_time_record', {
         p_employee_id: employeeId,
         p_record_date: dateStr,
         p_punches: [],
-        p_reason: manualReason.trim(),
+        p_reason: reason,
         p_time_record_id: existingRecord.id,
       });
       if (error) throw new Error(error.message);
+      writeStickyManualReason(employeeId, reason);
+      setLocalProtected(true);
       toast.success('Registro limpo');
       invalidate();
       onOpenChange(false);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao limpar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unlockReimport = async () => {
+    if (!existingRecord?.id) return;
+    if (manualReason.trim().length < 4) {
+      toast.error('Informe uma justificativa com pelo menos 4 caracteres para liberar o reimport.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const reason = manualReason.trim();
+      const { error } = await manualClient.rpc('set_time_record_reimport_protection', {
+        p_time_record_id: existingRecord.id,
+        p_protected: false,
+        p_reason: reason,
+      });
+      if (error) throw new Error(error.message);
+      writeStickyManualReason(employeeId, reason);
+      setLocalProtected(false);
+      toast.success('Reimport liberado para este dia.');
+      invalidate();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao liberar reimport');
     } finally {
       setSaving(false);
     }
@@ -311,8 +347,8 @@ export default function DayAdjustDialog({
       toast.error('Remova a justificativa deste dia antes de aplicar a virada.');
       return;
     }
-    const reason = (manualReason.trim().length >= 4 ? manualReason.trim() : 'Virada à noite');
-    setSaving(true);
+      const reason = (manualReason.trim().length >= 4 ? manualReason.trim() : 'Virada à noite');
+      setSaving(true);
     try {
       const work = await manualClient.rpc('upsert_manual_time_record', {
         p_employee_id: employeeId,
@@ -334,6 +370,8 @@ export default function DayAdjustDialog({
         if (next.error) throw new Error(next.error.message);
       }
 
+      writeStickyManualReason(employeeId, reason);
+      setLocalProtected(true);
       toast.success('Virada à noite aplicada');
       invalidate();
       onOpenChange(false);
@@ -392,10 +430,10 @@ export default function DayAdjustDialog({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ClipboardEdit className="h-4 w-4" /> Ajustar o dia
+            <ClipboardEdit className="h-4 w-4" /> Corrigir o dia
           </DialogTitle>
           <DialogDescription>
-            Complete batidas esquecidas ou justifique a ausência — uma intenção por vez.
+            Complete batidas esquecidas, lance horário manual ou justifique a ausência — uma intenção por vez.
           </DialogDescription>
         </DialogHeader>
 
@@ -411,6 +449,36 @@ export default function DayAdjustDialog({
                 {DAYS_FULL[dow]},{' '}
                 {new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR')}
               </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              {localProtected ? (
+                <Badge
+                  variant="outline"
+                  className="border-primary/30 bg-primary/10 text-primary text-[10px]"
+                >
+                  Protegido do reimport
+                </Badge>
+              ) : (
+                <span className="text-[11px] text-muted-foreground">
+                  Ajuste manual protege o dia contra o próximo TXT.
+                </span>
+              )}
+              <div className="flex items-center gap-1">
+                {existingRecord?.id && <OverrideHistoryButton timeRecordId={existingRecord.id} />}
+                {localProtected && existingRecord?.id && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => void unlockReimport()}
+                    disabled={saving || manualReason.trim().length < 4}
+                    title="Exige justificativa no campo abaixo"
+                  >
+                    <Unlock className="h-3 w-3" /> Permitir reimport deste dia
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 
