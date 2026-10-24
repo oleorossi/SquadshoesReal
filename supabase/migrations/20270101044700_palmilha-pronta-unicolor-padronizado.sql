@@ -504,8 +504,8 @@ BEGIN
     ki.is_active,
     false,
     ki.id,
-    '',
-    '', '', '', '', '', ''
+    NULL, -- NUNCA '' — CHECK só aceita NULL ou setor canônico (mig 42100)
+    NULL, NULL, NULL, NULL, NULL, NULL
   FROM public.base_material_kit_items ki
   WHERE ki.kit_id = v_kit_id
     AND NOT (

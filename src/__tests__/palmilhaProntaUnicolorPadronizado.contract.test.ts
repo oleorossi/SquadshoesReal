@@ -38,6 +38,8 @@ describe('palmilha_pronta_unicolor_padronizado — migration', () => {
   it('não aplica Placa fibra/Solado/Forração do kit base quando unicolor', () => {
     expect(MIG).toMatch(/apply_base_material_kit_to_sheet/);
     expect(MIG).toMatch(/kit_desc_covered_by_unicolor_sole\(ki\.description\)/);
+    // Não regride a 42100: '' quebra sheet_materials_consumption_sector_check.
+    expect(MIG).toMatch(/NULL,\s*-- NUNCA ''/);
   });
 
   it('injeta resolve de cor CARAMELO no corpo vivo', () => {
