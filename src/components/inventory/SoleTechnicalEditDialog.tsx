@@ -21,6 +21,7 @@ import {
   UNICOLOR_SOLE_LABEL,
   isPalmilhaProntaClassification,
   isSoleClassification,
+  soleClassificationOf,
   type SoleClassification,
 } from '@/lib/soleClassification';
 
@@ -59,7 +60,7 @@ export function SoleTechnicalEditDialog({ open, onOpenChange, product }: Props) 
        setIsStandardItem((product as any).is_standard_sole_item || false);
        setIsFachetado((product as any).is_fachetado || false);
       setInsoleMode(((product as any).insole_mode as 'cortar' | 'pronta_na_cor') || 'cortar');
-      const rawClass = (product as any).sole_classification;
+      const rawClass = soleClassificationOf(product);
       setSoleClassification(isSoleClassification(rawClass) ? rawClass : 'tradicional');
     }
   }, [product, open]);
