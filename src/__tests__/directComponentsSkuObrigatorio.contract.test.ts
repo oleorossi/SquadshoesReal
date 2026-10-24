@@ -1,12 +1,13 @@
 /**
  * Contrato: COMPONENTES exigem product_id (débito exato).
- * Reverte Q11-a; migration 20270101044300.
+ * Reverte Q11-a; migration 20270101044800
+ * (renomeada de 20270101044300 — colisão com turno-parcial-duas-batidas).
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const mig = readFileSync(
-  'supabase/migrations/20270101044300_direct-components-sku-obrigatorio.sql',
+  'supabase/migrations/20270101044800_direct-components-sku-obrigatorio.sql',
   'utf8',
 );
 const sheets = readFileSync('src/pages/TechnicalSheets.tsx', 'utf8');
