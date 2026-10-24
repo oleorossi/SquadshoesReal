@@ -279,8 +279,13 @@ export default function PerPairConsumptionSummary({
       push(groupSource('Material extra', extra.material, extra.consumption, extra.consumption_per_size, false));
     }
     // Palmilha e solado são básicos comuns a todo modelo — fora do resumo (dono, 11/10/2026).
+    // JSON legado pode repetir o mesmo product_id; espelha v_dc_seen / orderConsumption
+    // (PV-00162/NL03: ELÁSTICO 6MM 20 cm ×3 → card somava 60 cm; débito fica em 20).
+    const seenDirectProductIds = new Set<string>();
     for (const comp of form.direct_components || []) {
       if (!comp?.product_id) continue;
+      if (seenDirectProductIds.has(comp.product_id)) continue;
+      seenDirectProductIds.add(comp.product_id);
       const product: any = productById.get(comp.product_id);
       push({
         component: 'Componente',

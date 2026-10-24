@@ -241,4 +241,29 @@ describe('PerPairConsumptionSummary — casos de cadastro', () => {
     expect(within(rowOf('TIRA NOVA')).getByText('sem preço')).toBeInTheDocument();
     expect(screen.getByText('+1 item sem preço — total incompleto')).toBeInTheDocument();
   });
+
+  it('direct_components com product_id repetido (NL04/ELÁSTICO) conta uma vez — espelha v_dc_seen', () => {
+    // JSON legado: mesma entrada 20 cm/par ×3. O débito/SQL deduplica; o card
+    // somava 60 cm × R$ 0,01 = R$ 0,60. Correto = 20 cm → R$ 0,20.
+    const elastico = sku(G.diversos, 'Elástico 6MM', 'cm', 0.01, { category: 'Componente' });
+    const entry = { product_id: elastico.id, quantity: 20, unit: 'cm' };
+    renderCard({
+      products: [...products, elastico],
+      form: {
+        ...i703Form,
+        upper_material: '',
+        upper_material_group_id: null,
+        direct_components: [entry, entry, entry],
+        has_straps: false,
+      },
+      sheetMaterials: [],
+    });
+    const row = rowOf('Elástico 6MM');
+    // Consumo fica "20" + span "cm/par" — casar pelo textContent do cell.
+    expect(row.textContent).toMatch(/20\s*cm\/par/);
+    expect(row.textContent).not.toMatch(/60\s*cm\/par/);
+    expect(within(row).getByText('R$ 0,01/cm')).toBeInTheDocument();
+    expect(within(row).getByText('R$ 0,20')).toBeInTheDocument();
+    expect(within(row).queryByText('R$ 0,60')).toBeNull();
+  });
 });
