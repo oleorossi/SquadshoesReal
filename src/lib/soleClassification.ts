@@ -31,6 +31,13 @@ export function isSoleClassification(value: unknown): value is SoleClassificatio
   return typeof value === 'string' && (SOLE_CLASSIFICATIONS as readonly string[]).includes(value);
 }
 
+/** Lê `sole_classification` de um produto/row sem forçar `any`. */
+export function soleClassificationOf(product: unknown): unknown {
+  if (!product || typeof product !== 'object') return undefined;
+  if (!('sole_classification' in product)) return undefined;
+  return Reflect.get(product, 'sole_classification');
+}
+
 /** Palmilha pronta clássica OU unicolor — pula corte de placa/forro de palmilha. */
 export function isPalmilhaProntaClassification(value: unknown): boolean {
   return typeof value === 'string' && READY_MADE.has(value);

@@ -157,6 +157,7 @@ import {
   UNICOLOR_SOLE_COLOR,
   UNICOLOR_SOLE_LABEL,
   isUnicolorPadronizadoClassification,
+  soleClassificationOf,
 } from '@/lib/soleClassification';
 import { updateSoleProfile } from '@/services/soleProfileService';
 import DublagemGlueSelect from '@/components/technical-sheets/DublagemGlueSelect';
@@ -2784,7 +2785,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                      const soleProd = products.find(p => p.id === productId);
                      setIsSoleFachetado(!!soleProd?.is_fachetado);
 
-                     if (isUnicolorPadronizadoClassification((soleProd as any)?.sole_classification)) {
+                     if (isUnicolorPadronizadoClassification(soleClassificationOf(soleProd))) {
                        updateField('insole_ready_made', true);
                        updateField('sole_consumption', 1);
                      }
@@ -2807,7 +2808,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   : form.sole_group_id
                     ? products.find((p) => p.group_id === form.sole_group_id && String(p.category || '').toLowerCase().includes('solado'))
                     : null;
-                const soleClass = (soleProd as any)?.sole_classification;
+                const soleClass = soleClassificationOf(soleProd);
                 const isUnicolor = isUnicolorPadronizadoClassification(soleClass);
                 if (!soleProd) return null;
                 if (isUnicolor) {
@@ -2847,8 +2848,9 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           updateField('sole_consumption', 1);
                           toast.success(`Solado classificado como ${UNICOLOR_SOLE_LABEL}`);
                           queryClient.invalidateQueries({ queryKey: ['products'] });
-                        } catch (err: any) {
-                          toast.error(err?.message || 'Não foi possível classificar o solado');
+                        } catch (err: unknown) {
+                          const message = err instanceof Error ? err.message : 'Não foi possível classificar o solado';
+                          toast.error(message);
                         }
                       }}
                     >
@@ -4135,7 +4137,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   {(() => {
                     const sole = products.find((p) => p.id === form.primary_sole_id)
                       || products.find((p) => p.group_id === form.sole_group_id);
-                    if (isUnicolorPadronizadoClassification((sole as any)?.sole_classification)) {
+                    if (isUnicolorPadronizadoClassification(soleClassificationOf(sole))) {
                       return (
                         <p className="text-xs text-muted-foreground">
                           Solado {UNICOLOR_SOLE_LABEL}: sem mapeamento de cor de palmilha/forração — kit sempre {UNICOLOR_SOLE_COLOR}.

@@ -28,7 +28,7 @@ import { isLeftoverCabedalExtra, leftoverCabedalDisplayName } from '@/lib/cabeda
 import { upperAccessoryFollowsBaseMaterial } from '@/lib/upperAccessoryVariant';
 import { plateAreaDm2 } from '@/lib/areaGeometry';
 import { classifyBomMaterial } from '@/lib/bomClassify';
-import { isPalmilhaProntaClassification } from '@/lib/soleClassification';
+import { isPalmilhaProntaClassification, soleClassificationOf } from '@/lib/soleClassification';
 export { classifyBomMaterial };
 
 /**
@@ -1910,7 +1910,7 @@ export function computeConsumptionForItems(
     const soleProductIdForInsole = resolveSoleForItem();
     const insoleSoleProd = soleProductIdForInsole ? (allProducts || []).find((p: any) => p.id === soleProductIdForInsole) : null;
     const isPalmilhaPronta = (sheet?.insole_ready_made === true)
-      || isPalmilhaProntaClassification((insoleSoleProd as any)?.sole_classification);
+      || isPalmilhaProntaClassification(soleClassificationOf(insoleSoleProd));
 
     if (!isPalmilhaPronta) {
       // O motor SQL só aplica mapeamento de palmilha quando há uma regra para a
