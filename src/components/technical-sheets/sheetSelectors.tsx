@@ -818,23 +818,25 @@ export function DirectComponentSelect({
   value,
   onChange,
   fallbackLabel,
+  fallbackGroupLabel,
 }: {
   label: string;
   value: string;
   onChange: (productId: string, productName: string, unitPrice: number, unit: string) => void;
   /** Snapshot `product_name` do JSONB — usado quando o produto sumiu/está inativo. */
   fallbackLabel?: string;
+  /** Snapshot `group_name` — subtítulo quando o produto vivo não resolve o grupo. */
+  fallbackGroupLabel?: string;
 }) {
   const { data: products = [] } = useQuery({
-    // Inclui o value atual mesmo inativo: senão a ficha mostra "Selecionar grupo…"
+    // Inclui o value atual mesmo inativo: senão a ficha mostra "Selecionar item…"
     // em branco enquanto o SQL ainda debita o SKU (JOIN sem filtro active).
     queryKey: ['products_direct_components_all', value || null],
     queryFn: async () => {
       // Trazemos tudo que está ativo (+ o product_id já pinado na ficha, mesmo
       // inativo). Solados/cabedais/forrações/palmilhas/tiras têm os próprios
-      // seletores em outras seções, mas alguns usuários cadastram acessórios na
-      // mesma categoria, então NÃO filtramos por category aqui — a busca por
-      // nome já cobre.
+      // seletores em outras seções, mas acessórios (e elásticos) entram aqui —
+      // NÃO filtramos por category; a busca por nome cobre.
       let q = supabase
         .from('products')
         .select('id, name, sku, unit_price, unit, color, group_id, active, product_groups!products_group_id_fkey(name)')
@@ -850,19 +852,12 @@ export function DirectComponentSelect({
       }));
     },
   });
-  // Fluxo grupo → item: primeiro escolhe o GRUPO, depois o ITEM daquele grupo.
-  // Assim o débito usa o product_id exato (direct_components debita por product_id).
-  const groups = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of products as any[]) {
-      // Só grupos com pelo menos 1 item ATIVO na lista de escolha — o inativo
-      // pinado entra via selected, não precisa poluir o dropdown de grupos.
-      if (p.active === false) continue;
-      if (p.group_id && p.groupName && !m.has(p.group_id)) m.set(p.group_id, p.groupName);
-    }
-    return Array.from(m, ([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
-  }, [products]);
+
+  // Um seletor só de SKU: débito já exige product_id; o grupo é metadado derivado.
+  const activeItems = useMemo(
+    () => (products as any[]).filter((p: any) => p.active !== false),
+    [products],
+  );
 
   const selected = (products as any[]).find((p: any) => p.id === value);
   const resolve = resolveDirectComponentSelection({
@@ -870,51 +865,38 @@ export function DirectComponentSelect({
     selected,
     fallbackLabel,
   });
-  // Sem override, o grupo segue o produto já selecionado (edição de ficha existente).
-  const [groupOverride, setGroupOverride] = useState<string | null>(null);
-  const effectiveGroupId = groupOverride !== null ? groupOverride : (selected?.group_id || '');
-  const effectiveGroupName = groups.find(g => g.id === effectiveGroupId)?.name
-    || (selected?.groupName && selected.active === false ? selected.groupName : '');
 
-  const itemsOfGroup = useMemo(
-    () => (products as any[]).filter((p: any) => p.group_id === effectiveGroupId && p.active !== false),
-    [products, effectiveGroupId],
-  );
-
-  const [groupOpen, setGroupOpen] = useState(false);
-  const [groupSearch, setGroupSearch] = useState('');
-  const [itemOpen, setItemOpen] = useState(false);
-  const [itemSearch, setItemSearch] = useState('');
-
-  const filteredGroups = useMemo(() => {
-    if (!groupSearch.trim()) return groups;
-    const hits = groups.filter(g => searchMatchesAllTerms(groupSearch, g.name));
-    return rankBySearchScore(hits, groupSearch, g => g.name);
-  }, [groups, groupSearch]);
-  const groupCap = useMemo(
-    () => capSearchResults(filteredGroups, SEARCH_RENDER_CAP),
-    [filteredGroups],
-  );
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   const filteredItems = useMemo(() => {
-    if (!itemSearch.trim()) return itemsOfGroup;
-    const hits = itemsOfGroup.filter((p) => searchMatchesAllTerms(itemSearch, p.name, p.sku, p.color));
-    return rankBySearchScore(hits, itemSearch, (p) => p.name, (p) => p.sku, (p) => p.color);
-  }, [itemsOfGroup, itemSearch]);
+    if (!search.trim()) return activeItems;
+    const hits = activeItems.filter((p) =>
+      searchMatchesAllTerms(search, p.name, p.sku, p.color, p.groupName),
+    );
+    return rankBySearchScore(
+      hits,
+      search,
+      (p) => p.name,
+      (p) => p.sku,
+      (p) => p.color,
+      (p) => p.groupName,
+    );
+  }, [activeItems, search]);
   const itemCap = useMemo(
     () => capSearchResults(filteredItems, SEARCH_RENDER_CAP),
     [filteredItems],
   );
 
   const unresolved = resolve.status !== 'ok' && !!value;
-  const groupTriggerLabel = unresolved
+  const itemTitle = unresolved
     ? resolve.label
-    : (effectiveGroupName || '1) Selecionar grupo...');
-  const itemTriggerLabel = unresolved
-    ? 'Troque pelo item ativo do grupo'
     : (selected && selected.active !== false
       ? `${selected.name}${selected.color ? ` (${selected.color})` : ''}`
-      : (effectiveGroupId ? '2) Selecionar item...' : '2) Escolha o grupo primeiro'));
+      : 'Selecionar item...');
+  const groupSubtitle = unresolved
+    ? (fallbackGroupLabel || selected?.groupName || '').toString().trim()
+    : (selected?.groupName || fallbackGroupLabel || '').toString().trim();
 
   return (
     <div>
@@ -929,108 +911,82 @@ export function DirectComponentSelect({
           </span>
         </p>
       )}
-      {/* Passo 1 — Grupo */}
-      <Popover open={groupOpen} onOpenChange={(o) => { setGroupOpen(o); if (!o) setGroupSearch(''); }}>
+      <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"
             role="combobox"
-            aria-expanded={groupOpen}
+            aria-expanded={open}
             className={cn(
-              'mt-1 h-9 w-full justify-between text-sm font-normal',
+              'mt-1 h-auto min-h-9 w-full justify-between py-1.5 text-sm font-normal',
               unresolved && 'border-amber-500/60 text-amber-800 dark:text-amber-300',
             )}
           >
-            <span className="truncate">{groupTriggerLabel}</span>
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block truncate">{itemTitle}</span>
+              {groupSubtitle ? (
+                <span className="block truncate text-[11px] text-muted-foreground font-normal">
+                  {groupSubtitle}
+                </span>
+              ) : null}
+            </span>
             <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[350px] p-0" align="start">
-          <Command shouldFilter={false} label="Buscar grupo...">
-            <SearchLocatorStrip
-              label="Localizar grupo"
-              matchedCount={groupCap.totalMatched}
-              totalCount={groups.length}
-              hasQuery={!!groupSearch.trim()}
-            />
-            <CommandInput placeholder="Buscar grupo..." value={groupSearch} onValueChange={setGroupSearch} />
-            <CommandList>
-              <CommandEmpty>
-                {groupSearch ? (
-                  <span className="flex flex-col items-center gap-2">
-                    <span>Nenhum resultado para "{groupSearch}"</span>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setGroupSearch('')}>Limpar busca</Button>
-                  </span>
-                ) : (
-                  'Nenhum grupo encontrado.'
-                )}
-              </CommandEmpty>
-              <CommandGroup heading="Grupos">
-                {groupCap.visible.map(g => (
-                  <CommandItem key={g.id} value={g.id} onSelect={() => {
-                    setGroupOverride(g.id);
-                    // trocar de grupo invalida um item selecionado de outro grupo
-                    if (selected && selected.group_id !== g.id) onChange('', '', 0, 'un');
-                    setGroupOpen(false); setGroupSearch('');
-                  }}>
-                    <Check className={cn("mr-2 h-4 w-4", effectiveGroupId === g.id ? "opacity-100" : "opacity-0")} />
-                    <span className="text-sm"><HighlightMatch text={g.name} term={groupSearch} /></span>
-                  </CommandItem>
-                ))}
-                {groupCap.capped && (
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                    {searchRefineHint(groupCap.totalMatched, groupCap.cap)}
-                  </div>
-                )}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-      {/* Passo 2 — Item do grupo (habilita só após escolher o grupo) */}
-      <Popover open={itemOpen} onOpenChange={(o) => { if (o && !effectiveGroupId && !unresolved) return; setItemOpen(o); if (!o) setItemSearch(''); }}>
-        <PopoverTrigger asChild>
-          <Button variant="outline" role="combobox" aria-expanded={itemOpen}
-            disabled={!effectiveGroupId && !unresolved}
-            className={cn(
-              'mt-1 h-9 w-full justify-between text-sm font-normal',
-              unresolved && 'border-amber-500/60 text-amber-800 dark:text-amber-300',
-            )}
-          >
-            <span className="truncate">{itemTriggerLabel}</span>
-            <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[350px] p-0" align="start">
-          <Command shouldFilter={false} label="Buscar item por nome, SKU ou cor...">
+          <Command shouldFilter={false} label="Buscar item por nome, SKU, cor ou grupo...">
             <SearchLocatorStrip
               label="Localizar item"
               matchedCount={itemCap.totalMatched}
-              totalCount={itemsOfGroup.length}
-              hasQuery={!!itemSearch.trim()}
+              totalCount={activeItems.length}
+              hasQuery={!!search.trim()}
             />
-            <CommandInput placeholder="Buscar item por nome, SKU ou cor..." value={itemSearch} onValueChange={setItemSearch} />
+            <CommandInput
+              placeholder="Buscar item por nome, SKU, cor ou grupo..."
+              value={search}
+              onValueChange={setSearch}
+            />
             <CommandList>
               <CommandEmpty>
-                {itemSearch ? (
+                {search ? (
                   <span className="flex flex-col items-center gap-2">
-                    <span>Nenhum resultado para "{itemSearch}"</span>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setItemSearch('')}>Limpar busca</Button>
+                    <span>Nenhum resultado para "{search}"</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setSearch('')}>Limpar busca</Button>
                   </span>
                 ) : (
-                  'Nenhum item ativo nesse grupo.'
+                  'Nenhum item ativo no estoque.'
                 )}
               </CommandEmpty>
-              <CommandGroup heading="Itens do grupo">
+              <CommandGroup heading="Itens (SKU)">
                 {itemCap.visible.map((p: any) => (
-                  <CommandItem key={p.id} value={p.id} onSelect={() => { onChange(p.id, p.name, Number(p.unit_price || 0), (p.unit || 'un').toString().trim() || 'un'); setItemOpen(false); setItemSearch(''); }}>
-                    <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
-                    <div className="flex flex-col">
+                  <CommandItem
+                    key={p.id}
+                    value={p.id}
+                    onSelect={() => {
+                      const unit = (p.unit || '').toString().trim();
+                      onChange(p.id, p.name, Number(p.unit_price || 0), unit);
+                      setOpen(false);
+                      setSearch('');
+                    }}
+                  >
+                    <Check className={cn('mr-2 h-4 w-4', value === p.id ? 'opacity-100' : 'opacity-0')} />
+                    <div className="flex min-w-0 flex-col">
                       <span className="text-sm">
-                        <HighlightMatch text={`${p.name}${p.color ? ` (${p.color})` : ''}`} term={itemSearch} />
-                        <span className="text-xs text-muted-foreground font-mono ml-1">[{p.unit || 'un'}]</span>
+                        <HighlightMatch text={`${p.name}${p.color ? ` (${p.color})` : ''}`} term={search} />
+                        {p.unit ? (
+                          <span className="text-xs text-muted-foreground font-mono ml-1">[{p.unit}]</span>
+                        ) : null}
                       </span>
-                      {p.sku && <span className="text-xs text-muted-foreground font-mono"><HighlightMatch text={p.sku} term={itemSearch} /></span>}
+                      {p.groupName ? (
+                        <span className="text-[11px] text-muted-foreground">
+                          <HighlightMatch text={p.groupName} term={search} />
+                        </span>
+                      ) : null}
+                      {p.sku ? (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          <HighlightMatch text={p.sku} term={search} />
+                        </span>
+                      ) : null}
                     </div>
                   </CommandItem>
                 ))}

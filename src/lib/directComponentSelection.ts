@@ -2,7 +2,7 @@
  * Rótulo honesto do seletor de componente direto quando o product_id da ficha
  * não está na lista de produtos ATIVOS (inativo ou apagado).
  *
- * Sem isto o DirectComponentSelect mostra "Selecionar grupo…" em branco enquanto
+ * Sem isto o DirectComponentSelect mostra "Selecionar item…" em branco enquanto
  * o motor SQL ainda emite a linha no consumo (JOIN em products sem filtro active).
  */
 export type DirectComponentResolveStatus = 'ok' | 'inactive' | 'missing';

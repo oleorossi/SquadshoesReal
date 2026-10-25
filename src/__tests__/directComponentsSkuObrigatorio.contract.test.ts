@@ -33,6 +33,19 @@ describe('directComponentsSkuObrigatorio.contract', () => {
     expect(sheets).toContain('component_colors_enabled = false');
   });
 
+  it('Componentes: seletor flat de SKU + unidade viva do item', () => {
+    const select = readFileSync('src/components/technical-sheets/sheetSelectors.tsx', 'utf8');
+    const fn = select.split('export function DirectComponentSelect')[1]?.split('export function DirectComponentGroupSelect')[0] ?? '';
+    expect(fn).toContain('Localizar item');
+    expect(fn).toContain('Selecionar item...');
+    expect(fn).not.toContain('Localizar grupo');
+    expect(fn).not.toContain('1) Selecionar grupo');
+    expect(sheets).toContain('directComponentDisplayUnit');
+    expect(sheets).toContain('A unidade da quantidade vem do cadastro do item');
+    expect(helpers).toContain("unit: null");
+    expect(helpers).toMatch(/Escolha o item \(SKU\) antes de salvar/);
+  });
+
   it('helpers exigem UUID de product_id', () => {
     expect(helpers).toContain('validateDirectComponentsForSave');
     expect(helpers).toContain('isValidDirectComponentProductId');

@@ -18,7 +18,7 @@ export interface DirectComponentLine {
   consumption_sector?: string | null;
 }
 
-/** Linha nova: espera product_id antes do save. */
+/** Linha nova: espera product_id antes do save. Sem SKU não há unidade honesta. */
 export function emptyDirectComponentLine(): DirectComponentLine {
   return {
     group_id: null,
@@ -26,7 +26,7 @@ export function emptyDirectComponentLine(): DirectComponentLine {
     product_id: null,
     product_name: null,
     quantity: 1,
-    unit: 'un',
+    unit: null,
     unit_price: 0,
     consumption_sector: 'Aviamento',
   };
@@ -72,7 +72,7 @@ export function validateDirectComponentsForSave(
     const label =
       String(line?.group_name || line?.product_name || '').trim() ||
       `Componente ${i + 1}`;
-    return `“${label}” precisa do item (SKU) final para débito em estoque. Escolha o grupo e o item antes de salvar.`;
+    return `“${label}” precisa do item (SKU) final para débito em estoque. Escolha o item (SKU) antes de salvar.`;
   }
   return null;
 }

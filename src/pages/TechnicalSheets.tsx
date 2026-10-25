@@ -136,7 +136,12 @@ import TechnicalStrapMaterialPolicyEditor from '@/components/technical-sheets/Te
 import TechnicalStrapSourceEditor from '@/components/technical-sheets/TechnicalStrapSourceEditor';
 import { referenceStrapBaseGroups } from '@/lib/referenceStrapBaseGroups';
 import { CONSUMPTION_SECTORS, normalizeDirectComponentSectors } from '@/lib/consumptionSector';
-import { refreshDirectComponentLabels, type DirectComponentLabelLike } from '@/lib/directComponentLabel';
+import {
+  directComponentDisplayUnit,
+  refreshDirectComponentLabels,
+  type DirectComponentLabelLike,
+  type LiveProductLabelLike,
+} from '@/lib/directComponentLabel';
 
 import { useShoeCategories } from '@/hooks/useShoeCategories';
 import { SHOE_CATEGORIES } from '@/lib/shoeCategories';
@@ -1785,6 +1790,34 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheet.id, sheet.updated_at]);
 
+  // Catálogo vivo pra COMPONENTES: nome, unidade e grupo — o JSONB é snapshot.
+  const directComponentLiveProducts = useMemo((): LiveProductLabelLike[] => {
+    return (products || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      unit: p.unit,
+      group_id: p.group_id,
+      groupName:
+        p.product_groups?.name
+        || (groups || []).find((g: any) => g.id === p.group_id)?.name
+        || null,
+    }));
+  }, [products, groups]);
+
+  // Auto-heal ao abrir/editar: unit/nome/grupo defasados alinhados ao estoque.
+  // Não marca dirty — o próximo Salvar (também chama refresh) persiste.
+  React.useEffect(() => {
+    if (!directComponentLiveProducts.length) return;
+    setForm((current) => {
+      const next = refreshDirectComponentLabels(
+        (current.direct_components || []) as DirectComponentLabelLike[],
+        directComponentLiveProducts,
+      );
+      if (next === current.direct_components) return current;
+      return { ...current, direct_components: next };
+    });
+  }, [directComponentLiveProducts, sheet.id, sheet.updated_at]);
+
   // Grade de tamanhos do solado com conjugações aplicadas (ex: 23/24 vira
   // 1 entrada em vez de 23 + 24). Bug visto em 19/05/2026: tabela "Consumo
   // por Numeração" só listava individuais, então consumo dos conjugados
@@ -2115,15 +2148,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
       // Cinto-e-suspensório: garante que production_sectors/aviamento_steps
       // jamais saem pelo save geral (escrita exclusiva do ProductionSectorsTab).
       const { production_sectors: _ps, aviamento_steps: _as, ...payload } = form as any;
-      // O rótulo gravado é snapshot e envelhece quando o produto é renomeado no
-      // estoque (ver src/lib/directComponentLabel.ts). Realinhar no save deixa a
-      // classe de bug auto-curável: a ficha para de exibir um nome que o consumo
-      // não usa. Só o texto muda — product_id, quantidade e preço ficam.
+      // Snapshot de COMPONENTES envelhece (nome, unit, grupo). Realinhar no
+      // save ao catálogo vivo — product_id, quantidade e unit_price ficam.
       payload.direct_components = refreshDirectComponentLabels(
         normalizeDirectComponentSectors(
           (payload.direct_components || []) as DirectComponentLabelLike[],
         ),
-        products,
+        directComponentLiveProducts,
       );
       const directComponentsError = validateDirectComponentsForSave(
         payload.direct_components as Parameters<typeof validateDirectComponentsForSave>[0],
@@ -3998,31 +4029,36 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Componentes</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Componentes avulsos (ABS, fivelas, ilhós…). Escolha o <strong className="text-foreground">grupo</strong> e o{' '}
+                Componentes avulsos (ABS, fivelas, ilhós…). Escolha o{' '}
                 <strong className="text-foreground">item (SKU)</strong> — o débito usa exatamente esse produto.
+                A unidade da quantidade vem do cadastro do item.
               </p>
 
               {(form.direct_components || []).map((comp: any, idx: number) => {
-                const unit = (comp.unit || 'un').toString().trim() || 'un';
+                const live = directComponentLiveProducts.find((p) => p.id === comp.product_id);
+                const unit = directComponentDisplayUnit(comp, live);
                 return (
                 <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end border-l-2 border-green-400/30 pl-3">
                   <DirectComponentSelect
                     label={`Componente ${idx + 1}`}
                     value={comp.product_id || ''}
-                    fallbackLabel={comp.product_name || comp.group_name || ''}
+                    fallbackLabel={comp.product_name || ''}
+                    fallbackGroupLabel={comp.group_name || ''}
                     onChange={(pid, pname, price, pUnit) => {
                       const prod = (products || []).find((p: any) => p.id === pid);
                       const gid = prod?.group_id || null;
                       const gname = (groups || []).find((g: any) => g.id === gid)?.name
+                        || prod?.product_groups?.name
                         || prod?.groupName
                         || null;
+                      const liveUnit = (pUnit || prod?.unit || '').toString().trim() || null;
                       const arr = [...(form.direct_components || [])];
                       arr[idx] = {
                         ...arr[idx],
                         product_id: pid,
                         product_name: pname,
                         unit_price: price,
-                        unit: pUnit || unit,
+                        unit: liveUnit,
                         group_id: gid,
                         group_name: gname,
                       };
@@ -4031,13 +4067,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   />
                   <div>
                     <Label className="text-xs text-muted-foreground">
-                      Qtd por par <span className="font-mono">({unit})</span>
+                      Qtd por par
+                      {unit ? <span className="font-mono"> ({unit})</span> : null}
                     </Label>
                     <NumberInput value={comp.quantity || 0} onChange={v => {
                       const arr = [...(form.direct_components || [])];
                       arr[idx] = { ...arr[idx], quantity: v };
                       updateField('direct_components', arr);
-                    }} className="mt-1 h-9 text-sm" placeholder="0" step={unit === 'un' ? '1' : '0.01'} />
+                    }} className="mt-1 h-9 text-sm" placeholder="0" step={!unit || unit === 'un' ? '1' : '0.01'} />
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">Setor de consumo</Label>

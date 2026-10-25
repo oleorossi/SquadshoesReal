@@ -52,6 +52,7 @@ describe('dc_inactive_blank_ui_20270101022700 — inativo também', () => {
     expect(select).toContain('resolveDirectComponentSelection');
     expect(select).toContain('active.eq.true,id.eq.');
     expect(select).toContain('fallbackLabel');
+    expect(select).toContain('Selecionar item...');
   });
 });
 

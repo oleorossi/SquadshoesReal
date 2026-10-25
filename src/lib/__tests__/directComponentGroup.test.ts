@@ -13,6 +13,7 @@ describe('directComponentGroup', () => {
     const line = emptyDirectComponentLine();
     expect(line.product_id).toBeNull();
     expect(line.group_id).toBeNull();
+    expect(line.unit).toBeNull();
     expect(line.consumption_sector).toBe('Aviamento');
   });
 
@@ -31,6 +32,12 @@ describe('directComponentGroup', () => {
     expect(validateDirectComponentsForSave([
       { group_id: 'g1', group_name: 'ELÁSTICO SARJA', product_id: null, quantity: 1 },
     ])).toMatch(/ELÁSTICO SARJA/);
+    expect(validateDirectComponentsForSave([
+      { group_name: 'ELÁSTICO SARJA', product_id: null, quantity: 1 },
+    ])).toMatch(/item \(SKU\)/);
+    expect(validateDirectComponentsForSave([
+      { group_name: 'ELÁSTICO SARJA', product_id: null, quantity: 1 },
+    ])).not.toMatch(/grupo e o item/);
   });
 
   it('directComponentProductIds lista só UUIDs', () => {
