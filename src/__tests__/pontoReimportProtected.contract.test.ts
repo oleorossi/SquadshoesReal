@@ -7,6 +7,10 @@ const SQL = readFileSync(
   resolve(ROOT, 'supabase/migrations/20270101044600_ponto-reimport-protected.sql'),
   'utf8',
 );
+const AUDIT_ACTIONS_SQL = readFileSync(
+  resolve(ROOT, 'supabase/migrations/20270101045000_ponto-reimport-audit-actions.sql'),
+  'utf8',
+);
 
 describe('ponto reimport_protected migration contract', () => {
   it('adiciona coluna e protege punches no import', () => {
@@ -28,5 +32,23 @@ describe('ponto reimport_protected migration contract', () => {
     expect(SQL).toContain("length(v_reason) < 4");
     expect(SQL).toContain("tp.status = 'fechado'");
     expect(SQL).toContain('GRANT EXECUTE ON FUNCTION public.set_time_record_reimport_protection');
+    expect(SQL).toContain("'reimport_protect'");
+    expect(SQL).toContain("'reimport_unlock'");
+  });
+
+  it('CHECK de weekly_balance_audit_log.action aceita protect/unlock de reimport', () => {
+    expect(AUDIT_ACTIONS_SQL).toContain('weekly_balance_audit_log_action_check');
+    expect(AUDIT_ACTIONS_SQL).toContain("'reimport_protect'::text");
+    expect(AUDIT_ACTIONS_SQL).toContain("'reimport_unlock'::text");
+    for (const kept of [
+      "'snapshot'::text",
+      "'unlock'::text",
+      "'retroactive_edit'::text",
+      "'retroactive_insert'::text",
+      "'retroactive_delete'::text",
+      "'recompute'::text",
+    ]) {
+      expect(AUDIT_ACTIONS_SQL).toContain(kept);
+    }
   });
 });
