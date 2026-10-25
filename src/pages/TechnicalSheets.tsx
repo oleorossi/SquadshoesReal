@@ -1792,16 +1792,20 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
 
   // Catálogo vivo pra COMPONENTES: nome, unidade e grupo — o JSONB é snapshot.
   const directComponentLiveProducts = useMemo((): LiveProductLabelLike[] => {
-    return (products || []).map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      unit: p.unit,
-      group_id: p.group_id,
-      groupName:
-        p.product_groups?.name
-        || (groups || []).find((g: any) => g.id === p.group_id)?.name
-        || null,
-    }));
+    return (products || []).map((p) => {
+      const embedName = (p as { product_groups?: { name?: string | null } | null })
+        .product_groups?.name;
+      return {
+        id: p.id,
+        name: p.name,
+        unit: p.unit,
+        group_id: p.group_id,
+        groupName:
+          embedName
+          || (groups || []).find((g) => g.id === p.group_id)?.name
+          || null,
+      };
+    });
   }, [products, groups]);
 
   // Auto-heal ao abrir/editar: unit/nome/grupo defasados alinhados ao estoque.

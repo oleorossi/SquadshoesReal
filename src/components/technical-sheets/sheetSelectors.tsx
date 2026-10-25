@@ -813,6 +813,19 @@ export function SoleProductSelect({ label, value, onChange }: { label: string; v
   );
 }
 
+type DirectComponentProductRow = {
+  id: string;
+  name: string;
+  sku?: string | null;
+  unit_price?: number | null;
+  unit?: string | null;
+  color?: string | null;
+  group_id?: string | null;
+  active?: boolean | null;
+  product_groups?: { name?: string | null } | null;
+  groupName: string;
+};
+
 export function DirectComponentSelect({
   label,
   value,
@@ -832,7 +845,7 @@ export function DirectComponentSelect({
     // Inclui o value atual mesmo inativo: senão a ficha mostra "Selecionar item…"
     // em branco enquanto o SQL ainda debita o SKU (JOIN sem filtro active).
     queryKey: ['products_direct_components_all', value || null],
-    queryFn: async () => {
+    queryFn: async (): Promise<DirectComponentProductRow[]> => {
       // Trazemos tudo que está ativo (+ o product_id já pinado na ficha, mesmo
       // inativo). Solados/cabedais/forrações/palmilhas/tiras têm os próprios
       // seletores em outras seções, mas acessórios (e elásticos) entram aqui —
@@ -846,8 +859,16 @@ export function DirectComponentSelect({
         : q.eq('active', true);
       const { data, error } = await q;
       if (error) throw error;
-      return (data || []).map((p: any) => ({
-        ...p,
+      return (data || []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        unit_price: p.unit_price,
+        unit: p.unit,
+        color: p.color,
+        group_id: p.group_id,
+        active: p.active,
+        product_groups: p.product_groups,
         groupName: (p.product_groups?.name || '').toString(),
       }));
     },
@@ -855,11 +876,11 @@ export function DirectComponentSelect({
 
   // Um seletor só de SKU: débito já exige product_id; o grupo é metadado derivado.
   const activeItems = useMemo(
-    () => (products as any[]).filter((p: any) => p.active !== false),
+    () => products.filter((p) => p.active !== false),
     [products],
   );
 
-  const selected = (products as any[]).find((p: any) => p.id === value);
+  const selected = products.find((p) => p.id === value);
   const resolve = resolveDirectComponentSelection({
     value,
     selected,
@@ -958,7 +979,7 @@ export function DirectComponentSelect({
                 )}
               </CommandEmpty>
               <CommandGroup heading="Itens (SKU)">
-                {itemCap.visible.map((p: any) => (
+                {itemCap.visible.map((p) => (
                   <CommandItem
                     key={p.id}
                     value={p.id}
