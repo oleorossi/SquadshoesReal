@@ -36,11 +36,15 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
 // calendário (20261019103116, 20261019104100, 20261019122236,
 // 20261019122505; os dois últimos espelham o canônico 20270101044000/44001
 // de rendimento por geometria). Baseline remediado medindo o banco vivo.
+// Em 25/10/2026 o gate voltou a falhar com "esperado 2308, encontrado 2306":
+// dois carimbos MCP de calendário saíram da zona legada (remap para versão
+// canônica pós-corte, ex.: 20261025173108 → 20270101045000). Baseline
+// remediado medindo o banco vivo.
 // Marcadores temporários podem ter qualquer nome descritivo: o contrato do
 // Supabase compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
-  count: 2308,
-  sha256: 'caa9f62ab2a8ca8b6ef1b51863eeb7d80dff283ada1060123e2fd18a1c56132c',
+  count: 2306,
+  sha256: '49fbc06f845628f93317085573b2a5e4cfdfd643ec5c2425346377c9581ccd68',
 });
 
 const MIGRATION_FILE = /^(\d{14})_(.+)\.sql$/;
