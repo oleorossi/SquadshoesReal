@@ -191,9 +191,9 @@ interface ForceProductionCommandResponse {
 export default function SaleOrders() {
   const { data: orders = [], isLoading, isError, error } = useSaleOrders();
   const { data: allSaleItems = [] } = useSaleOrderAllItems();
-  // Só PVs ativos: os terminais (Faturado/Finalizado s/ NF/Cancelado) nunca chegam a
-  // ser marcados como inviáveis, então pagar compute_min_billing_date por eles é puro
-  // desperdício. Mesmo predicado usado em `activeCount` e no cálculo de `isInfeasible`.
+  // Só PVs ativos: terminais (Faturado/Expedido/Concluído/Finalizado s/ NF/Cancelado)
+  // nunca são inviáveis — pagar compute_min_billing_date por eles é desperdício.
+  // Mesmo predicado usado em `activeCount` e no cálculo de `isInfeasible`.
   const activeSaleOrderIds = useMemo(
     () => orders
       .filter(o => !TERMINAL_BILLED_STATUSES.includes(o.status) && o.status !== 'Cancelado')

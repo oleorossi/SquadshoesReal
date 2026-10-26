@@ -1,4 +1,8 @@
-import { getValidNextStatuses } from '@/lib/saleOrderStateMachine';
+import {
+  CLOSED_SALE_ORDER_STATUSES,
+  SALE_ORDER_STATUS,
+  getValidNextStatuses,
+} from '@/lib/saleOrderStateMachine';
 import { parseDateOnly } from '@/lib/dateOnly';
 
 export const STATUS_OPTIONS = [
@@ -76,7 +80,15 @@ export const STATUS_BAND: Record<string, string> = {
   Cancelado: 'bg-destructive/5',
 };
 
-export const TERMINAL_BILLED_STATUSES = ['Faturado', 'Finalizado s/ NF'];
+/**
+ * Aba "Faturados / Sem NF" (+ overdue/inviável/contagens de ativos).
+ * Formal: Faturado → Expedido → Concluído. Informal: Finalizado s/ NF.
+ * Cancelado tem aba própria — fica fora desta lista.
+ * Fonte: CLOSED_SALE_ORDER_STATUSES (state machine), sem Cancelado.
+ */
+export const TERMINAL_BILLED_STATUSES: readonly string[] = CLOSED_SALE_ORDER_STATUSES.filter(
+  (s) => s !== SALE_ORDER_STATUS.CANCELADO,
+);
 
 /** Fundo rosa-claro do número do PV infantil — mesmo tom das fichas impressas
  *  (`InfantilTag` #FCE7F3). `dark:` na mesma linha pra passar o check:tokens. */
