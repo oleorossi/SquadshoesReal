@@ -114,7 +114,9 @@ describe('Corte Forração — sem foto, refs em destaque', () => {
     );
     const declared = Array.from(container.querySelectorAll<HTMLElement>('[data-rigid-width]'))
       .map(el => Number(el.dataset.rigidWidth));
-    expect(Math.max(...declared)).toBeGreaterThan(650);
+    // TallyBox declara ×0.92 da geometria teórica (libera grow além de ~×1.04).
+    // Piso ~600: ainda trava vazamento real; teto = coluna A4 (~733).
+    expect(Math.max(...declared)).toBeGreaterThan(600);
     expect(Math.max(...declared)).toBeLessThan(733);
   });
 });
