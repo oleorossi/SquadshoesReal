@@ -9,8 +9,10 @@ import {
 
 function employee(partial: Partial<Employee> & Pick<Employee, 'id' | 'name'>): Employee {
   return {
+    id: partial.id,
+    name: partial.name,
     cpf: '',
-    external_id: null as any,
+    external_id: '',
     role: '',
     department: '',
     salary: 0,
@@ -26,13 +28,19 @@ function employee(partial: Partial<Employee> & Pick<Employee, 'id' | 'name'>): E
     daily_rate: 0,
     valor_par_medio: 0,
     valor_par_dificil: 0,
+    hourly_rate: null,
+    overtime_hourly_rate: null,
+    overtime_multiplier: 1,
+    overtime_50_pct: 0,
+    overtime_100_pct: 0,
+    night_bonus_pct: 0,
     he_normal_rate: null,
     he_sunday_holiday_rate: null,
     work_schedule_id: null,
     created_at: '',
     updated_at: '',
     ...partial,
-  } as Employee;
+  };
 }
 
 describe('explainEmployeeMatchFailure', () => {
