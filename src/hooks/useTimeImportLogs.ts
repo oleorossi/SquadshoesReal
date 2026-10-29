@@ -200,11 +200,16 @@ export function useTimeImportQuarantineHistory() {
   });
 }
 
+export type ResolveTimeImportQuarantineInput =
+  | string
+  | { quarantineId: string; silent?: boolean };
+
 export function useResolveTimeImportQuarantine() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async (quarantineId: string) => {
+    mutationFn: async (input: ResolveTimeImportQuarantineInput) => {
+      const quarantineId = typeof input === 'string' ? input : input.quarantineId;
       // A resolução é intencionalmente atômica no banco. Não substituir esta
       // RPC por UPDATE/DELETE direto na quarentena ou em time_records.
       const { data, error } = await timeImportQuarantineDb.rpc(
@@ -219,7 +224,7 @@ export function useResolveTimeImportQuarantine() {
       }
       return result;
     },
-    onSuccess: (result) => {
+    onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ['time_import_quarantine'] });
       qc.invalidateQueries({ queryKey: ['time_import_quarantine_history'] });
       qc.invalidateQueries({ queryKey: ['time_import_logs'] });
@@ -228,13 +233,18 @@ export function useResolveTimeImportQuarantine() {
       qc.invalidateQueries({ queryKey: ['payroll-comp-records'] });
       qc.invalidateQueries({ queryKey: ['payroll_runs'] });
 
+      const silent = typeof input === 'object' && input.silent;
+      if (silent) return;
+
       toast.success(
         result.idempotent
           ? 'Esta pendência já havia sido resolvida. Os dados foram atualizados.'
           : 'Pendência resolvida. O ponto e os cálculos da folha serão atualizados.',
       );
     },
-    onError: (error: unknown) => {
+    onError: (error: unknown, input) => {
+      const silent = typeof input === 'object' && input.silent;
+      if (silent) return;
       toast.error(`Não foi possível resolver a pendência: ${getErrorMessage(error)}`);
     },
   });

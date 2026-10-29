@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Plus, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2, Phone, ChatCircle as MessageCircle, CurrencyDollar as DollarSign, Users as Users2, MagnifyingGlass as Search, CheckCircle as CheckCircle2, UserCheck, UserMinus as UserX, Buildings as Building2, Warning as AlertTriangle, Wallet, ClockCounterClockwise as History, ArrowRight } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
@@ -38,10 +39,12 @@ import { normalizeEmployeeEmploymentState } from '@/lib/employeeEmployment';
 // Folha por hora: o que importa do cadastro é nome, matrícula, salário-referência
 // (220h/mês) e contato/PIX. HE/escala/mensalista-diarista foram aposentados (as
 // colunas ainda existem no banco, só não são mais editadas aqui).
+// Admissão NÃO nasce com "hoje": default = hoje fazia ficha nova bloquear
+// batidas históricas do mesmo crachá na importação de ponto (caso KAROLINE).
 const emptyEmployee = {
   name: '', cpf: '', external_id: '', role: '', department: '', salary: 0,
   phone: '', whatsapp: '', pix_key: '', pix_type: '', notes: '', active: true,
-  admission_date: new Date().toISOString().split('T')[0], termination_date: null as string | null,
+  admission_date: '', termination_date: null as string | null,
   payment_type: 'mensalista' as Employee['payment_type'],
   daily_rate: 0,
   valor_par_medio: 0,
@@ -69,16 +72,80 @@ export default function Employees() {
   // Aceita ?q= na URL — a busca global navega pra cá com ?q=<termo>.
   // ?q= REATIVO: o ⌘K navega pra /rh?tab=funcionarios&q=<nome> e a página não
   // remonta quando já se está no RH (AppLayout keia só por pathname).
-  const [searchParams] = useSearchParams();
+  // Deep-links do ponto: ?edit=<uuid> abre a ficha; ?new=1&external_id=&name=
+  // abre criação pré-preenchida (admissão continua obrigatória e vazia).
+  const [searchParams, setSearchParams] = useSearchParams();
   const urlQ = searchParams.get('q') || '';
+  const urlEdit = searchParams.get('edit') || '';
+  const urlNew = searchParams.get('new') === '1';
+  const urlExternalId = searchParams.get('external_id') || '';
+  const urlName = searchParams.get('name') || '';
   const [search, setSearch] = useState(urlQ);
   useEffect(() => { if (urlQ) setSearch(urlQ); }, [urlQ]);
+  const deepLinkHandled = useRef<string>('');
   const [statusFilter, setStatusFilter] = usePersistedState<'all' | 'active' | 'inactive'>('emp-status-filter', 'active');
   const [deptFilter, setDeptFilter] = usePersistedState('emp-dept-filter', 'all');
   const [paymentFilter, setPaymentFilter] = usePersistedState('emp-payment-filter', 'all');
   const [setupFilter, setSetupFilter] = usePersistedState('emp-setup-filter', 'all');
   // Sub-abas da página Funcionários: cadastro + Adiantamentos (movido da Folha em 2026-06-28).
   const [subTab, setSubTab] = usePersistedState('rh-func-subtab', 'funcionarios');
+
+  useEffect(() => {
+    const key = `${urlEdit}|${urlNew ? '1' : '0'}|${urlExternalId}|${urlName}`;
+    if (!urlEdit && !urlNew) {
+      deepLinkHandled.current = '';
+      return;
+    }
+    if (deepLinkHandled.current === key) return;
+
+    const clearDeepLinkParams = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('edit');
+      next.delete('new');
+      next.delete('external_id');
+      next.delete('name');
+      setSearchParams(next, { replace: true });
+    };
+
+    if (urlEdit) {
+      if (isLoading) return;
+      const target = employees.find(employee => employee.id === urlEdit);
+      deepLinkHandled.current = key;
+      if (!target) {
+        toast.error('Funcionário do atalho não foi encontrado.');
+        clearDeepLinkParams();
+        return;
+      }
+      setSubTab('funcionarios');
+      setEditing(target);
+      setForm({
+        ...emptyEmployee,
+        ...target,
+        admission_date: target.admission_date || '',
+        termination_date: target.termination_date ?? null,
+      });
+      setDialogOpen(true);
+      clearDeepLinkParams();
+      return;
+    }
+
+    if (urlNew) {
+      deepLinkHandled.current = key;
+      setSubTab('funcionarios');
+      setEditing(null);
+      setForm({
+        ...emptyEmployee,
+        name: urlName,
+        external_id: urlExternalId,
+        admission_date: '',
+      });
+      setDialogOpen(true);
+      clearDeepLinkParams();
+    }
+  }, [
+    urlEdit, urlNew, urlExternalId, urlName, employees, isLoading,
+    searchParams, setSearchParams, setSubTab,
+  ]);
 
   // Filtra null/undefined/'' E strings só com whitespace — Radix Select
   // crasha se algum SelectItem.value for string vazia ou só espaços.
@@ -191,6 +258,10 @@ export default function Employees() {
   };
 
   const handleSave = () => {
+    if (!String(form.admission_date || '').trim()) {
+      toast.error('Informe a data de admissão. Sem ela, batidas do relógio não vinculam à folha.');
+      return;
+    }
     // A3 da auditoria 2026-05-28: warn em demissão retroativa.
     // Marcar termination_date no passado pode quebrar cálculo de saldo de
     // funcionários que já tiveram batidas importadas após essa data.
@@ -560,7 +631,20 @@ export default function Employees() {
             <div className="section-label mt-2 border-b border-border pb-2 sm:col-span-2">02 · Vínculo de trabalho</div>
             <div><Label>Cargo</Label><Input value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} /></div>
             <div><SectorSelectField value={form.department} onChange={onSectorChange} /></div>
-            <div><Label>Admissão</Label><Input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} /></div>
+            <div>
+              <Label>Admissão *</Label>
+              <Input
+                type="date"
+                required
+                value={form.admission_date}
+                onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))}
+              />
+              {!form.admission_date && (
+                <p className="mt-1 text-xs text-warning">
+                  Obrigatória. Batidas anteriores à admissão ficam em quarentena e não entram na folha.
+                </p>
+              )}
+            </div>
             <div>
               <Label>Demissão</Label>
               <Input

@@ -1,7 +1,7 @@
 import AdjustmentWorkspace from '@/components/timesheet/AdjustmentWorkspace';
 import ImportHistoryPanel from '@/components/timesheet/ImportHistoryPanel';
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Clock, Upload, Plus, Trash as Trash2, CircleNotch as Loader2, Calendar, Gear as Settings2, Warning as AlertTriangle, FileXls as FileSpreadsheet, CaretDown as ChevronDown, Sun, Moon, Coffee, CheckCircle as CheckCircle2, XCircle, MinusCircle, Printer, Users as Users2, CurrencyDollar as DollarSign, Link as Link2, FileText, Clipboard as ClipboardEdit, Alarm as AlarmClock, ClockCounterClockwise as History, Wallet, ArrowsLeftRight, Archive as ArchiveBox } from '@phosphor-icons/react';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,13 @@ import {
 import { useEmployees } from '@/hooks/useEmployees';
 import { useAbsences } from '@/hooks/useRH';
 import { computePeriodFolha, SALARY_HOUR_DIVISOR } from '@/lib/salaryPayroll';
-import { findEmployeeMatch, resolveEmployeeName } from '@/lib/employeeMatching';
+import {
+  explainEmployeeMatchFailure,
+  findEmployeeMatch,
+  pessoasEditHref,
+  pessoasNewHref,
+  resolveEmployeeName,
+} from '@/lib/employeeMatching';
 import { expandAbsenceDatesByEmployee, resolveHolidaysForPayrollRange } from '@/lib/ponto/periodDates';
 import {
   buildSystemTimesheetAssessment,
@@ -1365,23 +1371,52 @@ function TimesheetRecordsTab() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="text-xs">Nome no Arquivo (sem vínculo)</TableHead>
-                        <TableHead className="text-xs">Status</TableHead>
+                        <TableHead className="text-xs">Motivo</TableHead>
+                        <TableHead className="text-xs">Ação</TableHead>
                         <TableHead className="text-xs text-right">Dias</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {unmatchedEmps.map(({ employee, unresolvedRecords }) => (
-                        <TableRow key={employee.externalId || employee.name}>
-                          <TableCell className="text-sm py-1.5">
-                            {employee.name}
-                            {employee.externalId && <span className="text-muted-foreground ml-1 text-xs">(ID: {employee.externalId})</span>}
-                          </TableCell>
-                          <TableCell className="py-1.5 text-xs text-muted-foreground">
-                            Será preservado em quarentena e não entrará na folha.
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm py-1.5">{unresolvedRecords.length}</TableCell>
-                        </TableRow>
-                      ))}
+                      {unmatchedEmps.map(({ employee, unresolvedRecords }) => {
+                        const sampleDate = unresolvedRecords[0]?.dateStr
+                          || resolveTimesheetRecordDate(
+                            unresolvedRecords[0]?.day,
+                            preview.startDate,
+                            preview.endDate,
+                          );
+                        const failure = explainEmployeeMatchFailure(
+                          employees,
+                          employee.name,
+                          employee.externalId,
+                          { recordDate: sampleDate, allowNameFallback: false },
+                        );
+                        const editId = failure?.employeeId || failure?.candidates?.[0]?.id;
+                        const pessoasHref = editId
+                          ? pessoasEditHref(editId)
+                          : pessoasNewHref({
+                            externalId: employee.externalId,
+                            name: employee.name,
+                          });
+                        return (
+                          <TableRow key={employee.externalId || employee.name}>
+                            <TableCell className="text-sm py-1.5">
+                              {employee.name}
+                              {employee.externalId && <span className="text-muted-foreground ml-1 text-xs">(ID: {employee.externalId})</span>}
+                            </TableCell>
+                            <TableCell className="py-1.5 text-xs text-muted-foreground max-w-md">
+                              {failure?.message || 'Será preservado em quarentena e não entrará na folha.'}
+                            </TableCell>
+                            <TableCell className="py-1.5">
+                              <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+                                <Link to={pessoasHref}>
+                                  {editId ? 'Abrir cadastro' : 'Cadastrar em Pessoas'}
+                                </Link>
+                              </Button>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm py-1.5">{unresolvedRecords.length}</TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

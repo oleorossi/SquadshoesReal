@@ -194,6 +194,12 @@ describe('arquivo permanente das importações do relógio de ponto', () => {
     expect(PAGE).toContain('irão para quarentena');
     expect(PAGE).toContain('unmatchedRecordCount >= importableRecordCount');
     expect(IMPORT_HOOK).toContain('unmatched: unmatchedCount');
+    expect(PAGE).toContain('explainEmployeeMatchFailure');
+    expect(PAGE).toContain('pessoasEditHref');
+    expect(PAGE).toContain('Cadastrar em Pessoas');
+    expect(HISTORY_PANEL).toContain('Resolver todas desta matrícula');
+    expect(HISTORY_PANEL).toContain('resolveBatchForMatricula');
+    expect(HISTORY_PANEL).toContain('silent: true');
   });
 
   it('não oferece lote de arquivo como filtro operacional', () => {

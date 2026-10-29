@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ImportHistoryPanel from './ImportHistoryPanel';
 
@@ -31,7 +32,7 @@ vi.mock('@/hooks/useTimeImportLogs', () => ({
       department: 'Costura',
       record_date: '2026-08-20',
       punches: ['08:00', '18:00'],
-      reason: 'Matrícula não vinculada a uma ficha vigente.',
+      reason: 'Nenhuma ficha com ID do relógio MAT-404. Cadastre em Pessoas com essa matrícula.',
       created_at: '2026-08-21T12:00:00Z',
       resolution_status: 'pending',
       resolution_reason: null,
@@ -69,6 +70,7 @@ vi.mock('@/hooks/useTimeImportLogs', () => ({
   }),
   useResolveTimeImportQuarantine: () => ({
     mutate: mocks.resolve,
+    mutateAsync: mocks.resolve,
     isPending: mocks.resolvePending,
     variables: mocks.resolveVariables,
   }),
@@ -79,12 +81,21 @@ vi.mock('@/hooks/useTimeImportLogs', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useEmployees', () => ({
+  useEmployees: () => ({ data: [], isLoading: false, isError: false }),
+}));
+
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    warning: vi.fn(),
   },
 }));
+
+function renderPanel(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 const SAMPLE_LOG = {
   id: 'log-1',
@@ -119,7 +130,7 @@ describe('ImportHistoryPanel — arquivo original (auditoria)', () => {
   });
 
   it('no modo judicial destaca download do original e esconde a fila operacional', async () => {
-    render(<ImportHistoryPanel judicialFocus />);
+    renderPanel(<ImportHistoryPanel judicialFocus />);
 
     expect(screen.getByText(/uso em auditoria ou processo/i)).toBeInTheDocument();
     expect(screen.getByText(/Protocolo: ID-2026-03-ponto/i)).toBeInTheDocument();
@@ -132,7 +143,7 @@ describe('ImportHistoryPanel — arquivo original (auditoria)', () => {
   });
 
   it('filtra pelo período coberto pelo arquivo e limpa o filtro', () => {
-    render(<ImportHistoryPanel judicialFocus />);
+    renderPanel(<ImportHistoryPanel judicialFocus />);
 
     fireEvent.change(screen.getByLabelText('Data inicial'), {
       target: { value: '2026-04-01' },
@@ -160,7 +171,7 @@ describe('ImportHistoryPanel — quarentena de importação', () => {
   });
 
   it('preserva e classifica uma linha externa somente com justificativa', () => {
-    render(<ImportHistoryPanel />);
+    renderPanel(<ImportHistoryPanel />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Não pertence ao quadro' }));
     const confirmation = screen.getByRole('alertdialog');
@@ -181,13 +192,17 @@ describe('ImportHistoryPanel — quarentena de importação', () => {
   });
 
   it('lista matrícula, nome, data e motivo e exige confirmação para resolver', () => {
-    render(<ImportHistoryPanel />);
+    renderPanel(<ImportHistoryPanel />);
 
     expect(screen.getByText('Pendências de vínculo da importação')).toBeInTheDocument();
     expect(screen.getByText('MAT-404')).toBeInTheDocument();
     expect(screen.getByText('Maria Sem Vínculo')).toBeInTheDocument();
     expect(screen.getByText('20/08/2026')).toBeInTheDocument();
-    expect(screen.getByText('Matrícula não vinculada a uma ficha vigente.')).toBeInTheDocument();
+    expect(screen.getByText(/Nenhuma ficha com ID do relógio MAT-404/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cadastrar em Pessoas' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/rh?tab=funcionarios&new=1&external_id=MAT-404&name='),
+    );
     expect(screen.getByText('Histórico de vínculos e classificações')).toBeInTheDocument();
     expect(screen.getByText('Crachá de teste do relógio')).toBeInTheDocument();
 
@@ -208,7 +223,7 @@ describe('ImportHistoryPanel — quarentena de importação', () => {
     mocks.resolvePending = true;
     mocks.resolveVariables = 'quarantine-1';
 
-    render(<ImportHistoryPanel />);
+    renderPanel(<ImportHistoryPanel />);
 
     const resolving = screen.getByRole('button', { name: 'Resolvendo…' });
     expect(resolving).toBeDisabled();

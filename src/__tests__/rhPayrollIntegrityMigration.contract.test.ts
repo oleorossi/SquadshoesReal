@@ -8,6 +8,7 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 const POINT = read('supabase/migrations/20270101013400_integridade_importacao_ponto.sql');
 const PAYROLL = read('supabase/migrations/20270101013500_integridade_adiantamentos_folha_pagamentos.sql');
 const IDENTITY = read('supabase/migrations/20270101013600_identidade_canonica_pendencias_ponto.sql');
+const QUARANTINE_REASON = read('supabase/migrations/20270101045100_ponto-quarantine-reason-especifica.sql');
 
 describe('integridade transacional do ponto e da folha', () => {
   it('promove cada fronteira de RH em uma transação explícita no db push', () => {
@@ -64,6 +65,14 @@ describe('integridade transacional do ponto e da folha', () => {
     expect(POINT).toContain('Este protocolo já foi finalizado com outro payload');
     expect(POINT).toContain('public.time_import_quarantine');
     expect(POINT).toContain("Matrícula sem uma única ficha vigente na data");
+    // Motivo específico vive na migration 45100 (não reescrever o histórico 13400).
+    expect(QUARANTINE_REASON).toContain('CREATE OR REPLACE FUNCTION public.explain_time_import_match_failure');
+    expect(QUARANTINE_REASON).toContain('Nenhuma ficha com ID do relógio');
+    expect(QUARANTINE_REASON).toContain('mas a ficha não está vigente em');
+    expect(QUARANTINE_REASON).toContain('public.explain_time_import_match_failure(');
+    expect(QUARANTINE_REASON).toContain('tg_enrich_time_import_quarantine_reason');
+    expect(QUARANTINE_REASON).toContain('trg_enrich_time_import_quarantine_reason');
+    expect(QUARANTINE_REASON).toContain('CREATE OR REPLACE FUNCTION public.import_time_records_with_archive');
     expect(POINT).toContain("current_setting('app.timesheet_log_finalize', true)");
     expect(POINT).toContain("o.bucket_id = 'timesheet-imports'");
     expect(POINT).toContain('o.owner_id::text = v_log.imported_by::text');

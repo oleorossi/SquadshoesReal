@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Archive as ArchiveBox,
   ArrowsClockwise as RefreshCw,
@@ -32,6 +33,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { PeriodRangeFilter } from '@/components/hr/PeriodRangeFilter';
+import { useEmployees } from '@/hooks/useEmployees';
 import {
   downloadImportFile,
   TimeImportLog,
@@ -42,6 +44,11 @@ import {
   useTimeImportQuarantine,
   useTimeImportQuarantineHistory,
 } from '@/hooks/useTimeImportLogs';
+import {
+  explainEmployeeMatchFailure,
+  pessoasEditHref,
+  pessoasNewHref,
+} from '@/lib/employeeMatching';
 import { importLogOverlapsPeriod } from '@/lib/ponto/importArchive';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 
@@ -126,6 +133,7 @@ const coverageBadge = (log: TimeImportLog) => {
 
 export default function ImportHistoryPanel({ judicialFocus = false }: ImportHistoryPanelProps) {
   const { data: logs = [], isLoading, refetch, isFetching } = useTimeImportLogs();
+  const { data: employees = [] } = useEmployees();
   const {
     data: quarantine = [],
     error: quarantineError,
@@ -144,11 +152,58 @@ export default function ImportHistoryPanel({ judicialFocus = false }: ImportHist
   const dismissQuarantine = useDismissTimeImportQuarantine();
   const [selected, setSelected] = useState<TimeImportLog | null>(null);
   const [resolutionTarget, setResolutionTarget] = useState<TimeImportQuarantineEntry | null>(null);
+  const [batchExternalId, setBatchExternalId] = useState<string | null>(null);
+  const [batchResolving, setBatchResolving] = useState(false);
   const [dismissTarget, setDismissTarget] = useState<TimeImportQuarantineEntry | null>(null);
   const [dismissReason, setDismissReason] = useState('');
   const [search, setSearch] = useState('');
   const [periodFilter, setPeriodFilter] = useState<{ from: string; to: string }>({ from: '', to: '' });
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const quarantineByMatricula = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of quarantine) {
+      const key = entry.employee_external_id || '';
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }, [quarantine]);
+
+  const batchTargets = useMemo(() => {
+    if (!batchExternalId) return [];
+    return quarantine.filter(entry => entry.employee_external_id === batchExternalId);
+  }, [batchExternalId, quarantine]);
+
+  const resolveBatchForMatricula = async (externalId: string) => {
+    const targets = quarantine.filter(entry => entry.employee_external_id === externalId);
+    if (targets.length === 0) return;
+    setBatchResolving(true);
+    let ok = 0;
+    let fail = 0;
+    let lastError = '';
+    for (const entry of targets) {
+      try {
+        await resolveQuarantine.mutateAsync({ quarantineId: entry.id, silent: true });
+        ok += 1;
+      } catch (error) {
+        fail += 1;
+        lastError = getErrorMessage(error);
+      }
+    }
+    setBatchResolving(false);
+    setBatchExternalId(null);
+    if (fail === 0) {
+      toast.success(
+        ok === 1
+          ? '1 pendência da matrícula foi resolvida.'
+          : `${ok} pendências da matrícula ${externalId} foram resolvidas.`,
+      );
+    } else if (ok === 0) {
+      toast.error(`Nenhuma pendência da matrícula ${externalId} foi resolvida: ${lastError}`);
+    } else {
+      toast.warning(`${ok} resolvida(s), ${fail} ainda pendente(s) na matrícula ${externalId}. ${lastError}`);
+    }
+  };
 
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
@@ -310,10 +365,32 @@ export default function ImportHistoryPanel({ judicialFocus = false }: ImportHist
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {quarantine.map(entry => {
-                    const isResolving = resolveQuarantine.isPending && resolveQuarantine.variables === entry.id;
+                  {quarantine.map((entry, index) => {
+                    const resolveVars = resolveQuarantine.variables;
+                    const resolvingId = typeof resolveVars === 'string'
+                      ? resolveVars
+                      : resolveVars?.quarantineId;
+                    const isResolving = resolveQuarantine.isPending && resolvingId === entry.id;
                     const isDismissing = dismissQuarantine.isPending
                       && dismissQuarantine.variables?.quarantineId === entry.id;
+                    const matriculaCount = quarantineByMatricula.get(entry.employee_external_id) || 0;
+                    const firstOfMatricula = quarantine.findIndex(
+                      item => item.employee_external_id === entry.employee_external_id,
+                    ) === index;
+                    const failure = explainEmployeeMatchFailure(
+                      employees,
+                      entry.employee_name || '',
+                      entry.employee_external_id,
+                      { recordDate: entry.record_date, allowNameFallback: false },
+                    );
+                    const editId = failure?.employeeId || failure?.candidates?.[0]?.id;
+                    const pessoasHref = editId
+                      ? pessoasEditHref(editId)
+                      : pessoasNewHref({
+                        externalId: entry.employee_external_id,
+                        name: entry.employee_name,
+                      });
+                    const busy = resolveQuarantine.isPending || dismissQuarantine.isPending || batchResolving;
                     return (
                       <TableRow key={entry.id}>
                         <TableCell className="whitespace-nowrap font-mono text-sm font-semibold">{entry.employee_external_id}</TableCell>
@@ -322,24 +399,42 @@ export default function ImportHistoryPanel({ judicialFocus = false }: ImportHist
                           {entry.department && <p className="text-xs text-muted-foreground">{entry.department}</p>}
                         </TableCell>
                         <TableCell className="whitespace-nowrap font-mono text-xs">{fmtDateOnly(entry.record_date)}</TableCell>
-                        <TableCell className="min-w-64 text-sm text-muted-foreground">{entry.reason}</TableCell>
+                        <TableCell className="min-w-64 text-sm text-muted-foreground">
+                          {entry.reason || failure?.message || 'Sem motivo registrado.'}
+                        </TableCell>
                         <TableCell>
-                          <div className="flex justify-end gap-1.5">
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                          <Button asChild size="sm" variant="outline" className="gap-1.5">
+                            <Link to={pessoasHref}>
+                              {editId ? 'Abrir cadastro' : 'Cadastrar em Pessoas'}
+                            </Link>
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             className="gap-1.5"
-                            disabled={resolveQuarantine.isPending || dismissQuarantine.isPending}
+                            disabled={busy}
                             onClick={() => setResolutionTarget(entry)}
                           >
                             {isResolving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                             {isResolving ? 'Resolvendo…' : 'Tentar resolver'}
                           </Button>
+                          {firstOfMatricula && matriculaCount > 1 && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="gap-1.5"
+                              disabled={busy}
+                              onClick={() => setBatchExternalId(entry.employee_external_id)}
+                            >
+                              Resolver todas desta matrícula ({matriculaCount})
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="ghost"
                             className="gap-1.5 text-destructive hover:text-destructive"
-                            disabled={resolveQuarantine.isPending || dismissQuarantine.isPending}
+                            disabled={busy}
                             onClick={() => {
                               setDismissReason('');
                               setDismissTarget(entry);
@@ -550,9 +645,9 @@ export default function ImportHistoryPanel({ judicialFocus = false }: ImportHist
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={resolveQuarantine.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={resolveQuarantine.isPending || batchResolving}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              disabled={!resolutionTarget || resolveQuarantine.isPending}
+              disabled={!resolutionTarget || resolveQuarantine.isPending || batchResolving}
               onClick={event => {
                 event.preventDefault();
                 if (!resolutionTarget) return;
@@ -563,6 +658,40 @@ export default function ImportHistoryPanel({ judicialFocus = false }: ImportHist
             >
               {resolveQuarantine.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
               {resolveQuarantine.isPending ? 'Resolvendo…' : 'Confirmar tentativa'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!batchExternalId}
+        onOpenChange={open => {
+          if (!open && !batchResolving) setBatchExternalId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resolver todas desta matrícula?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Serão reavaliadas{' '}
+              <span className="font-semibold text-foreground">{batchTargets.length}</span>{' '}
+              pendência(s) da matrícula{' '}
+              <span className="font-mono font-semibold text-foreground">{batchExternalId}</span>{' '}
+              com o cadastro atual de Pessoas. Linhas que ainda não tiverem ficha vigente permanecem na lista.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchResolving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!batchExternalId || batchResolving || batchTargets.length === 0}
+              onClick={event => {
+                event.preventDefault();
+                if (!batchExternalId) return;
+                void resolveBatchForMatricula(batchExternalId);
+              }}
+            >
+              {batchResolving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              {batchResolving ? 'Resolvendo lote…' : `Resolver ${batchTargets.length} pendência(s)`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
