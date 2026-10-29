@@ -2,7 +2,7 @@ import React from 'react';
 import { SignedImage } from '@/components/ui/signed-image';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
 import { sheetHasSector } from '@/lib/sectors';
-import { adaptiveTableFont } from './worksheet/adaptiveFont';
+import { adaptiveTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
 import { normalizePageIdentity } from './worksheet/pageIdentity';
 
@@ -723,6 +723,9 @@ export const ManagementReport = ({ saleOrders, orders, date, sectorLabel }: Prop
       sectorLabel={sectorLabel || 'Relatório Gerencial'}
       pageIdentity={pageIdentity}
       blocks={blocks}
+      // Grade típica do gerencial (~12 cols): piso tipográfico impede shrink
+      // agressivo sob o body 10pt quando o auto-fit tenta economizar folha.
+      minScale={floorSafeScale(adaptiveTableFont(12))}
       pageStyle={{ fontFamily: "'Fira Sans', 'Inter', system-ui, sans-serif", fontSize: '10pt' }}
     />
   );

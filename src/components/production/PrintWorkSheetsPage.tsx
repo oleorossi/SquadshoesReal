@@ -22,6 +22,7 @@ import {
   CARTAO_FISICO_PER_PAGE,
   chunkPages,
   isCartaoFisicoEmitter,
+  sumFardoRemainderPairs,
   type CartaoFisicoCard,
 } from '@/lib/cartaoFisico';
 import {
@@ -133,7 +134,7 @@ function printableOperatorStraps(
 /**
  * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
  *
- * Cartões ~97,3mm em A4 PAISAGEM: 3 colunas × 4 linhas = 12 por folha.
+ * Cartões em A4 PAISAGEM: até 15 por folha (`CARTAO_FISICO_PER_PAGE`).
  * Padding 1,5mm + gap 1mm enchem a área útil (297×210) sem sobra ociosa.
  *
  * Por que ≥93mm: a grade de 7 numerações precisa disso pra sair legível
@@ -1262,7 +1263,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       }
       await printHtmlAsPdf(serializeForPdf(area, 'Fichas de Produção'), {
         filename: `fichas-${new Date().toISOString().slice(0, 10)}`,
-        title: 'Fichas',
+        title: isCartao ? 'Fardo' : isCaixa ? 'Caixa' : 'Fichas',
+        landscape: isCartao || isCaixa,
         target: printTabRef.current,
       });
     } finally {
@@ -3604,9 +3606,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   }, [printOrders, saleOrders, clientsInfo, resolveSoleForOrder, soleGroupPackaging, orderStagesData, activeSectors, variantsByRef, tsImageByRef, sheetMaterialsByRef, silkRegistrations, economicGroupsInfo, sheetById, liningFlagLookup, reportVariantById, reportGroupsById, needsRelatorio]);
 
   // ── Fardo (cartão físico): 1 por corrugado cheio × OP × setor emissor ─────
-  const cartaoFisicoCards = useMemo((): CartaoFisicoCard[] => {
-    if (!isCartao) return [];
+  const { cartaoFisicoCards, fardoRemainderPairs } = useMemo((): {
+    cartaoFisicoCards: CartaoFisicoCard[];
+    fardoRemainderPairs: number;
+  } => {
+    if (!isCartao) return { cartaoFisicoCards: [], fardoRemainderPairs: 0 };
     const out: CartaoFisicoCard[] = [];
+    let remainder = 0;
     for (const sector of CARTAO_FISICO_EMITTERS) {
       if (!activeSectors.has(sector)) continue;
       const inputs = printOrders.map((order: any) => {
@@ -3658,17 +3664,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           eligible,
         };
       });
-      out.push(...buildCartaoFisicoCards({
+      const args = {
         sectorName: sector,
         sectorDisplayLabel: sectorLabel(sector),
         orders: inputs,
-      }));
+      };
+      out.push(...buildCartaoFisicoCards(args));
+      remainder += sumFardoRemainderPairs(args);
     }
-    return assignBatchCounters(out);
+    return { cartaoFisicoCards: assignBatchCounters(out), fardoRemainderPairs: remainder };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCartao, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder, clientNameByPv]);
 
-  // Chunk sequencial: folhas de 12 na ordem de leitura (k/N sobe na mesma folha).
+  // Chunk sequencial: folhas de até 15 na ordem de leitura (k/N sobe na mesma folha).
   const cartaoFisicoPages = useMemo(
     () => chunkPages(cartaoFisicoCards, CARTAO_FISICO_PER_PAGE),
     [cartaoFisicoCards],
@@ -3891,9 +3899,11 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       ? 'Fardo'
       : 'Fichas de operador';
   const headerSubtitle = isCaixa
-    ? 'Caixa de transporte por OP — corrugados cheios agrupados (parcial incluso).'
+    ? 'Caixa de transporte por OP — até 6 cartões por A4 paisagem (parcial incluso).'
     : isCartao
-      ? 'Um cartão por corrugado cheio (12/15/18), por OP — acompanha o fardo na saída do setor.'
+      ? (fardoRemainderPairs > 0
+        ? `Um cartão por corrugado cheio (12/15/18), por OP. ${fardoRemainderPairs.toLocaleString('pt-BR')} par${fardoRemainderPairs === 1 ? '' : 'es'} de sobra sem cartão.`
+        : 'Um cartão por corrugado cheio (12/15/18), por OP — acompanha o fardo na saída do setor.')
       : 'Revise a rota e o conteúdo antes de emitir o arquivo.';
   const countLabel = (isCartao || isCaixa) ? 'CARTÕES' : 'FICHAS';
 
@@ -4038,22 +4048,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
               {effectiveReverseOutput && <Check className="h-3.5 w-3.5" weight="bold" />}
             </button>
 
-            {coarsePointer ? (
-              <Button
-                onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
-                className="gap-2"
-                disabled={printBlocked || preparingNativePrint || generatingPdf}
-                title={printBlockedTitle || 'Gera um PDF padronizado no servidor, indicado para celular e tablet.'}
-              >
-                {generatingPdf || initialQueriesLoading || (!skipConsumptionGate && consumptionLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                Gerar PDF
-              </Button>
-            ) : (
+            {!coarsePointer && (
               <Button
                 variant="outline"
                 onClick={() => { void printInBrowser(); }}
                 className="gap-2"
-                disabled={printBlocked || preparingNativePrint}
+                disabled={printBlocked || preparingNativePrint || generatingPdf}
                 title={printBlockedTitle || 'Abre o diálogo do navegador. Você pode imprimir ou escolher “Salvar como PDF”.'}
               >
                 {preparingNativePrint || initialQueriesLoading || (!skipConsumptionGate && consumptionLoading)
@@ -4062,6 +4062,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 Imprimir
               </Button>
             )}
+            <Button
+              onClick={() => { printTabRef.current = openPrintTab(); void printWith(); }}
+              className="gap-2"
+              disabled={printBlocked || preparingNativePrint || generatingPdf}
+              title={printBlockedTitle || (coarsePointer
+                ? 'Gera um PDF padronizado no servidor, indicado para celular e tablet.'
+                : 'Gera o mesmo PDF do servidor Chromium (idêntico ao do celular). Preferível ao “Salvar como PDF” do Chrome.')}
+            >
+              {generatingPdf || initialQueriesLoading || (!skipConsumptionGate && consumptionLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Gerar PDF
+            </Button>
           </div>
         </div>
 
@@ -4289,7 +4300,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
           </div>
         ))}
 
-        {/* Caixa de transporte — 2 por A4 paisagem; parcial incluso. */}
+        {/* Caixa de transporte — 6 por A4 paisagem; parcial incluso. */}
         {isCaixa && cartaoCaixaPagesInRange.map((pageCards, pageIdx) => (
           <div key={`caixa-page-${pageRange.from - 1 + pageIdx}`} className="caixa-page">
             {pageCards.map((card) => (

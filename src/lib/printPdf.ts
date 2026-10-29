@@ -167,6 +167,15 @@ export function printJobWaitHtml(jobId: string, accessToken: string): string {
  */
 export const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
 
+/** Mensagem acionável quando o HTML estoura o teto da Vercel (~4MB). */
+export function documentTooLargeMessage(bytes: number): string {
+  const mb = (bytes / 1024 / 1024).toFixed(1);
+  return (
+    `Documento grande demais pra gerar de uma vez (${mb}MB). ` +
+    `Imprima em partes: desmarque setores na barra, ou use a faixa De/Até de folhas.`
+  );
+}
+
 export interface PrintPdfOptions {
   /** Nome do arquivo, sem extensão (ex.: 'etiquetas-PV-00151'). */
   filename: string;
@@ -379,10 +388,7 @@ async function printHtmlAsPdfIos(html: string, opts: PrintPdfOptions): Promise<b
 
   const size = new Blob([html]).size;
   if (size > MAX_DOCUMENT_BYTES) {
-    const mb = (size / 1024 / 1024).toFixed(1);
-    const msg =
-      `Documento grande demais pra gerar de uma vez (${mb}MB). ` +
-      `Imprima em partes — por exemplo, menos setores ou menos OPs por vez.`;
+    const msg = documentTooLargeMessage(size);
     toast.error(msg, { duration: 12_000 });
     return false;
   }
@@ -446,10 +452,7 @@ export async function printHtmlAsPdf(html: string, opts: PrintPdfOptions): Promi
 
   const bytes = new Blob([html]).size;
   if (bytes > MAX_DOCUMENT_BYTES) {
-    const mb = (bytes / 1024 / 1024).toFixed(1);
-    const msg =
-      `Documento grande demais pra gerar de uma vez (${mb}MB). ` +
-      `Imprima em partes — por exemplo, menos setores ou menos OPs por vez.`;
+    const msg = documentTooLargeMessage(bytes);
     toast.error(msg, { duration: 12_000 });
     avisarNaAba(tab, msg);
     return false;

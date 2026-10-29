@@ -5,10 +5,12 @@ import {
   CARTAO_FISICO_EMITTERS,
   CARTAO_FISICO_PER_PAGE,
   countFullCorrugados,
+  countRemainderPairs,
   gradeForOneCorrugado,
   isCartaoFisicoEmitter,
   layoutCutStack,
   layoutCutStackPages,
+  sumFardoRemainderPairs,
 } from '@/lib/cartaoFisico';
 
 describe('cartaoFisico', () => {
@@ -39,6 +41,21 @@ describe('cartaoFisico', () => {
     expect(countFullCorrugados(11, 12)).toBe(0);
     expect(countFullCorrugados(36, 18)).toBe(2);
     expect(countFullCorrugados(0, 12)).toBe(0);
+  });
+
+  it('countRemainderPairs / sumFardoRemainderPairs expõem a sobra sem cartão', () => {
+    expect(countRemainderPairs(26, 12)).toBe(2);
+    expect(countRemainderPairs(24, 12)).toBe(0);
+    expect(countRemainderPairs(11, 12)).toBe(11);
+    const base = { '35': 2, '36': 2, '37': 2, '38': 2, '39': 2, '40': 2 };
+    expect(sumFardoRemainderPairs({
+      sectorName: 'Corte Cabedal',
+      orders: [{
+        opNumber: 'OP-01001',
+        totalPairs: 26,
+        grid: base,
+      }],
+    })).toBe(2);
   });
 
   it('OP 26 pares / curva 12 → 2 cartões (não 3)', () => {

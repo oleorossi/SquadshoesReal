@@ -202,7 +202,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             const groupSizes = palmilhaGroupSizes(allSizes, group);
             // Fontes adaptativas pela qtd de colunas (2026-06-12) — grades
             // densas (mista infantil+adulto) cortavam com fonte fixa.
-            const ft = gradeTableFont(groupSizes, true);
+            const ft = gradeTableFont(groupSizes, false);
             // Fix 22/05/2026: tirar keep-together do groupBlock root.
             // Grupos consolidados (insoleColor === '—') agregam 6+ sandálias
             // e 213 caixinhas de tally = 380mm de altura, IMPOSSÍVEL caber
@@ -541,7 +541,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = groups.reduce((mx, g) => Math.max(mx,
-    floorSafeScale(gradeTableFont(palmilhaGroupSizes(allSizes, g), true))), 0);
+    floorSafeScale(gradeTableFont(palmilhaGroupSizes(allSizes, g), false))), 0);
   return (
     <PaginatedSheet
       sectorLabel={sectorLabel || 'Corte de Placa de Fibra'}

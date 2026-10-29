@@ -315,10 +315,18 @@ fragmentação por um paginador determinístico.
    explícita de cada `PaginatedSheet` já tinha `break-after: auto`
    (`.pagi-page:last-child`), então o wrapper era o único forçando a folha.
    ⚠ A folha de emenda contém DOIS setores, que vão pra bancadas diferentes —
-   por isso `.page-break + .page-break::before` imprime a linha
-   "✂ CORTAR AQUI · MUDA DE SETOR". Ela é **obrigatória, não decorativa**: é por
-   ela que a separação divide a folha compartilhada. Fica FORA do `@media print`
-   (regra WYSIWYG §0.2-1 + a emenda precisa ser visível no preview).
+   por isso `SectorJoinCutLine` (`worksheet/printContinuity.tsx`) imprime a linha
+   "✂ CORTAR AQUI · MUDA DE SETOR" **in-flow** (portal na sobra do maço anterior,
+   ou `forcePageBreak` no topo do maço seguinte quando a sobra não coube). O
+   antigo `.page-break + .page-break::before` foi removido em 23/09/2026 — ficava
+   DEPOIS da caixa A4 e parecia meia folha vazia. A linha é **obrigatória, não
+   decorativa**: é por ela que a separação divide a folha compartilhada. Fica
+   FORA do `@media print` (regra WYSIWYG §0.2-1 + a emenda precisa ser visível no
+   preview).
+   ⚠ **Inverter saída** (default da fábrica) e continuidade in-flow são
+   mutuamente exclusivas no emit: sob reverse o portal desliga e cada maço fecha
+   folha (`forcePageBreak` + `break-after: page` no last). Preview (reverse off)
+   continua fluindo.
    **Custo aceito pelo dono:** um passo manual de tesoura na separação, e o
    conteúdo de um maço pode ser fragmentado pelo browser na virada da folha (os
    blocos internos são `.keep-together`, então a quebra cai ENTRE blocos).

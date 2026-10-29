@@ -551,10 +551,10 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     const knifeGridMismatch = usingBuckets && displayedSum !== (cg.totalPairs || 0);
     const showCortadoMark = sector === 'Corte Forração' || sector === 'Corte Cabedal' || sector === 'Costura Cabedal';
     // Fontes adaptativas pela qtd de colunas (2026-06-12): grade mista
-    // (16+ numerações) cortava as células com fonte fixa. A.3 (multi-setor):
-    // SEMPRE dense — mesmo degrau do layout compacto — **sem** ligar
-    // theme.compact (isso apagaria Frente/Traseira, silk, peças a costurar…).
-    const ft = gradeTableFont(activeSizes, true);
+    // (16+ numerações) cortava as células com fonte fixa. Dense SÓ no layout
+    // compacto (2 cores/A4); layout completo usa o bucket natural — densidade
+    // vem de matar espaço morto, não de fonte menor permanente.
+    const ft = gradeTableFont(activeSizes, theme.compact);
     // Range de numerações de cada faca (P → "34-37") sob o rótulo no cabeçalho
     // quando agrupando por faca (Corte Cabedal). Contíguo vira "34-37"; senão
     // lista "34·36". Vazio quando não há range pra a faca.
@@ -1700,7 +1700,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             cabedalThumbs.length,
             IMG,
             completeSizes,
-            gradeTableFont(completeSizes, true),
+            gradeTableFont(completeSizes, false),
             completeDigits,
             A4_CONTENT_WIDTH_PX - 16,
           );
@@ -1941,7 +1941,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     data-rigid-width={
                       cabedalThumbs.length * IMG
                       + Math.max(0, cabedalThumbs.length - 1) * SIDE_BY_SIDE_GAP_PX
-                      + gradeMinWidthPx(completeSizes, gradeTableFont(completeSizes, true), completeDigits)
+                      + gradeMinWidthPx(completeSizes, gradeTableFont(completeSizes, false), completeDigits)
                     }
                   >
                     <div className="shrink-0">{cabedalThumbStrip}</div>
@@ -2069,10 +2069,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // o quanto o PaginatedSheet pode encolher sem furar os pisos tipográficos.
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
-  // A.3: grade sempre dense (mesmo bucket do compacto) — o piso tem que
-  // refletir isso, senão o auto-fit encolhe otimista demais.
+  // Piso espelha o bucket realmente desenhado (dense só se theme.compact).
   const minScale = groups.reduce((mx, g) => g.colorGroups.reduce((m2, cg) => Math.max(m2,
-    floorSafeScale(gradeTableFont(gradeSizesOf(cg, sector), true))), mx), 0);
+    floorSafeScale(gradeTableFont(gradeSizesOf(cg, sector), theme.compact))), mx), 0);
   return (
     <PaginatedSheet
       sectorLabel={sectorLabel || sector}

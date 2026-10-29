@@ -179,7 +179,7 @@ export function PalmilhaUnifiedWorkSheet({
         grade: card.grade,
         baseGrade: card.baseGrade,
       });
-      const ft = gradeTableFont(groupSizes, true);
+      const ft = gradeTableFont(groupSizes, false);
       const grpBgs = card.baseGradeSum ?? 0;
       const grpNf = card.fichas ?? 0;
       const tallyPerCard = grpBgs > 0 ? grpBgs : pairsPerCard;
@@ -587,7 +587,7 @@ export function PalmilhaUnifiedWorkSheet({
 
   const minScale = allCards.reduce((acc, c) => Math.max(
     acc,
-    floorSafeScale(gradeTableFont(palmilhaGroupSizes(allSizes, c), true)),
+    floorSafeScale(gradeTableFont(palmilhaGroupSizes(allSizes, c), false)),
   ), 0);
 
   return (

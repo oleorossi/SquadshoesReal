@@ -181,3 +181,25 @@ export function trailingRemainderPx(
   if (rem < MIN_CONTINUATION_PX) return 0;
   return rem;
 }
+
+/**
+ * O pack com `leadingUsed` de fato colocou conteúdo na sobra do maço anterior?
+ * Quando o 1º bloco não cabe no restante, `packBlocks` zera o cursor e abre
+ * folha cheia — aí NÃO se deve portalizar (senão enfia página inteira na sobra).
+ */
+export function leadingPackSucceeded(
+  firstPageBlockIdxs: readonly number[],
+  heights: readonly number[],
+  scale: number,
+  capacity: number,
+  gap: number,
+  printInflate: number,
+  leadingUsed: number,
+  flow = false,
+): boolean {
+  if (leadingUsed <= 0 || flow || firstPageBlockIdxs.length === 0) return false;
+  const content = computePackedContentPxInflated(
+    firstPageBlockIdxs, heights, scale, gap, printInflate,
+  );
+  return content + leadingUsed <= capacity + 0.5;
+}

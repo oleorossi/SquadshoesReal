@@ -43,6 +43,14 @@ export function countFullCorrugados(totalPairs: number, corrugado: number): numb
   return Math.floor(total / box);
 }
 
+/** Pares que sobram sem cartão (resto do floor). Spec: sobra sem cartão. */
+export function countRemainderPairs(totalPairs: number, corrugado: number): number {
+  const total = Number(totalPairs) || 0;
+  const box = Number(corrugado) || 0;
+  if (total <= 0 || box <= 0) return 0;
+  return total % box;
+}
+
 export interface CartaoFisicoOrderInput {
   opNumber: string;
   pvLabel?: string | null;
@@ -206,6 +214,23 @@ export function buildCartaoFisicoCards(args: BuildCartaoFisicoCardsArgs): Cartao
   }
 
   return cards;
+}
+
+/** Soma dos pares sem cartão (resto) nas mesmas OPs elegíveis do fardo. */
+export function sumFardoRemainderPairs(args: BuildCartaoFisicoCardsArgs): number {
+  const { sectorName, orders } = args;
+  if (!isCartaoFisicoEmitter(sectorName)) return 0;
+  let rem = 0;
+  for (const order of orders) {
+    if (order.eligible === false) continue;
+    const opNumber = String(order.opNumber || '').trim();
+    if (!opNumber) continue;
+    const total = Number(order.totalPairs) || 0;
+    if (total <= 0) continue;
+    const resolution = resolveFicha(total, order.grid);
+    rem += countRemainderPairs(total, resolution.corrugado);
+  }
+  return rem;
 }
 
 /**

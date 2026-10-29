@@ -124,7 +124,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
     const bandSizes = solagemBandSizes(allSizes, band);
     // Fontes adaptativas pela qtd de colunas (2026-06-12) — grades densas
     // e chaves conjugadas ("33/34") cortavam com fonte fixa.
-    const ft = gradeTableFont(bandSizes, true);
+    const ft = gradeTableFont(bandSizes, false);
     // A.3: trabalho (header+sandálias+grade) + fechamento (materiais+tally).
     const trabalho = (
       // flow-card (v6): banda pode fragmentar ENTRE seções (header/strip/
@@ -435,7 +435,7 @@ export const SolagemWorkSheet = ({ bands, allSizes, grandTotal, pairsPerCard = 1
   // Sem isto o AUTO_FIT_FLOOR global (0.80) encolhia por cima de fontes que já
   // estavam no piso. Decisão do dono 31/07/2026: legibilidade vence densidade.
   const minScale = bands.reduce((mx, b) => Math.max(mx,
-    floorSafeScale(gradeTableFont(solagemBandSizes(allSizes, b), true))), 0);
+    floorSafeScale(gradeTableFont(solagemBandSizes(allSizes, b), false))), 0);
   return (
     <PaginatedSheet
       sectorLabel={sectorLabel || sector}

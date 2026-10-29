@@ -141,6 +141,29 @@ describe('printHtmlAsPdf — POST de formulário async', () => {
     // A mensagem tem que dizer o que fazer, não só que falhou.
     const msg = String((toast.error as ReturnType<typeof vi.fn>).mock.calls[0][0]);
     expect(msg).toMatch(/partes/i);
+    expect(msg).toMatch(/setores|De\/Até|faixa/i);
+  });
+
+  it('serializeForPdf de Fardo/Caixa preserva @page landscape e classes de página', () => {
+    const host = document.createElement('div');
+    host.className = 'print-area';
+    host.innerHTML = `
+      <style>@page { size: A4 landscape; margin: 0; } .cartao-page { page-break-after: always; } .caixa-page { page-break-after: always; }</style>
+      <div class="cartao-page"><div class="cartao-card">fardo</div></div>
+      <div class="caixa-page"><div class="caixa-card">caixa</div></div>
+    `;
+    document.body.appendChild(host);
+    // collectWorksheetPrintCss lê styleSheets do documento — injeta a regra.
+    const style = document.createElement('style');
+    style.textContent = '@page { size: A4 landscape; margin: 0; } .cartao-page,.caixa-page { break-after: page; }';
+    document.head.appendChild(style);
+    const html = serializeForPdf(host, 'Fardo');
+    expect(html).toMatch(/@page/);
+    expect(html).toMatch(/landscape/i);
+    expect(html).toMatch(/cartao-page/);
+    expect(html).toMatch(/caixa-page/);
+    host.remove();
+    style.remove();
   });
 
   it('avisa na aba quando recusa — senão ela fica parada na mensagem de espera', async () => {

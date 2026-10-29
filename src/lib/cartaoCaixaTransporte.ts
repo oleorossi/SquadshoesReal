@@ -166,7 +166,7 @@ export function buildCartaoCaixaCards(args: BuildCartaoCaixaCardsArgs): CartaoCa
 /** 6 cartões por A4 paisagem (3×2) — densifica sem perder grade/identidade. */
 export const CAIXA_TRANSPORTE_PER_PAGE = 6;
 
-/** Fatia cartões em páginas de até 2 (reusa `chunkPages` do cartão físico). */
+/** Fatia cartões em páginas de até `CAIXA_TRANSPORTE_PER_PAGE` (6 — reusa `chunkPages`). */
 export function chunkCaixaPages<T>(
   items: readonly T[],
   capacity: number = CAIXA_TRANSPORTE_PER_PAGE,

@@ -201,7 +201,8 @@ describe('guard — toda ficha de operador segue a densidade', () => {
     expect(src.includes('group.colorGroups.flatMap')).toBe(true);
     expect(src.includes('fechamentoNode')).toBe(true);
     expect(src.includes('trabalhoNode')).toBe(true);
-    expect(/gradeTableFont\(\s*activeSizes\s*,\s*true\s*\)/.test(src)).toBe(true);
+    // Dense só no theme.compact; layout completo usa bucket natural.
+    expect(/gradeTableFont\(\s*activeSizes\s*,\s*theme\.compact\s*\)/.test(src)).toBe(true);
     // compact continua false no Aviamento (Frente/Traseira).
     expect(src).toMatch(/'Aviamento':\s*\{[^}]*compact:\s*false/s);
   });

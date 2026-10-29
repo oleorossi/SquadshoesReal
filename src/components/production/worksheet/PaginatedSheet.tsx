@@ -5,6 +5,7 @@ import {
   MIN_CONTINUATION_PX,
   SECTOR_JOIN_GAP_PX,
   SectorJoinCutLine,
+  leadingPackSucceeded,
   trailingRemainderPx,
   usePrintContinuity,
 } from './printContinuity';
@@ -387,7 +388,12 @@ export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, m
   const sheetKey = `${sectorLabel}::${sheetInstanceId}`;
   const continuity = usePrintContinuity(sheetKey);
   const sheetRootRef = useRef<HTMLDivElement | null>(null);
-  const continuesOnPriorSheet = continuity.tailRemainderPx >= MIN_CONTINUATION_PX;
+  // Inverter saída (default da fábrica) e continuidade in-flow são mutuamente
+  // exclusivas no emit: o portal usava orderedPages[0], que sob reverse vira a
+  // ÚLTIMA página lógica e embaralha a pilha. Preview (reverse off) continua
+  // fluindo; no beforeprint/PDF cada maço fecha folha própria.
+  const reversePages = useContext(ReversePrintContext);
+  const continuesOnPriorSheet = !reversePages && continuity.tailRemainderPx >= MIN_CONTINUATION_PX;
   // Continuação entre maços: baseline PAGE_CAPACITY_PX (faixa mínima). Se o
   // maço anterior tinha faixa mais alta, o remainder já veio menor — lado
   // seguro (abre folha nova em vez de derramar).
@@ -606,7 +612,7 @@ export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, m
   // não muda com a ordem de emissão. A key é por startPage (identidade da
   // página lógica), não posicional — remount limpo quando a ordem flipa.
   // Faixa De/Até já foi aplicada em `rangedPages` (ordem de leitura).
-  const reversePages = useContext(ReversePrintContext);
+  // `reversePages` já foi lido acima (gateia continuidade × invertida).
   const orderedPages = reversePages ? [...rangedPages].reverse() : rangedPages;
 
   const registerEl = (idx: number) => (el: HTMLDivElement | null) => {
@@ -757,26 +763,55 @@ export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, m
     )
     : 0;
 
-  const firstPagePortaled = !!(continuesOnPriorSheet && continuationMount && orderedPages[0]?.blockIdxs.length);
-  const pagesInOwnSheet = firstPagePortaled ? orderedPages.slice(1) : orderedPages;
-  // Setor seguinte que NÃO coube na sobra: linha de corte no topo do próprio
-  // maço (a emenda in-flow fica no portal). Sem CSS ::before no .page-break —
-  // aquele marcador ficava DEPOIS da caixa A4 de 288mm e parecia meia folha vazia.
+  // Portal SEMPRE usa a 1ª página LÓGICA (`pages[0]` / `rangedPages`), nunca
+  // `orderedPages[0]` — sob reverse orderedPages[0] é a última e embaralha.
+  // Também exige que o pack tenha de fato usado a sobra (`leadingPackSucceeded`).
+  const logicalFirstPage = rangedPages[0] ?? pages[0];
+  const leadingUsedOk = !!(
+    continuesOnPriorSheet
+    && logicalFirstPage
+    && leadingPackSucceeded(
+      logicalFirstPage.blockIdxs,
+      heights,
+      scale,
+      capacityPx,
+      BLOCK_GAP_PX,
+      PRINT_INFLATE,
+      leadingForPack,
+      logicalFirstPage.flow,
+    )
+  );
+  const firstPagePortaled = !!(
+    !reversePages
+    && leadingUsedOk
+    && continuationMount
+    && logicalFirstPage?.blockIdxs.length
+  );
+  const pagesInOwnSheet = firstPagePortaled
+    ? orderedPages.filter(p => p.startPage !== logicalFirstPage.startPage)
+    : orderedPages;
+  // Setor seguinte que NÃO coube na sobra (ou reverse ativo): linha de corte
+  // no topo do próprio maço. Sem CSS ::before no .page-break — aquele marcador
+  // ficava DEPOIS da caixa A4 de 288mm e parecia meia folha vazia.
   const joinCutBeforeOwnPages = continuity.sheetIndex > 0 && !firstPagePortaled
     && pagesInOwnSheet.some(p => p.blockIdxs.length > 0);
 
-  const portaledBlocks = firstPagePortaled && orderedPages[0]
+  const portaledBlocks = firstPagePortaled && logicalFirstPage
     ? createPortal(
       <>
         <SectorJoinCutLine />
-        {orderedPages[0].blockIdxs.map((bi, j) => renderBlock(bi, j, orderedPages[0].blockIdxs.length))}
+        {logicalFirstPage.blockIdxs.map((bi, j) => renderBlock(bi, j, logicalFirstPage.blockIdxs.length))}
       </>,
       continuationMount,
     )
     : null;
 
   return (
-    <div ref={sheetRootRef} className="pagi-sheet" style={{ width: '210mm', margin: '0 auto' }}>
+    <div
+      ref={sheetRootRef}
+      className={`pagi-sheet${reversePages ? ' pagi-sheet--reversed' : ''}`}
+      style={{ width: '210mm', margin: '0 auto' }}
+    >
       {portaledBlocks}
       {joinCutBeforeOwnPages && <SectorJoinCutLine forcePageBreak />}
       {pagesInOwnSheet.map((page) => {
@@ -784,9 +819,14 @@ export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, m
         // Última página lógica do maço NUNCA estica pra 288mm: o vazio residual
         // é onde o próximo setor sobe (printContinuity). Páginas do meio
         // continuam com altura de cartão A4 no preview.
+        // Sob reverse cada maço fecha folha (sem portal) — evita Corte (último
+        // no DOM invertido) colar na sobra do setor emitido antes.
         const isTailPage = isLastLogicalPage(page);
-        const partialPage = !page.flow && (isTailPage || packedPx < capacityPx * 0.97);
-        const offerTailMount = partialPage && isTailPage && tailOfferPx >= MIN_CONTINUATION_PX;
+        const partialPage = !reversePages && !page.flow && (isTailPage || packedPx < capacityPx * 0.97);
+        const offerTailMount = !reversePages && partialPage && isTailPage && tailOfferPx >= MIN_CONTINUATION_PX;
+        const reverseSeal = reversePages && isTailPage
+          ? { breakAfter: 'page' as const, pageBreakAfter: 'always' as const }
+          : null;
         return (
         <div
           key={`pg-${page.startPage}`}
@@ -802,6 +842,7 @@ export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, m
             fontFamily: "'Fira Sans', sans-serif",
             color: '#000',
             ...pageStyle,
+            ...reverseSeal,
           }}
         >
           {renderPageHead(page, page === pagesInOwnSheet[0])}

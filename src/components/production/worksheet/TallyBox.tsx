@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { PAGE_CONTENT_WIDTH_PX } from './pageGeometry';
 
 interface Props {
   /** Quantas fichas a operadora vai produzir. Cada quadrado representa 1 ficha. */
@@ -84,19 +85,18 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // quebra (a linha é atômica) e a folha final só tem o resto real, não um
   // chunk inteiro encalhado. Mesmo mecanismo já provado nos `.flow-card`.
   const gapPx = size === 'sm' ? 2 : 4;
-  // Largura útil conservadora de UMA linha (px @96dpi). A4 = 210mm; descontando
-  // o padding lateral da página (2×8mm) e o padding/borda do card que costuma
-  // envolver o tally (Palmilha/Silk/Aviamento) sobram ~188mm ≈ 710px. O teto
-  // conservador garante que a linha (sem wrap, nº fixo de colunas) NUNCA estoure
-  // na horizontal — seja no tally top-level (Expedição) ou aninhado num card.
-  const ROW_WIDTH_PX = 710;
+  // Largura útil de UMA linha (px @96dpi). Usa a coluna A4 canônica menos
+  // folga de card (~12px) — antes era 710 fixo e o growCeiling parava em ~×1.04
+  // mesmo com meia folha vazia (decisão de densidade: matar espaço morto antes
+  // de reduzir fonte).
+  const ROW_WIDTH_PX = Math.floor(PAGE_CONTENT_WIDTH_PX - 12);
   const rawCols = Math.max(1, Math.floor((ROW_WIDTH_PX + gapPx) / (boxPx + gapPx)));
   // Arredonda PRA BAIXO ao múltiplo de 10 (mín 10) pra alinhar as DEZENAS —
   // cada linha vira N dezenas completas, com divisória a cada 10 + acumulado
   // no fim da linha (melhoria estética 2026-06-30, aprovada). Facilita marcar
   // à caneta sem perder a conta no turno.
   const cols = rawCols >= 10 ? Math.floor(rawCols / 10) * 10 : rawCols;
-  // ── Largura RÍGIDA da linha (2026-08-29) ──
+  // ── Largura RÍGIDA da linha (2026-08-29; suavizada 2026-10) ──
   // `cols` sai de ROW_WIDTH_PX, uma CONSTANTE: a linha não reflui com a largura
   // que realmente tem. Sob o zoom do auto-fit ela é apenas desenhada maior e
   // vaza da folha, sem nada denunciar. Declarando o que ela exige, o
@@ -105,15 +105,19 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // Some, para uma linha CHEIA: as caixinhas, os respiros dentro de cada dezena,
   // as divisórias entre dezenas (paddingRight 2× + marginRight 1× + borda 2px) e
   // o acumulado "← N" no fim (paddingLeft 3× + o próprio texto).
+  //
+  // SOFT 0.92: a geometria teórica já embute folga (+4 e divisórias); declarar
+  // 100% travava o grow em ~×1.04. 8% a menos libera tipografia maior sem
+  // refluir cols (refluir AUMENTA altura — medido).
   const decadeCount = Math.max(1, Math.ceil(cols / 10));
   const accumFontPx = size === 'sm' ? 8 : 9;
   const accumTextPx = (String(count).length + 2) * 0.62 * accumFontPx;
   const rigidWidthPx = Math.ceil(
-    cols * boxPx
+    (cols * boxPx
     + (cols - decadeCount) * gapPx
     + (decadeCount - 1) * (gapPx * 3 + 2)
     + gapPx * 3 + accumTextPx
-    + 4, // folga: o teto tem que errar para o lado seguro
+    + 4) * 0.92,
   );
   const rows: number[][] = [];
   for (let i = 0; i < count; i += cols) {

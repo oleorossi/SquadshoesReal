@@ -375,7 +375,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
         <div className="flow-card" style={{ border: '1.5px solid #000' }}>
           {sizeChunks.map((chunk, ci) => {
             // Fontes adaptativas pela qtd de colunas do chunk (2026-06-12).
-            const ft = gradeTableFont(chunk, true);
+            const ft = gradeTableFont(chunk, false);
             return (
             <table key={ci} className="keep-together w-full text-center" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
@@ -494,7 +494,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     const gradeFit = fitBesideGrade({
       asideWidthPx: OPERATOR_PHOTO_PX,
       sizeKeys: activeSizes.slice(0, colsPerRow),
-      font: gradeTableFont(activeSizes.slice(0, colsPerRow), true),
+      font: gradeTableFont(activeSizes.slice(0, colsPerRow), false),
       maxCellDigits: activeSizes.reduce((m, sz) => Math.max(m, String(scaledGrade[sz] ?? 0).length), 1),
       availableWidthPx: A4_CONTENT_WIDTH_PX,
     });
@@ -786,18 +786,26 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
       />
     ) : null;
 
+    // Trabalho (identidade + grade) + fechamento (operação/tally keepWithPrev):
+    // espelha o split A.3 de Silk/Palmilha/Solagem — o tally deixa de abrir
+    // folha quase vazia quando o card inteiro não cabe no restante.
+    const trabalhoNode = (
+      <>
+        {productInfoBlock}
+        {strapsBlock}
+        {!gradeAoLadoDaFoto && gradeBlock}
+        {groupedOpsBlock}
+      </>
+    );
+
     return [
       // Sub-header do grupo — keepWithNext: nunca fecha página sozinho
       // (título "Pedido N/M" órfão no pé da folha, conteúdo na seguinte).
       { node: subHeaderBlock, keepWithNext: true },
       ...(traceBlock ? [{ node: traceBlock, keepWithNext: true }] : []),
-      ...(silkBlock ? [silkBlock] : []),
-      productInfoBlock,
-      ...(strapsBlock ? [strapsBlock] : []),
-      // Quando a grade subiu para a coluna de dados, não sai também aqui.
-      ...(gradeAoLadoDaFoto ? [] : [gradeBlock]),
-      ...(groupedOpsBlock ? [groupedOpsBlock] : []),
-      operacaoBlock,
+      ...(silkBlock ? [{ node: silkBlock }] : []),
+      { node: trabalhoNode },
+      { node: operacaoBlock, keepWithPrev: true },
     ];
   };
 
@@ -816,7 +824,7 @@ const OperatorWorkSheet = ({ sector, sectorLabel, items, pvNumbers = [], clientN
     // lista de numerações que a tabela desenha.
     const sizes = operatorGradeSizes(it.order.grid || {});
     const cols = sizes.length <= 12 ? sizes.length : 12;
-    return Math.max(mx, floorSafeScale(gradeTableFont(sizes.slice(0, cols), true)));
+    return Math.max(mx, floorSafeScale(gradeTableFont(sizes.slice(0, cols), false)));
   }, 0);
   return (
     <PaginatedSheet
