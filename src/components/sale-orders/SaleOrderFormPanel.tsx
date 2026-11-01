@@ -33,7 +33,7 @@ import {
   saleOrderItemUiKey,
 } from '@/lib/saleOrderItemDensity';
 import { OrderStatusStepper } from '@/components/ui/order-status-stepper';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchClientPriceList, type PriceLookup } from '@/lib/mobile/clientContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -93,6 +93,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ArtisanalStrapEditor } from '@/components/artisanal-straps/ArtisanalStrapEditor';
+import {
+  listOrderBuyReadyStrapGaps,
+  strapLineIsPvBuyReadyChoice,
+  strapLineWantsBuyReady,
+  type OrderBuyReadyStrapGap,
+} from '@/lib/buyReadyStrapGap';
+import { setStrapSourcing } from '@/lib/strapSourcing';
+import type { ArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
+import { useArtisanalStrapCatalogDiagnostics } from '@/hooks/useArtisanalStraps';
 
 
 interface Client {
@@ -965,6 +976,36 @@ export default function SaleOrderFormPanel({
    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
    const [duplicateList, setDuplicateList] = useState<string[]>([]);
    const [confirmedDuplicate, setConfirmedDuplicate] = useState(false);
+   const [buyReadyBlockGaps, setBuyReadyBlockGaps] = useState<OrderBuyReadyStrapGap[]>([]);
+   const [showBuyReadyGapDialog, setShowBuyReadyGapDialog] = useState(false);
+   const [buyReadyCadastroTarget, setBuyReadyCadastroTarget] = useState<OrderBuyReadyStrapGap | null>(null);
+   const queryClient = useQueryClient();
+   const typedStrapCatalog = sharedStrapCatalog as ArtisanalStrapCatalog | undefined;
+   const needsBuyReadyDiagnostics = useMemo(
+     () => items.some((item) => (item.strap_colors || []).some((strap) => (
+       strapLineWantsBuyReady(strap) || strapLineIsPvBuyReadyChoice(strap)
+     ))),
+     [items],
+   );
+   const { data: orderStrapCatalogDiagnostics } = useArtisanalStrapCatalogDiagnostics(
+     needsBuyReadyDiagnostics && !!typedStrapCatalog?.capabilities.manage_strap_catalog,
+   );
+   const referenceCodeById = useMemo(() => {
+     const map = new Map<string, string>();
+     references.forEach((ref: { id?: string; code?: string }) => {
+       if (ref?.id) map.set(ref.id, ref.code || '');
+     });
+     return map;
+   }, [references]);
+   const collectBuyReadyGaps = useCallback(
+     () => listOrderBuyReadyStrapGaps(
+       items,
+       typedStrapCatalog,
+       orderStrapCatalogDiagnostics,
+       referenceCodeById,
+     ),
+     [items, typedStrapCatalog, orderStrapCatalogDiagnostics, referenceCodeById],
+   );
    // Marca true quando o user tentou submeter pela primeira vez. A partir
    // daí, campos obrigatórios vazios mostram border-destructive até serem
    // preenchidos. Antes disso, render limpo (sem ruído visual de erro).
@@ -1715,6 +1756,21 @@ export default function SaleOrderFormPanel({
      // enquanto o operador estava cadastrando justamente essa cor.
      if (e.target !== e.currentTarget) return;
      setSubmitAttempted(true);
+
+     // Comprar pronto sem variante Hub: bloqueia ANTES do save (prepare não
+     // cria mais SKU — mig 45200). Lista todas as lacunas; o operador escolhe.
+     const buyReadyGaps = collectBuyReadyGaps();
+     if (buyReadyGaps.length > 0) {
+       setBuyReadyBlockGaps(buyReadyGaps);
+       setShowBuyReadyGapDialog(true);
+       toast.error(
+         buyReadyGaps.length === 1
+           ? 'Cadastre a tira comprada pronta no Hub antes de salvar o pedido.'
+           : `Há ${buyReadyGaps.length} tiras Comprar pronto sem cadastro no Hub.`,
+         { duration: 7000 },
+       );
+       return;
+     }
 
      // If user already confirmed duplicates, skip the duplicate check and submit directly.
      if (confirmedDuplicate) {
@@ -3154,6 +3210,146 @@ export default function SaleOrderFormPanel({
       })()}
      </form>
  
+     <Dialog
+       open={showBuyReadyGapDialog}
+       onOpenChange={(open) => {
+         setShowBuyReadyGapDialog(open);
+         if (!open) setBuyReadyBlockGaps([]);
+       }}
+     >
+       <DialogContent className="sm:max-w-lg">
+         <DialogHeader>
+           <DialogTitle>Cadastro Comprar pronto pendente</DialogTitle>
+         </DialogHeader>
+         <p className="text-sm text-muted-foreground">
+           O pedido não foi salvo. Cadastre no Hub a variante comercial de cada
+           tira abaixo (você escolhe qual abrir). Depois clique de novo em{' '}
+           {submitLabel || 'Criar Pedido'}.
+         </p>
+         <ul className="max-h-72 space-y-2 overflow-y-auto">
+           {buyReadyBlockGaps.map((gap) => (
+             <li
+               key={`${gap.itemIndex}:${gap.lineId}`}
+               className="flex items-start justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2"
+             >
+               <div className="min-w-0 space-y-0.5">
+                 <p className="truncate text-sm font-medium text-foreground">
+                   {gap.itemLabel}
+                 </p>
+                 <p className="truncate text-xs text-muted-foreground">
+                   {gap.label}
+                   {gap.groupName ? ` · ${gap.groupName}` : ''}
+                   {gap.colorName ? ` · ${gap.colorName}` : ''}
+                 </p>
+               </div>
+               {typedStrapCatalog?.capabilities.manage_strap_catalog ? (
+                 <Button
+                   type="button"
+                   variant="outline"
+                   size="sm"
+                   className="h-8 shrink-0"
+                   onClick={() => {
+                     setBuyReadyCadastroTarget(gap);
+                     setShowBuyReadyGapDialog(false);
+                   }}
+                 >
+                   Cadastrar
+                 </Button>
+               ) : (
+                 <span className="shrink-0 text-[10px] text-muted-foreground">Peça ao admin</span>
+               )}
+             </li>
+           ))}
+         </ul>
+         <div className="flex justify-end">
+           <Button
+             type="button"
+             variant="ghost"
+             onClick={() => setShowBuyReadyGapDialog(false)}
+           >
+             Revisar pedido
+           </Button>
+         </div>
+       </DialogContent>
+     </Dialog>
+
+     {buyReadyCadastroTarget && typedStrapCatalog && (
+       <ArtisanalStrapEditor
+         open
+         onOpenChange={(open) => {
+           if (!open) {
+             setBuyReadyCadastroTarget(null);
+             const remaining = collectBuyReadyGaps();
+             if (remaining.length > 0) {
+               setBuyReadyBlockGaps(remaining);
+               setShowBuyReadyGapDialog(true);
+             }
+           }
+         }}
+         catalog={typedStrapCatalog}
+         capabilities={typedStrapCatalog.capabilities}
+         mode="create"
+         origin="pv"
+         identityBasis="finished_product_group"
+         measureId={buyReadyCadastroTarget.measureId}
+         baseGroupId={buyReadyCadastroTarget.identityGroupId}
+         colorId={buyReadyCadastroTarget.colorId}
+         finishedProductId={buyReadyCadastroTarget.finishedProductId}
+         buyReadyReviewId={buyReadyCadastroTarget.reviewId}
+         activateOnCreate
+         onSaved={(variantId, result, savedColorId) => {
+           const target = buyReadyCadastroTarget;
+           setBuyReadyCadastroTarget(null);
+           if (!target) return;
+           const finishedProductId = result?.finished_product_id || target.finishedProductId || null;
+           const colorId = savedColorId || target.colorId || null;
+           setItems((prev) => prev.map((item, idx) => {
+             if (idx !== target.itemIndex) return item;
+             const straps = (item.strap_colors || []).map((strap) => {
+               if (technicalStrapLineId(strap) !== target.lineId) return strap;
+               return {
+                 ...strap,
+                 ...(colorId ? { color_id: colorId } : {}),
+               };
+             });
+             const line = (item.strap_colors || []).find(
+               (strap) => technicalStrapLineId(strap) === target.lineId,
+             );
+             const wantsHubVariant = strapLineWantsBuyReady(line);
+             const nextSourcing = colorId
+               ? setStrapSourcing(item.strap_sourcing || {}, target.lineId, {
+                 source_mode: 'buy_ready',
+                 color_id: colorId,
+                 strap_variant_id: wantsHubVariant ? variantId : null,
+                 finished_product_id: finishedProductId,
+                 recipe_id: null,
+               })
+               : (item.strap_sourcing || {});
+             return {
+               ...item,
+               strap_colors: straps,
+               strap_sourcing: nextSourcing,
+             };
+           }));
+           void queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
+           void queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog-diagnostics'] });
+           void queryClient.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
+           // Catálogo ainda stale: tira esta lacuna da lista na hora; as outras
+           // continuam. No próximo Criar Pedido o catálogo já reflete o Hub.
+           const remaining = buyReadyBlockGaps.filter(
+             (gap) => !(gap.itemIndex === target.itemIndex && gap.lineId === target.lineId),
+           );
+           if (remaining.length > 0) {
+             setBuyReadyBlockGaps(remaining);
+             setShowBuyReadyGapDialog(true);
+           } else {
+             setBuyReadyBlockGaps([]);
+             toast.success('Tira cadastrada. Clique de novo em salvar o pedido.');
+           }
+         }}
+       />
+     )}
+
      <AlertDialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
        <AlertDialogContent>
          <AlertDialogHeader>

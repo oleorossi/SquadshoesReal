@@ -73,6 +73,8 @@ import type { ReferenceTerceirizacao } from '@/hooks/useReferenceTerceirizacoes'
 import { ArtisanalStrapEditor } from '@/components/artisanal-straps/ArtisanalStrapEditor';
 import {
   listBuyReadyStrapGaps,
+  strapLineIsPvBuyReadyChoice,
+  strapLineNeedsBuyReadyHubCadastro,
   strapLineWantsBuyReady,
   type BuyReadyStrapGap,
 } from '@/lib/buyReadyStrapGap';
@@ -922,13 +924,11 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     strapLinesLoading,
   ]);
 
-  // Tira comprada pronta sem variante comercial ativa: o servidor recusa o
-  // salvamento inteiro do PV com "Tira comprada pronta nao possui variante
-  // comercial ativa exata". Vale para grupo acabado (STRASS) e para a escolha
-  // de tira pronta no PV (sku_acabado) em linha artesanal por napa.
+  // Tira comprada pronta sem variante Hub: o prepare recusa o save. Vale para
+  // grupo acabado (STRASS) e para a exceção Comprar pronto no PV (sku_acabado).
   const hasPurchasedReadyStrapLine = useMemo(
     () => ((item.strap_colors as SaleOrderStrapResolutionLine[]) || [])
-      .some((strap) => strapLineWantsBuyReady(strap)),
+      .some((strap) => strapLineNeedsBuyReadyHubCadastro(strap)),
     [item.strap_colors],
   );
   const { data: strapCatalogDiagnostics } = useArtisanalStrapCatalogDiagnostics(
@@ -3402,8 +3402,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                 if (lineKey && next === 'sku_acabado' && !isPurchasedReadyStrap(strap)) {
                                   const preview = strapLineByKey.get(lineKey);
                                   const colorId = mainColorId || preview?.colorId || strap.color_id || null;
-                                  // PV Comprar pronto: congela buy_ready sem variante Hub;
-                                  // o save cria/acha o SKU e grava finished_product_id.
+                                  // PV Comprar pronto: congela buy_ready; o SKU
+                                  // vem do Hub (não do prepare). Sem variante
+                                  // comercial da cor, abre o cadastro agora.
                                   const nextSourcing = setStrapSourcing(strapSourcingMap, lineKey, {
                                     source_mode: 'buy_ready',
                                     color_id: colorId,
@@ -3423,6 +3424,17 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                   } else {
                                     onUpdate(index, 'strap_colors', updated);
                                     onUpdate(index, 'strap_sourcing', nextSourcing);
+                                  }
+                                  if (strapCatalog && colorId && canManageBuyReadyCatalog) {
+                                    const provisional = updated.find(
+                                      (entry) => technicalStrapLineId(entry) === lineKey,
+                                    );
+                                    const gaps = listBuyReadyStrapGaps(
+                                      provisional ? [provisional] : [],
+                                      strapCatalog,
+                                      strapCatalogDiagnostics,
+                                    );
+                                    if (gaps[0]) setBuyReadyGapTarget(gaps[0]);
                                   }
                                   return;
                                 }
@@ -3710,11 +3722,44 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
           // técnica: a identidade já está decidida, então nascer em revisão só
           // devolveria o mesmo bloqueio ao operador.
           activateOnCreate
-          onSaved={() => {
+          onSaved={(variantId, result, savedColorId) => {
+            const target = buyReadyGapTarget;
             setBuyReadyGapTarget(null);
             qc.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
             qc.invalidateQueries({ queryKey: ['artisanal-strap-catalog-diagnostics'] });
             qc.invalidateQueries({ queryKey: ['strap_stock_lines_preview'] });
+            if (!target) return;
+            const finishedProductId = result?.finished_product_id || target.finishedProductId || null;
+            const colorId = savedColorId || target.colorId || null;
+            const sourceStraps = item.strap_colors || [];
+            const updatedStraps = sourceStraps.map((strap) => {
+              if (technicalStrapLineId(strap) !== target.lineId) return strap;
+              if (!strapLineIsPvBuyReadyChoice(strap) && !strapLineWantsBuyReady(strap)) return strap;
+              return {
+                ...strap,
+                ...(colorId ? { color_id: colorId } : {}),
+              };
+            });
+            const nextSourcing = colorId
+              ? setStrapSourcing(strapSourcingMap, target.lineId, {
+                source_mode: 'buy_ready',
+                color_id: colorId,
+                strap_variant_id: strapLineWantsBuyReady(
+                  sourceStraps.find((strap) => technicalStrapLineId(strap) === target.lineId),
+                ) ? variantId : null,
+                finished_product_id: finishedProductId,
+                recipe_id: null,
+              })
+              : strapSourcingMap;
+            if (onUpdateFields) {
+              onUpdateFields(index, {
+                strap_colors: updatedStraps,
+                strap_sourcing: nextSourcing,
+              });
+            } else {
+              onUpdate(index, 'strap_colors', updatedStraps);
+              onUpdate(index, 'strap_sourcing', nextSourcing);
+            }
           }}
         />
       )}

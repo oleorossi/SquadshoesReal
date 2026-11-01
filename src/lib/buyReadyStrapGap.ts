@@ -3,14 +3,14 @@ import { strapIdentityBasis, type StrapIdentityBasis } from '@/lib/strapIdentity
 import { isUuid, technicalStrapLineId } from '@/lib/technicalStrapLines';
 
 /**
- * Lacuna EXATA que trava o salvamento do PV com
- * "Tira comprada pronta nao possui variante comercial ativa exata"
+ * Lacuna EXATA que trava o salvamento do PV com compra pronta incompleta
  * (`prepare_sale_order_item_internal_straps`).
  *
  * A regra do servidor exige uma `artisanal_strap_variants` ATIVA em
  * (medida, grupo acabado, cor canônica) com `purchase_enabled` e
- * `internal_production_enabled = false`. O PV congela essa variante; ele nunca
- * inventa produto, fornecedor ou valor da tira comprada pronta.
+ * `internal_production_enabled = false` — identidade Hub `finished_product_group`
+ * — tanto para STRASS na ficha quanto para a exceção Comprar pronto no PV
+ * (`pv_origem = sku_acabado`). O prepare só ACHA o SKU; não cria produto.
  *
  * Este módulo NÃO relaxa a regra: ele apenas identifica, no próprio item do PV,
  * QUAL tira está sem o cadastro — para o operador registrar só a tira que este
@@ -140,9 +140,8 @@ function reviewIdForProduct(
 }
 
 /**
- * Lacuna de cadastro Hub (variante comercial) — só identidade acabada da ficha
- * (STRASS). Comprar pronto escolhido no PV (`sku_acabado`) não exige Hub:
- * o writer cria/acha o SKU e congela `finished_product_id`.
+ * Lacuna de cadastro Hub (variante comercial) — identidade acabada da ficha
+ * (STRASS / finished_product_group).
  */
 export function strapLineWantsBuyReady(
   strap: BuyReadyStrapGapLine | null | undefined,
@@ -150,12 +149,23 @@ export function strapLineWantsBuyReady(
   return strapIdentityBasis(strap) === 'finished_product_group';
 }
 
-/** Origem Comprar pronto no PV (escolhe_no_pv), sem exigir variante Hub. */
+/**
+ * Origem Comprar pronto escolhida no PV (`pv_origem = sku_acabado`) em linha
+ * artesanal por napa. Também exige cadastro Hub antes do save: o prepare
+ * só ACHA o SKU (mig 45200); não cria mais produto pela porta do PV.
+ */
 export function strapLineIsPvBuyReadyChoice(
   strap: BuyReadyStrapGapLine | null | undefined,
 ): boolean {
   return strap?.pv_origem === 'sku_acabado'
     && strapIdentityBasis(strap) !== 'finished_product_group';
+}
+
+/** Linha que precisa de variante Hub Comprar pronto antes do save. */
+export function strapLineNeedsBuyReadyHubCadastro(
+  strap: BuyReadyStrapGapLine | null | undefined,
+): boolean {
+  return strapLineWantsBuyReady(strap) || strapLineIsPvBuyReadyChoice(strap);
 }
 
 /** Grupo acabado: pin da ficha, ou group_id legado quando o PV escolheu fornecedor. */
@@ -175,6 +185,10 @@ export function buyReadyIdentityGroupId(
  * Só reporta a lacuna quando a identidade já está completa (medida, grupo e cor
  * por UUID). Identidade incompleta tem mensagem própria na tela e um CTA de
  * cadastro comercial ali só empilharia dois avisos sobre a mesma linha.
+ *
+ * Cobre (1) identidade acabada da ficha e (2) exceção Comprar pronto no PV
+ * (`sku_acabado`): nos dois casos o Hub cria a variante finished_product_group
+ * + SKU; o prepare não inventa produto.
  */
 export function listBuyReadyStrapGaps(
   straps: BuyReadyStrapGapLine[] | null | undefined,
@@ -183,7 +197,7 @@ export function listBuyReadyStrapGaps(
 ): BuyReadyStrapGap[] {
   if (!catalog || !Array.isArray(straps)) return [];
   return straps.flatMap((strap, position) => {
-    if (!strapLineWantsBuyReady(strap)) return [];
+    if (!strapLineNeedsBuyReadyHubCadastro(strap)) return [];
     const lineId = technicalStrapLineId({
       id: strap.id,
       technical_strap_line_id: strap.technical_strap_line_id,
@@ -208,5 +222,47 @@ export function listBuyReadyStrapGaps(
       finishedProductName: product?.name ? str(product.name) : null,
       reviewId: reviewIdForProduct(diagnostics, product?.id || null),
     }];
+  });
+}
+
+export interface OrderBuyReadyStrapGap extends BuyReadyStrapGap {
+  itemIndex: number;
+  itemColor: string;
+  itemLabel: string;
+}
+
+interface OrderBuyReadyGapItem {
+  color?: string | null;
+  reference_id?: string | null;
+  strap_colors?: BuyReadyStrapGapLine[] | null;
+}
+
+/** Lacunas de compra pronta em TODOS os itens do PV (painel do Criar Pedido). */
+export function listOrderBuyReadyStrapGaps(
+  items: OrderBuyReadyGapItem[] | null | undefined,
+  catalog: BuyReadyStrapGapCatalog | null | undefined,
+  diagnostics?: BuyReadyStrapGapDiagnostic[] | null,
+  referenceCodeById?: Map<string, string> | Record<string, string> | null,
+): OrderBuyReadyStrapGap[] {
+  if (!catalog || !Array.isArray(items)) return [];
+  const codeOf = (referenceId: string | null | undefined): string => {
+    if (!referenceId) return '';
+    if (referenceCodeById instanceof Map) return referenceCodeById.get(referenceId) || '';
+    if (referenceCodeById && typeof referenceCodeById === 'object') {
+      return str((referenceCodeById as Record<string, string>)[referenceId]);
+    }
+    return '';
+  };
+  return items.flatMap((item, itemIndex) => {
+    const gaps = listBuyReadyStrapGaps(item.strap_colors, catalog, diagnostics);
+    const itemColor = str(item.color) || 'sem cor';
+    const refCode = codeOf(item.reference_id);
+    const itemLabel = refCode ? `${refCode} · ${itemColor}` : itemColor;
+    return gaps.map((gap) => ({
+      ...gap,
+      itemIndex,
+      itemColor,
+      itemLabel,
+    }));
   });
 }

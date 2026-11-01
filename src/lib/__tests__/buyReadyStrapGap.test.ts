@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   listBuyReadyStrapGaps,
+  listOrderBuyReadyStrapGaps,
   purchasedReadyStrapProductForColor,
   type BuyReadyStrapGapCatalog,
 } from '@/lib/buyReadyStrapGap';
@@ -101,7 +102,7 @@ describe('listBuyReadyStrapGaps', () => {
     expect(gaps).toEqual([]);
   });
 
-  it('não trata sku_acabado do PV como lacuna de Hub (SKU no save)', () => {
+  it('trata sku_acabado do PV como lacuna de Hub quando falta variante comercial', () => {
     const gaps = listBuyReadyStrapGaps(
       [buyReadyLine({
         identity_basis: 'reference_base',
@@ -110,6 +111,24 @@ describe('listBuyReadyStrapGaps', () => {
         pv_origem: 'sku_acabado',
       })],
       catalog(),
+    );
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toMatchObject({
+      lineId: LINE,
+      identityGroupId: GROUP,
+      colorId: COLOR,
+    });
+  });
+
+  it('sku_acabado deixa de ser lacuna quando a variante Hub finished_product_group está ativa', () => {
+    const gaps = listBuyReadyStrapGaps(
+      [buyReadyLine({
+        identity_basis: 'reference_base',
+        identity_group_id: null,
+        group_id: GROUP,
+        pv_origem: 'sku_acabado',
+      })],
+      catalog({ variants: [activeVariant()] }),
     );
     expect(gaps).toEqual([]);
   });
@@ -211,6 +230,46 @@ describe('listBuyReadyStrapGaps', () => {
   });
 });
 
+describe('listOrderBuyReadyStrapGaps', () => {
+  it('agrega lacunas de todos os itens com rótulo do item', () => {
+    const gaps = listOrderBuyReadyStrapGaps(
+      [
+        {
+          color: 'ROCHA',
+          reference_id: 'ref-1',
+          strap_colors: [buyReadyLine({
+            identity_basis: 'reference_base',
+            identity_group_id: null,
+            group_id: GROUP,
+            pv_origem: 'sku_acabado',
+            label: 'ELÁSTICO',
+          })],
+        },
+        {
+          color: 'OFF WHITE',
+          reference_id: 'ref-1',
+          strap_colors: [buyReadyLine({
+            technical_strap_line_id: '4050c21b-d4ad-482d-a1da-7a951b880342',
+            identity_basis: 'reference_base',
+            identity_group_id: null,
+            group_id: GROUP,
+            pv_origem: 'sku_acabado',
+            label: 'ELÁSTICO',
+          })],
+        },
+      ],
+      catalog(),
+      null,
+      new Map([['ref-1', 'DS20']]),
+    );
+    expect(gaps).toHaveLength(2);
+    expect(gaps[0].itemLabel).toBe('DS20 · ROCHA');
+    expect(gaps[1].itemLabel).toBe('DS20 · OFF WHITE');
+    expect(gaps[0].itemIndex).toBe(0);
+    expect(gaps[1].itemIndex).toBe(1);
+  });
+});
+
 /**
  * A lacuna só serve pra alguma coisa se a tela ABRIR o cadastro. O typecheck
  * pega símbolo indefinido, mas não pega editor montado que ninguém consegue
@@ -245,18 +304,22 @@ describe('SaleOrderItemForm — a lacuna vira um caminho clicável', () => {
   });
 
   it('invalida catálogo, diagnóstico e preview depois de cadastrar', () => {
-    const saved = form.slice(form.indexOf('onSaved={() => {'));
+    const savedIdx = form.indexOf('onSaved={(variantId, result, savedColorId) => {');
+    expect(savedIdx).toBeGreaterThanOrEqual(0);
+    const saved = form.slice(savedIdx, savedIdx + 2500);
     expect(saved).toContain("queryKey: ['artisanal-strap-catalog']");
     expect(saved).toContain("queryKey: ['artisanal-strap-catalog-diagnostics']");
     expect(saved).toContain("queryKey: ['strap_stock_lines_preview']");
+    expect(saved).toContain('finished_product_id: finishedProductId');
   });
 
-  it('Comprar pronto do PV congela buy_ready sem abrir cadastro Hub', () => {
-    expect(form).toContain('strapLineWantsBuyReady');
+  it('Comprar pronto do PV congela buy_ready e abre cadastro Hub se faltar variante', () => {
+    expect(form).toContain('strapLineNeedsBuyReadyHubCadastro');
     expect(form).toContain("next === 'sku_acabado'");
     expect(form).toContain('Comprar pronto');
     expect(form).toContain("strap_variant_id: null");
     expect(form).toContain('finished_product_id: preview?.finishedProductId');
+    expect(form).toContain('setBuyReadyGapTarget(gaps[0])');
   });
 
   it('não trava o seletor de origem quando o snapshot comprometido ainda não tem escolha', () => {

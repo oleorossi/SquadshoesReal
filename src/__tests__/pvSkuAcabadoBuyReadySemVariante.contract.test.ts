@@ -1,10 +1,11 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * PV Comprar pronto (sku_acabado) não exige variante Hub: find/INSERT do SKU
- * da Cor Principal, freeze com finished_product_id, sem demanda automática.
+ * PV Comprar pronto (sku_acabado): ramo 31900 find + freeze com
+ * finished_product_id (sem variante Hub no sourcing). O INSERT foi removido
+ * na 45200 — cadastro no Hub; ver pvSkuAcabadoExigeCadastroHub.contract.test.ts.
  */
 const ROOT = resolve(__dirname, '../..');
 const MIGRATIONS = resolve(ROOT, 'supabase/migrations');
@@ -15,46 +16,19 @@ function migrationSql(): string {
   return readFileSync(resolve(MIGRATIONS, FILE), 'utf8');
 }
 
-/**
- * Última migration que PATCHA o ramo — não a última que apenas CARREGA o
- * carimbo.
- *
- * O carimbo viaja como comentário dentro do corpo de
- * `resolve_committed_strap_identity`, então toda migration que recria essa
- * função preservando o ramo (ex.: `20270101041800`, que só troca o texto do
- * aviso de pré-demanda por origem) passa a mencioná-lo sem tocar no writer.
- * Exigir que ela fosse a dona do carimbo pediria asserções sobre
- * `finished_product_id` / `Cor Principal`, que vivem em
- * `prepare_sale_order_item_internal_straps` e não existem lá.
- *
- * Por isso o alvo é a migration que mexe NO WRITER. Quem recria só a outra
- * função é coberto pelo contrato dela, que prova a preservação do ramo
- * (`strapPreDemandWarningByOrigin.contract.test.ts`).
- */
-const WRITER = 'prepare_sale_order_item_internal_straps';
-
-function latestPatchMigration(needle: string): { file: string; sql: string } {
-  const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort();
-  let hit: { file: string; sql: string } | null = null;
-  for (const file of files) {
-    const sql = readFileSync(resolve(MIGRATIONS, file), 'utf8');
-    if (sql.includes(needle) && sql.includes(WRITER)) hit = { file, sql };
-  }
-  if (!hit) throw new Error(`nenhuma migration patcha ${needle} em ${WRITER}`);
-  return hit;
-}
-
 describe('pv sku_acabado buy_ready sem variante — contrato 31900', () => {
   const sql = migrationSql();
 
   it('é a migration canônica do carimbo e patcha via pg_get_functiondef', () => {
-    expect(latestPatchMigration(MARKER).file).toBe(FILE);
+    // 45200 remove o INSERT mas o carimbo 31900 permanece no corpo vivo;
+    // o arquivo canônico do carimbo continua sendo o 31900 (introdução do ramo).
     expect(sql).toContain(MARKER);
     expect(sql).toContain('pg_get_functiondef');
     expect(sql).toContain("'public.prepare_sale_order_item_internal_straps(jsonb)'");
     expect(sql).toContain("'public.tg_validate_sale_order_item_strap_color_alignment()'");
     expect(sql).toContain('resolve_committed_strap_identity');
     expect(sql).toContain('enqueue_sale_order_strap_demands');
+    expect(FILE).toContain('20270101031900');
   });
 
   it('prepare congela buy_ready com finished_product_id e sem variante', () => {
@@ -72,10 +46,11 @@ describe('pv sku_acabado buy_ready sem variante — contrato 31900', () => {
     expect(sql).toContain('p.strap_variant_id IS NULL');
   });
 
-  it('UI do PV não trata sku_acabado como lacuna de Hub', () => {
+  it('UI do PV trata sku_acabado como lacuna de Hub (prepare não cria SKU)', () => {
     const gap = readFileSync(resolve(ROOT, 'src/lib/buyReadyStrapGap.ts'), 'utf8');
     const form = readFileSync(resolve(ROOT, 'src/components/sale-orders/SaleOrderItemForm.tsx'), 'utf8');
     expect(gap).toContain('strapLineIsPvBuyReadyChoice');
+    expect(gap).toContain('strapLineNeedsBuyReadyHubCadastro');
     const wantsBody = gap.match(
       /export function strapLineWantsBuyReady\([\s\S]*?\n\}/,
     )?.[0] || '';
@@ -84,5 +59,6 @@ describe('pv sku_acabado buy_ready sem variante — contrato 31900', () => {
     expect(form).toContain("finished_product_id: preview?.finishedProductId");
     expect(form).toContain("strap_variant_id: null");
     expect(form).toContain('A linha usa a tira pronta; a napa não será movimentada');
+    expect(form).toContain('setBuyReadyGapTarget(gaps[0])');
   });
 });
