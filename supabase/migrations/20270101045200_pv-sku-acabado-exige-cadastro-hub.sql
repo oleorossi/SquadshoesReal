@@ -12,6 +12,11 @@
 -- claro pedindo o Hub (a UI bloqueia antes com o mesmo critério).
 --
 -- Marcador: strap_pv_sku_acabado_exige_cadastro_hub_20270101045200
+--
+-- ⚠ Superada para tira de NAPA (reference_base + sku_acabado) pela
+-- 20270101045300_tira-comprar-pronto-so-registra (spec so-registra):
+-- Comprar pronto só registra cor + metros, sem exigir SKU do Hub.
+-- STRASS (finished_product_group) continua no contrato Hub desta 45200.
 
 DO $$
 DECLARE

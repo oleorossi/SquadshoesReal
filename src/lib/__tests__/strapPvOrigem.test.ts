@@ -4,7 +4,6 @@ import {
   applyDefaultStrapPvOrigemChoices,
   applyStrapPvOrigemChangesToItems,
   catalogDefaultStrapPvOrigem,
-  coerceImpossibleBuyReadyStrapOrigem,
   collectStrapPvOrigemChanges,
   DEFAULT_STRAP_PV_ORIGEM,
   defaultStrapPvOrigemForLine,
@@ -15,6 +14,7 @@ import {
   sourceModeForEffectiveOrigem,
   STRAP_PV_ORIGEM_LABEL,
   strapFreightPerMeter,
+  strapLineAllowsBuyReadyOrigem,
   strapPvOrigemChooserValue,
   strapPvOrigemLabel,
 } from '@/lib/strapPvOrigem';
@@ -80,15 +80,13 @@ describe('strapPvOrigem', () => {
     expect(resolveEffectiveStrapPvOrigem({ pv_origem: null }, null)).toBeNull();
   });
 
-  it('padrão Comprar pronto sem grupo acabado na ficha cai em Prestador (espelha 28600)', () => {
+  it('Comprar pronto não depende de grupo acabado na ficha (só registra napa · cor + metros)', () => {
     expect(defaultStrapPvOrigemForLine(
       { group_id: null },
-      { id: 'strass', origem_padrao: 'sempre_sku_acabado' },
-    )).toBe('fabrica');
-    expect(defaultStrapPvOrigemForLine(
-      { identity_group_id: 'g1' },
-      { id: 'strass', origem_padrao: 'sempre_sku_acabado' },
+      { id: 'm', origem_padrao: 'sempre_sku_acabado' },
     )).toBe('sku_acabado');
+    expect(strapLineAllowsBuyReadyOrigem({ group_id: null, identity_basis: 'reference_base' })).toBe(true);
+    expect(strapLineAllowsBuyReadyOrigem(null)).toBe(false);
   });
 
   it('linha de identidade acabada (Strass da ficha) é sempre Comprar pronto', () => {
@@ -272,7 +270,8 @@ describe('strapPvOrigem', () => {
       'fabrica',
       'sku_acabado',
       'sku_acabado',
-      'fabrica',
+      // Comprar pronto não exige mais grupo acabado na ficha.
+      'sku_acabado',
       'fabrica',
       undefined,
     ]);
@@ -297,7 +296,8 @@ describe('origem da tira no PV — uma escolha vale para todas as cores', () => 
     );
     expect(page).not.toContain('firstMissingStrapPvOrigemMessage');
     expect(page).not.toContain('assertStrapOrigemChoiceReady');
-    expect(page).toContain('coerceImpossibleBuyReadyStrapOrigem');
+    // Comprar pronto sem grupo na ficha deixou de ser "impossível": nada a coagir.
+    expect(page).not.toContain('coerceImpossibleBuyReadyStrapOrigem');
   });
 
   it('o seletor do item é sempre exibido, com padrão do catálogo e só Prestador | Comprar pronto', () => {
@@ -351,30 +351,13 @@ describe('origem da tira no PV — uma escolha vale para todas as cores', () => 
     expect(items[1].strap_sourcing?.[lineId]?.source_mode).toBe('internal');
   });
 
-  it('coerce sku_acabado sem group_id para Prestador no submit', () => {
-    const { items, coerced } = coerceImpossibleBuyReadyStrapOrigem([
-      {
-        color: 'PRATA',
-        strap_colors: [{
-          label: 'TIRA 1',
-          technical_strap_line_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-          identity_basis: 'reference_base',
-          pv_origem: 'sku_acabado',
-          group_id: null,
-        }],
-      },
-      {
-        color: 'OFF WHITE',
-        strap_colors: [{
-          label: 'TIRA 1',
-          technical_strap_line_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-          identity_basis: 'reference_base',
-          pv_origem: 'fabrica',
-        }],
-      },
-    ]);
-    expect(coerced).toEqual([{ color: 'PRATA', label: 'TIRA 1' }]);
-    expect(items[0].strap_colors?.[0]?.pv_origem).toBe('fabrica');
-    expect(items[1].strap_colors?.[0]?.pv_origem).toBe('fabrica');
+  it('Comprar pronto mantém a napa e a cor da tira (nunca a Cor Principal por cima)', () => {
+    const form = readFileSync(
+      resolve(__dirname, '../../components/sale-orders/SaleOrderItemForm.tsx'),
+      'utf8',
+    );
+    expect(form).not.toContain('Nenhuma tira desta ficha tem grupo acabado');
+    expect(form).not.toMatch(/sku_acabado[\s\S]{0,200}color_id: mainColorId/);
+    expect(form).toContain('buyReadyStrapSourcing(');
   });
 });

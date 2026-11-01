@@ -102,7 +102,7 @@ describe('listBuyReadyStrapGaps', () => {
     expect(gaps).toEqual([]);
   });
 
-  it('trata sku_acabado do PV como lacuna de Hub quando falta variante comercial', () => {
+  it('sku_acabado de napa NÃO é lacuna Hub (45300 so-registra: só cor + metros)', () => {
     const gaps = listBuyReadyStrapGaps(
       [buyReadyLine({
         identity_basis: 'reference_base',
@@ -112,15 +112,10 @@ describe('listBuyReadyStrapGaps', () => {
       })],
       catalog(),
     );
-    expect(gaps).toHaveLength(1);
-    expect(gaps[0]).toMatchObject({
-      lineId: LINE,
-      identityGroupId: GROUP,
-      colorId: COLOR,
-    });
+    expect(gaps).toEqual([]);
   });
 
-  it('sku_acabado deixa de ser lacuna quando a variante Hub finished_product_group está ativa', () => {
+  it('sku_acabado de napa continua sem lacuna mesmo com variante Hub ativa', () => {
     const gaps = listBuyReadyStrapGaps(
       [buyReadyLine({
         identity_basis: 'reference_base',
@@ -238,11 +233,7 @@ describe('listOrderBuyReadyStrapGaps', () => {
           color: 'ROCHA',
           reference_id: 'ref-1',
           strap_colors: [buyReadyLine({
-            identity_basis: 'reference_base',
-            identity_group_id: null,
-            group_id: GROUP,
-            pv_origem: 'sku_acabado',
-            label: 'ELÁSTICO',
+            label: 'STRASS',
           })],
         },
         {
@@ -250,11 +241,7 @@ describe('listOrderBuyReadyStrapGaps', () => {
           reference_id: 'ref-1',
           strap_colors: [buyReadyLine({
             technical_strap_line_id: '4050c21b-d4ad-482d-a1da-7a951b880342',
-            identity_basis: 'reference_base',
-            identity_group_id: null,
-            group_id: GROUP,
-            pv_origem: 'sku_acabado',
-            label: 'ELÁSTICO',
+            label: 'STRASS',
           })],
         },
       ],
@@ -313,13 +300,15 @@ describe('SaleOrderItemForm — a lacuna vira um caminho clicável', () => {
     expect(saved).toContain('finished_product_id: finishedProductId');
   });
 
-  it('Comprar pronto do PV congela buy_ready e abre cadastro Hub se faltar variante', () => {
-    expect(form).toContain('strapLineNeedsBuyReadyHubCadastro');
+  it('Comprar pronto do PV congela buy_ready sem abrir cadastro Hub (só napa · cor + metros)', () => {
+    expect(form).toContain('strapLineWantsBuyReady');
     expect(form).toContain("next === 'sku_acabado'");
     expect(form).toContain('Comprar pronto');
-    expect(form).toContain("strap_variant_id: null");
-    expect(form).toContain('finished_product_id: preview?.finishedProductId');
-    expect(form).toContain('setBuyReadyGapTarget(gaps[0])');
+    expect(form).toContain('buyReadyStrapSourcing(strap, strapLineByKey.get(lineKey))');
+    const lib = readFileSync(resolve(__dirname, '../strapSourcing.ts'), 'utf8');
+    const body = lib.slice(lib.indexOf('export function buyReadyStrapSourcingFromPreview'));
+    expect(body).toContain('strap_variant_id: null');
+    expect(body).toContain('finished_product_id: null');
   });
 
   it('não trava o seletor de origem quando o snapshot comprometido ainda não tem escolha', () => {

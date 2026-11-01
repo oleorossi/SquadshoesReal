@@ -119,6 +119,36 @@ export function isCompleteStrapSourcingSelection(
   return isUuid(selection.strap_variant_id);
 }
 
+/**
+ * Comprar pronto de tira de napa: registra napa · cor + metros e mais nada —
+ * sem variante, receita, napa oficial nem SKU. O save recalcula os metros pela
+ * grade (D5); a tela manda o mesmo número (`buyReadyStrapRequiredM`).
+ */
+export function buyReadyStrapSourcingFromPreview(
+  identity: StrapPreviewIdentity | null | undefined,
+  colorId: string | null | undefined,
+  base?: {
+    baseGroupId?: string | null;
+    baseGroupName?: string | null;
+    grossRequiredM?: number | null;
+  },
+): StrapSourcingSelection {
+  return {
+    source_mode: 'buy_ready',
+    color_id: colorId || identity?.colorId || null,
+    strap_variant_id: null,
+    finished_product_id: null,
+    recipe_id: null,
+    base_product_id: null,
+    base_group_id: base?.baseGroupId || identity?.baseGroupId || null,
+    base_group_name: base?.baseGroupName || identity?.baseGroupName || null,
+    gross_required_m: base?.grossRequiredM ?? identity?.strapRequiredM ?? null,
+    required_at: identity?.requiredAt ?? null,
+    main_production_start: identity?.mainProductionStart ?? null,
+    schedule_revision: identity?.scheduleRevision ?? null,
+  };
+}
+
 /** Identidade que o preview canônico já resolveu para a linha técnica. */
 export interface StrapPreviewIdentity {
   colorId?: string | null;
@@ -214,8 +244,27 @@ export function strapSourcingFieldsEqual(
 }
 
 /**
+ * A variante gravada ainda descreve a tira? Só se a napa e a cor forem as
+ * mesmas do preview. Trocar a napa da tira (napa por tira, multicolor) ou a cor
+ * deixa a variante antiga velha — mantê-la dava `variant_snapshot_stale`
+ * ("Variante escolhida nao corresponde mais a identidade tecnica atual").
+ */
+export function storedStrapVariantMatchesIdentity(
+  stored: StrapSourcingSelection | null | undefined,
+  candidate: StrapSourcingSelection | null | undefined,
+): boolean {
+  if (!stored || !candidate) return false;
+  const sameNapa = !stored.base_group_id || !candidate.base_group_id
+    || stored.base_group_id === candidate.base_group_id;
+  const sameColor = !stored.color_id || !candidate.color_id
+    || stored.color_id === candidate.color_id;
+  return sameNapa && sameColor;
+}
+
+/**
  * Completa `source_mode: internal` que ainda não congelou cor/variante, usando
- * o UUID que o preview já devolveu. Não troca uma variante já persistida.
+ * o UUID que o preview já devolveu. Não troca uma variante já persistida da
+ * MESMA napa · cor; variante de napa/cor antiga é substituída.
  */
 export function hydrateInternalStrapSourcingMap(
   map: StrapSourcingMap | null | undefined,
@@ -229,10 +278,12 @@ export function hydrateInternalStrapSourcingMap(
     const identity = identityForLine(lineId);
     const candidate = internalStrapSourcingFromPreview(identity, valid.color_id);
     if (!candidate) continue;
-    if (isUuid(valid.strap_variant_id) && valid.strap_variant_id !== candidate.strap_variant_id) {
+    const keepsStoredVariant = isUuid(valid.strap_variant_id)
+      && storedStrapVariantMatchesIdentity(valid, candidate);
+    if (keepsStoredVariant && valid.strap_variant_id !== candidate.strap_variant_id) {
       continue;
     }
-    const merged: StrapSourcingSelection = isUuid(valid.strap_variant_id)
+    const merged: StrapSourcingSelection = keepsStoredVariant
       ? {
           ...valid,
           color_id: valid.color_id || candidate.color_id,

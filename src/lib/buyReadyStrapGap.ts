@@ -151,8 +151,8 @@ export function strapLineWantsBuyReady(
 
 /**
  * Origem Comprar pronto escolhida no PV (`pv_origem = sku_acabado`) em linha
- * artesanal por napa. Também exige cadastro Hub antes do save: o prepare
- * só ACHA o SKU (mig 45200); não cria mais produto pela porta do PV.
+ * artesanal por napa. Spec `tira-comprar-pronto-so-registra` (mig 45300): só
+ * registra napa · cor + metros — NÃO exige cadastro Hub / SKU.
  */
 export function strapLineIsPvBuyReadyChoice(
   strap: BuyReadyStrapGapLine | null | undefined,
@@ -161,11 +161,14 @@ export function strapLineIsPvBuyReadyChoice(
     && strapIdentityBasis(strap) !== 'finished_product_group';
 }
 
-/** Linha que precisa de variante Hub Comprar pronto antes do save. */
+/**
+ * Linha que precisa de variante Hub Comprar pronto antes do save.
+ * Só identidade acabada da ficha (STRASS). Napa em sku_acabado (45300) não.
+ */
 export function strapLineNeedsBuyReadyHubCadastro(
   strap: BuyReadyStrapGapLine | null | undefined,
 ): boolean {
-  return strapLineWantsBuyReady(strap) || strapLineIsPvBuyReadyChoice(strap);
+  return strapLineWantsBuyReady(strap);
 }
 
 /** Grupo acabado: pin da ficha, ou group_id legado quando o PV escolheu fornecedor. */
@@ -186,9 +189,8 @@ export function buyReadyIdentityGroupId(
  * por UUID). Identidade incompleta tem mensagem própria na tela e um CTA de
  * cadastro comercial ali só empilharia dois avisos sobre a mesma linha.
  *
- * Cobre (1) identidade acabada da ficha e (2) exceção Comprar pronto no PV
- * (`sku_acabado`): nos dois casos o Hub cria a variante finished_product_group
- * + SKU; o prepare não inventa produto.
+ * Cobre identidade acabada da ficha (STRASS). Comprar pronto de napa no PV
+ * (`sku_acabado`) não gera lacuna Hub — só registra cor + metros (45300).
  */
 export function listBuyReadyStrapGaps(
   straps: BuyReadyStrapGapLine[] | null | undefined,
