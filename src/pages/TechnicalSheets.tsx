@@ -122,6 +122,7 @@ import {
   applyTechnicalStrapColorMode,
   applyTechnicalStrapMulticolor,
   ensureTechnicalStrapLineIds,
+  findDuplicateTechnicalStrapLabel,
   hasCanonicalTechnicalStrapIdentity,
   newTechnicalStrapLineFromConsumptionTemplate,
   replicateFirstTechnicalStrapType,
@@ -2215,6 +2216,15 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         return;
       }
       const normalizedStraps = ensureTechnicalStrapLineIds(payload.strap_colors);
+      const duplicateStrapLabel = findDuplicateTechnicalStrapLabel(normalizedStraps);
+      if (duplicateStrapLabel) {
+        toast.error(
+          `Label de tira duplicado (${duplicateStrapLabel}). Remova a linha fantasma antes de salvar — a ficha é replace total.`,
+          { duration: 8000 },
+        );
+        setAbaAtiva('range-aviamento');
+        return;
+      }
       if (form.has_straps) {
         if (!strapCatalog || strapCatalogQuery.isError) {
           toast.error('Não foi possível validar as famílias e medidas de tira. Recarregue o catálogo canônico.');

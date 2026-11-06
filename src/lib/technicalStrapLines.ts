@@ -159,6 +159,25 @@ export function ensureTechnicalStrapLineIds<T extends object & TechnicalStrapLin
   });
 }
 
+/**
+ * Ban de label duplicado no save da ficha (Q18): o que está na tela é a verdade;
+ * dois "TIRA 3" regeneram fantasma no JSON. Espelha o trigger
+ * `trg_validate_technical_sheet_strap_colors`.
+ */
+export function findDuplicateTechnicalStrapLabel(
+  lines: TechnicalStrapLineLike[] | null | undefined,
+): string | null {
+  const seen = new Map<string, string>();
+  for (const line of lines || []) {
+    const raw = typeof line.label === 'string' ? line.label.trim() : '';
+    if (!raw) continue;
+    const key = raw.toLocaleUpperCase('pt-BR');
+    if (seen.has(key)) return seen.get(key) || raw;
+    seen.set(key, raw);
+  }
+  return null;
+}
+
 export function technicalStrapLineId(line: TechnicalStrapLineLike | null | undefined): string | null {
   if (!line) return null;
   if (isUuid(line.technical_strap_line_id)) return line.technical_strap_line_id;
