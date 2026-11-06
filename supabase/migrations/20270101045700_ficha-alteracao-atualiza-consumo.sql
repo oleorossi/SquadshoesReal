@@ -4,6 +4,10 @@
 -- Decisão do dono (06/11/2026): "qualquer alteração na ficha técnica deve
 -- atualizar consumo" — em definitivo, no banco, sem depender do void do cliente.
 --
+-- schema_migrations.name DEVE ser exatamente o basename com hífens
+-- (`ficha-alteracao-atualiza-consumo`). Nome com underscore (MCP apply_migration)
+-- conflita no Stage post-cutover do supabase-migrate.yml.
+--
 -- Gaps medidos:
 --   1) trg_mark_so_costs_dirty_from_sheet NÃO escutava fachete_*,
 --      insole_lining_*, lining/insole *_per_size nem primary_sole_id → editar
