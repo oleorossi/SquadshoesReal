@@ -60,12 +60,21 @@ describe('strap structure consumption wins on open/confirmed PVs', () => {
     expect(MIGRATION).toContain('NOT private.can_propagate_sheet_straps()');
   });
 
-  it('455 instala trigger AFTER UPDATE OF strap_colors', () => {
+  it('455 instalava trigger só-tiras; 457 sobrescreve com auto_resync amplo', () => {
+    // Histórico 455: trigger só em strap_colors.
     expect(MIGRATION).toContain('tg_propagate_sheet_straps_on_structure_change');
     expect(MIGRATION).toContain('trg_propagate_sheet_straps_on_structure_change');
     expect(MIGRATION).toContain('AFTER UPDATE OF strap_colors ON public.technical_sheets');
     expect(MIGRATION).toContain("set_config('app.strap_propagate_rpc', '1', true)");
     expect(MIGRATION).toContain('propagate_sheet_straps_to_open_pvs(NEW.id)');
+    // Autoridade viva: qualquer alteração de consumo (457).
+    const next = readFileSync(
+      resolve(ROOT, 'supabase/migrations/20270101045700_ficha-alteracao-atualiza-consumo.sql'),
+      'utf8',
+    );
+    expect(next).toContain('DROP TRIGGER IF EXISTS trg_propagate_sheet_straps_on_structure_change');
+    expect(next).toContain('trg_zz_auto_resync_consumption_on_sheet_change');
+    expect(next).toContain('auto_resync_unstarted_ops_for_sheet');
   });
 
   it('455 repara PV-00239 TRASEIRA 42→120 e re-enfileira demanda', () => {
