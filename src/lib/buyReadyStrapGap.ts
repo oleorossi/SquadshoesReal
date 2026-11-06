@@ -1,20 +1,16 @@
 import { canonicalStrapColorForProduct } from '@/lib/officialStrapColors';
 import { strapIdentityBasis, type StrapIdentityBasis } from '@/lib/strapIdentity';
-import { isUuid, technicalStrapLineId } from '@/lib/technicalStrapLines';
+import { isUuid } from '@/lib/technicalStrapLines';
 
 /**
- * Lacuna EXATA que trava o salvamento do PV com compra pronta incompleta
- * (`prepare_sale_order_item_internal_straps`).
+ * Lacuna de cadastro Hub (variante comercial) no item do PV.
  *
- * A regra do servidor exige uma `artisanal_strap_variants` ATIVA em
- * (medida, grupo acabado, cor canônica) com `purchase_enabled` e
- * `internal_production_enabled = false` — identidade Hub `finished_product_group`
- * — tanto para STRASS na ficha quanto para a exceção Comprar pronto no PV
- * (`pv_origem = sku_acabado`). O prepare só ACHA o SKU; não cria produto.
- *
- * Este módulo NÃO relaxa a regra: ele apenas identifica, no próprio item do PV,
- * QUAL tira está sem o cadastro — para o operador registrar só a tira que este
- * pedido usa, em vez de percorrer a lista inteira do hub.
+ * Spec `tira-comprar-pronto-so-registra` (D4/D8, mig 45600): strass
+ * (`finished_product_group`) e napa em `sku_acabado` (45300) **não** exigem
+ * mais variante Hub no save — o prepare acha/cria o SKU (strass) ou só
+ * registra cor+metros (napa). `strapLineNeedsBuyReadyHubCadastro` fica
+ * sempre falso; `listBuyReadyStrapGaps` permanece como utilitário de
+ * diagnóstico (produto acabado / review) se algum fluxo legado o chamar.
  */
 export interface BuyReadyStrapGapLine {
   id?: string | null;
@@ -108,40 +104,9 @@ export function purchasedReadyStrapProductForColor(
   return matches.length === 1 ? matches[0] : null;
 }
 
-function hasActiveBuyReadyVariant(
-  catalog: BuyReadyStrapGapCatalog,
-  measureId: string,
-  identityGroupId: string,
-  colorId: string,
-): boolean {
-  return catalog.variants.some((variant) => variant.status === 'active'
-    && variant.identity_basis === 'finished_product_group'
-    && variant.internal_production_enabled !== true
-    && variant.purchase_enabled !== false
-    && variant.measure_id === measureId
-    && variant.base_group_id === identityGroupId
-    && variant.color_id === colorId);
-}
-
-function reviewIdForProduct(
-  diagnostics: BuyReadyStrapGapDiagnostic[] | null | undefined,
-  finishedProductId: string | null,
-): string | null {
-  if (!diagnostics || !finishedProductId) return null;
-  const match = diagnostics.find((issue) => {
-    const details = issue.details || {};
-    return str(details.entity_type) === 'buy_ready_strap_product'
-      && str(details.action_required) === 'create_variant_with_bundle'
-      && str(details.required_finished_product_id) === finishedProductId;
-  });
-  if (!match) return null;
-  const reviewId = str(match.details?.review_id) || match.entity_id;
-  return isUuid(reviewId) ? reviewId : null;
-}
-
 /**
- * Lacuna de cadastro Hub (variante comercial) — identidade acabada da ficha
- * (STRASS / finished_product_group).
+ * Identidade acabada da ficha (STRASS / finished_product_group) — ainda
+ * usada pela UI pra rotular/origem; NÃO trava o save (45600).
  */
 export function strapLineWantsBuyReady(
   strap: BuyReadyStrapGapLine | null | undefined,
@@ -162,13 +127,14 @@ export function strapLineIsPvBuyReadyChoice(
 }
 
 /**
- * Linha que precisa de variante Hub Comprar pronto antes do save.
- * Só identidade acabada da ficha (STRASS). Napa em sku_acabado (45300) não.
+ * Linha que precisa de variante Hub antes do save.
+ * Sempre falso desde 45600 (D4): strass resolve/cria SKU no servidor; napa
+ * em sku_acabado só registra (45300). O parâmetro fica pra assinatura estável.
  */
 export function strapLineNeedsBuyReadyHubCadastro(
-  strap: BuyReadyStrapGapLine | null | undefined,
+  _strap?: BuyReadyStrapGapLine | null,
 ): boolean {
-  return strapLineWantsBuyReady(strap);
+  return false;
 }
 
 /** Grupo acabado: pin da ficha, ou group_id legado quando o PV escolheu fornecedor. */
@@ -185,46 +151,19 @@ export function buyReadyIdentityGroupId(
 }
 
 /**
- * Só reporta a lacuna quando a identidade já está completa (medida, grupo e cor
- * por UUID). Identidade incompleta tem mensagem própria na tela e um CTA de
- * cadastro comercial ali só empilharia dois avisos sobre a mesma linha.
- *
- * Cobre identidade acabada da ficha (STRASS). Comprar pronto de napa no PV
- * (`sku_acabado`) não gera lacuna Hub — só registra cor + metros (45300).
+ * Lacunas Hub por linha — vazio desde 45600 (D4: save não exige variante).
+ * Mantém a assinatura e o utilitário de produto/review para fluxos legados.
  */
 export function listBuyReadyStrapGaps(
   straps: BuyReadyStrapGapLine[] | null | undefined,
   catalog: BuyReadyStrapGapCatalog | null | undefined,
   diagnostics?: BuyReadyStrapGapDiagnostic[] | null,
 ): BuyReadyStrapGap[] {
-  if (!catalog || !Array.isArray(straps)) return [];
-  return straps.flatMap((strap, position) => {
-    if (!strapLineNeedsBuyReadyHubCadastro(strap)) return [];
-    const lineId = technicalStrapLineId({
-      id: strap.id,
-      technical_strap_line_id: strap.technical_strap_line_id,
-    });
-    const measureId = str(strap.measure_id);
-    const identityGroupId = buyReadyIdentityGroupId(strap);
-    const colorId = str(strap.color_id);
-    if (!lineId || !isUuid(measureId) || !isUuid(identityGroupId) || !isUuid(colorId)) return [];
-    if (hasActiveBuyReadyVariant(catalog, measureId, identityGroupId, colorId)) return [];
-
-    const product = purchasedReadyStrapProductForColor(catalog, identityGroupId, colorId);
-    const color = catalog.colors.find((entry) => entry.id === colorId);
-    return [{
-      lineId,
-      label: str(strap.label) || `Tira ${position + 1}`,
-      groupName: str(strap.group_name),
-      measureId,
-      identityGroupId,
-      colorId,
-      colorName: color?.name || '',
-      finishedProductId: product?.id || null,
-      finishedProductName: product?.name ? str(product.name) : null,
-      reviewId: reviewIdForProduct(diagnostics, product?.id || null),
-    }];
-  });
+  void straps;
+  void catalog;
+  void diagnostics;
+  // Portão único: NeedsBuyReadyHubCadastro sempre falso (D4/45600).
+  return [];
 }
 
 export interface OrderBuyReadyStrapGap extends BuyReadyStrapGap {

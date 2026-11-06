@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 /**
  * Histórico 45200: removeu o INSERT do prepare e passou a exigir Hub.
  * Superada para tira de NAPA pela 45300 (so-registra): Comprar pronto só
- * registra cor + metros. STRASS (finished_product_group) segue com lacuna Hub.
+ * registra cor + metros. STRASS (finished_product_group) deixa de exigir
+ * variante Hub na 45600 (acha/cria SKU).
  */
 const ROOT = resolve(__dirname, '../..');
 const MIGRATIONS = resolve(ROOT, 'supabase/migrations');
@@ -46,7 +47,7 @@ describe('pv sku_acabado exige cadastro Hub — contrato 45200 (histórico)', ()
     expect(so).toContain(MARKER); // guarda que o RAISE 45200 saiu do writer
   });
 
-  it('UI: lacuna Hub só para identidade acabada; napa sku_acabado não bloqueia', () => {
+  it('UI: lacuna Hub não bloqueia save (D4/45600); diálogo legado permanece', () => {
     const gap = readFileSync(resolve(ROOT, 'src/lib/buyReadyStrapGap.ts'), 'utf8');
     const panel = readFileSync(
       resolve(ROOT, 'src/components/sale-orders/SaleOrderFormPanel.tsx'),
@@ -57,8 +58,7 @@ describe('pv sku_acabado exige cadastro Hub — contrato 45200 (histórico)', ()
     const needsBody = gap.match(
       /export function strapLineNeedsBuyReadyHubCadastro\([\s\S]*?\n\}/,
     )?.[0] || '';
-    expect(needsBody).toContain('strapLineWantsBuyReady');
-    expect(needsBody).not.toContain('strapLineIsPvBuyReadyChoice');
+    expect(needsBody).toContain('return false');
     expect(panel).toContain('collectBuyReadyGaps');
     expect(panel).toContain('showBuyReadyGapDialog');
     expect(panel).toContain('Cadastro Comprar pronto pendente');

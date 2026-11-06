@@ -66,12 +66,11 @@ describe('pv sku_acabado buy_ready sem variante — contrato 31900', () => {
     const gap = readFileSync(resolve(ROOT, 'src/lib/buyReadyStrapGap.ts'), 'utf8');
     const form = readFileSync(resolve(ROOT, 'src/components/sale-orders/SaleOrderItemForm.tsx'), 'utf8');
     expect(gap).toContain('strapLineIsPvBuyReadyChoice');
-    // Napa em sku_acabado NÃO entra em NeedsBuyReadyHubCadastro (45300).
+    // D4/45600: NeedsBuyReadyHubCadastro nunca trava (napa nem strass).
     const needsBody = gap.match(
       /export function strapLineNeedsBuyReadyHubCadastro\([\s\S]*?\n\}/,
     )?.[0] || '';
-    expect(needsBody).toContain('strapLineWantsBuyReady');
-    expect(needsBody).not.toContain('strapLineIsPvBuyReadyChoice');
+    expect(needsBody).toContain('return false');
     const wantsBody = gap.match(
       /export function strapLineWantsBuyReady\([\s\S]*?\n\}/,
     )?.[0] || '';
@@ -85,3 +84,4 @@ describe('pv sku_acabado buy_ready sem variante — contrato 31900', () => {
     expect(body).toContain('finished_product_id: null');
   });
 });
+
