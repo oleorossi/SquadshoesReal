@@ -205,7 +205,7 @@ export function OperationsTab({
         .single();
       if (!sheet) return { total: 0, orders: [] };
 
-      // orders.reference / orders.delivery_date não existem: vínculo é
+      // Colunas legadas de texto/prazo não existem neste schema: vínculo é
       // reference_id (UUID da ficha) e prazo operacional é due_date.
       const { data: orders } = await supabase
         .from('orders')
