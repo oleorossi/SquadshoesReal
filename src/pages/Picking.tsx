@@ -650,7 +650,14 @@ function AddItemDialog({ sessionId, open, onClose }: { sessionId: string; open: 
   const { data: products = [] } = useQuery({
     queryKey: ['products_for_picking'],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).from('products').select('id, name, code, ean, unit').eq('active', true).order('name').limit(2000);
+      // products.code/ean NÃO existem neste schema (EAN mora em
+      // technical_sheets.ean_by_size). Identidade comercial = sku.
+      const { data, error } = await (supabase as any)
+        .from('products')
+        .select('id, name, sku, unit')
+        .eq('active', true)
+        .order('name')
+        .limit(2000);
       if (error) throw error;
       return data || [];
     },
@@ -693,8 +700,8 @@ function AddItemDialog({ sessionId, open, onClose }: { sessionId: string; open: 
               options={products.map((p: any) => ({
                 value: p.id,
                 label: p.name,
-                description: [p.code && `(${p.code})`, p.ean && `EAN ${p.ean}`].filter(Boolean).join(' · ') || undefined,
-                keywords: [p.code, p.ean].filter(Boolean).join(' '),
+                description: p.sku ? `(${p.sku})` : undefined,
+                keywords: p.sku || '',
               }))}
               placeholder="Selecionar..."
             />

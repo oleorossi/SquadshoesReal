@@ -49,3 +49,15 @@ query aborta antes de retornar linhas.
 
 - Produção histórica: `ssvxfoybzmjlypnipqzn` (`supabase/config.toml`)
 - Referência Lovable antiga (docs/pending): `qrdvwoijghmgugejponz`
+- Destino atual da Vercel (pós-transferência): `cknbzfqvqwqdhajspazn`
+
+## Correções de app (schema-safe)
+
+O schema canônico **não** tem `products.code` / `products.ean` nem
+`orders.delivery_date` / `orders.reference`. O frontend foi alinhado:
+
+- `src/pages/Picking.tsx` → usa `sku`
+- `src/components/technical-sheets/OperationsTab.tsx` → `reference_id` + `due_date`
+
+Para saber se o destino tem **dados** ou só schema, rode
+`corrigir_dados_e_auth.sql` no SQL Editor (role postgres, bypass RLS).

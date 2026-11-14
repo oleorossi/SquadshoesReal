@@ -205,12 +205,15 @@ export function OperationsTab({
         .single();
       if (!sheet) return { total: 0, orders: [] };
 
+      // orders.reference / orders.delivery_date não existem: vínculo é
+      // reference_id (UUID da ficha) e prazo operacional é due_date.
       const { data: orders } = await supabase
         .from('orders')
-        .select('id, order_number, quantity, status, delivery_date')
-        .or(`reference.eq.${sheet.name},reference.eq.${sheet.code}`)
+        .select('id, order_number, quantity, status, due_date')
+        .eq('reference_id', sheetId)
+        .is('deleted_at', null)
         .in('status', ['Em Produção', 'Aguardando', 'Pendente', 'em_producao', 'aguardando', 'pendente'])
-        .order('delivery_date', { ascending: true });
+        .order('due_date', { ascending: true });
 
       return {
         total: (orders || []).reduce((s: number, o: any) => s + Number(o.quantity || 0), 0),
@@ -524,7 +527,7 @@ export function OperationsTab({
                   <TableCell className="text-xs text-right font-mono">{o.quantity}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{o.status}</Badge></TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {o.delivery_date ? new Date(o.delivery_date).toLocaleDateString('pt-BR') : '—'}
+                    {o.due_date ? new Date(o.due_date).toLocaleDateString('pt-BR') : '—'}
                   </TableCell>
                 </TableRow>
               ))}
