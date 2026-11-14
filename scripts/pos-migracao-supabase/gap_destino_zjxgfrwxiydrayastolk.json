@@ -1,0 +1,1091 @@
+{
+  "project": "zjxgfrwxiydrayastolk",
+  "ok": [
+    "clients.active",
+    "clients.cep",
+    "clients.cidade",
+    "clients.cnpj",
+    "clients.economic_group_id",
+    "clients.email",
+    "clients.endereco",
+    "clients.estado",
+    "clients.id",
+    "clients.inscricao_estadual",
+    "clients.logo_url",
+    "clients.nome_fantasia",
+    "clients.notes",
+    "clients.razao_social",
+    "clients.telefone",
+    "component_sheets.dimensions_length",
+    "component_sheets.dimensions_thickness",
+    "component_sheets.dimensions_unit",
+    "component_sheets.dimensions_width",
+    "component_sheets.group_id",
+    "component_sheets.id",
+    "component_sheets.notes",
+    "component_sheets.product_id",
+    "component_sheets.yield_per_size",
+    "economic_groups.id",
+    "economic_groups.logo_url",
+    "economic_groups.name",
+    "employees.active",
+    "employees.department",
+    "employees.id",
+    "employees.name",
+    "employees.role",
+    "orders.actual_cost_per_pair",
+    "orders.color",
+    "orders.created_at",
+    "orders.grade",
+    "orders.id",
+    "orders.labor_cost",
+    "orders.material_cost",
+    "orders.notes",
+    "orders.order_number",
+    "orders.overhead_cost",
+    "orders.planned_delivery",
+    "orders.planned_start",
+    "orders.quantity",
+    "orders.reference_id",
+    "orders.sale_order_id",
+    "orders.standard_cost_per_pair",
+    "orders.status",
+    "orders.total_production_cost",
+    "products.active",
+    "products.category",
+    "products.color",
+    "products.dimensions_length",
+    "products.dimensions_thickness",
+    "products.dimensions_unit",
+    "products.dimensions_width",
+    "products.group_id",
+    "products.id",
+    "products.image_url",
+    "products.location",
+    "products.max_stock",
+    "products.name",
+    "products.quantity",
+    "products.sku",
+    "products.stock_grade",
+    "products.technical_name",
+    "products.unit",
+    "products.unit_price",
+    "products.updated_at",
+    "profiles.email",
+    "profiles.full_name",
+    "profiles.id",
+    "purchase_order_items.current_stock",
+    "purchase_order_items.id",
+    "purchase_order_items.product_id",
+    "purchase_order_items.purchase_order_id",
+    "purchase_order_items.quantity",
+    "purchase_order_items.suggested_quantity",
+    "purchase_order_items.unit",
+    "purchase_order_items.unit_price",
+    "purchase_orders.auto_generated",
+    "purchase_orders.created_at",
+    "purchase_orders.id",
+    "purchase_orders.notes",
+    "purchase_orders.order_number",
+    "purchase_orders.status",
+    "purchase_orders.supplier_id",
+    "purchase_orders.supplier_name",
+    "purchase_orders.total_value",
+    "purchase_orders.updated_at",
+    "sale_order_items.color",
+    "sale_order_items.created_at",
+    "sale_order_items.fichas",
+    "sale_order_items.grade",
+    "sale_order_items.id",
+    "sale_order_items.quantity",
+    "sale_order_items.reference_id",
+    "sale_order_items.sale_order_id",
+    "sale_order_items.strap_colors",
+    "sale_order_items.unit_price",
+    "sale_orders.client_cnpj",
+    "sale_orders.client_contact",
+    "sale_orders.client_id",
+    "sale_orders.client_name",
+    "sale_orders.client_order_number",
+    "sale_orders.commission_value",
+    "sale_orders.created_at",
+    "sale_orders.delivery_deadline",
+    "sale_orders.id",
+    "sale_orders.nfe",
+    "sale_orders.notes",
+    "sale_orders.order_number",
+    "sale_orders.payment_condition",
+    "sale_orders.remessa",
+    "sale_orders.representative",
+    "sale_orders.representative_id",
+    "sale_orders.status",
+    "sale_orders.total",
+    "sale_orders.updated_at",
+    "sheet_materials.color",
+    "sheet_materials.group_id",
+    "sheet_materials.id",
+    "sheet_materials.notes",
+    "sheet_materials.product_id",
+    "sheet_materials.quantity_per_unit",
+    "sheet_materials.sheet_id",
+    "sheet_materials.sizes",
+    "sheet_materials.supplier",
+    "sheet_materials.weight",
+    "sheet_materials.width",
+    "stock_movements.created_at",
+    "stock_movements.id",
+    "stock_movements.movement_type",
+    "stock_movements.order_id",
+    "stock_movements.product_id",
+    "stock_movements.quantity",
+    "technical_sheets.code",
+    "technical_sheets.colors",
+    "technical_sheets.components_accessories",
+    "technical_sheets.cost_price",
+    "technical_sheets.direct_components",
+    "technical_sheets.has_straps",
+    "technical_sheets.id",
+    "technical_sheets.image_url",
+    "technical_sheets.images",
+    "technical_sheets.insole_consumption",
+    "technical_sheets.insole_material",
+    "technical_sheets.lining_accessories",
+    "technical_sheets.lining_consumption",
+    "technical_sheets.lining_material",
+    "technical_sheets.name",
+    "technical_sheets.production_sectors",
+    "technical_sheets.safety_margin_pct",
+    "technical_sheets.sale_price",
+    "technical_sheets.shoe_category",
+    "technical_sheets.sizes",
+    "technical_sheets.sole_color",
+    "technical_sheets.sole_consumption",
+    "technical_sheets.sole_material",
+    "technical_sheets.status",
+    "technical_sheets.strap_colors",
+    "technical_sheets.upper_consumption",
+    "technical_sheets.upper_material"
+  ],
+  "missing": [
+    {
+      "table": "clients",
+      "column": "bairro",
+      "message": "column clients.bairro does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "branch_code",
+      "message": "column clients.branch_code does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "branch_name",
+      "message": "column clients.branch_name does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "client_number",
+      "message": "column clients.client_number does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "commercial_block",
+      "message": "column clients.commercial_block does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "credit_limit",
+      "message": "column clients.credit_limit does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "is_matriz",
+      "message": "column clients.is_matriz does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "label_pattern",
+      "message": "column clients.label_pattern does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "max_discount_pct",
+      "message": "column clients.max_discount_pct does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "price_list_id",
+      "message": "column clients.price_list_id does not exist"
+    },
+    {
+      "table": "clients",
+      "column": "silk_url",
+      "message": "column clients.silk_url does not exist"
+    },
+    {
+      "table": "component_sheets",
+      "column": "default_sole_group_id",
+      "message": "column component_sheets.default_sole_group_id does not exist"
+    },
+    {
+      "table": "component_sheets",
+      "column": "yield_per_sole",
+      "message": "column component_sheets.yield_per_sole does not exist"
+    },
+    {
+      "table": "economic_groups",
+      "column": "group_number",
+      "message": "column economic_groups.group_number does not exist"
+    },
+    {
+      "table": "economic_groups",
+      "column": "important_info",
+      "message": "column economic_groups.important_info does not exist"
+    },
+    {
+      "table": "economic_groups",
+      "column": "silk_url",
+      "message": "column economic_groups.silk_url does not exist"
+    },
+    {
+      "table": "employees",
+      "column": "work_schedule_id",
+      "message": "column employees.work_schedule_id does not exist"
+    },
+    {
+      "table": "material_reservations",
+      "column": "id",
+      "message": "Could not find the table 'public.material_reservations' in the schema cache"
+    },
+    {
+      "table": "material_reservations",
+      "column": "metadata",
+      "message": "Could not find the table 'public.material_reservations' in the schema cache"
+    },
+    {
+      "table": "material_reservations",
+      "column": "order_id",
+      "message": "Could not find the table 'public.material_reservations' in the schema cache"
+    },
+    {
+      "table": "material_reservations",
+      "column": "product_id",
+      "message": "Could not find the table 'public.material_reservations' in the schema cache"
+    },
+    {
+      "table": "material_reservations",
+      "column": "quantity_consumed",
+      "message": "Could not find the table 'public.material_reservations' in the schema cache"
+    },
+    {
+      "table": "material_reservations",
+      "column": "quantity_reserved",
+      "message": "Could not find the table 'public.material_reservations' in the schema cache"
+    },
+    {
+      "table": "material_reservations",
+      "column": "reservation_type",
+      "message": "Could not find the table 'public.material_reservations' in the schema cache"
+    },
+    {
+      "table": "material_reservations",
+      "column": "sale_order_id",
+      "message": "Could not find the table 'public.material_reservations' in the schema cache"
+    },
+    {
+      "table": "material_reservations",
+      "column": "status",
+      "message": "Could not find the table 'public.material_reservations' in the schema cache"
+    },
+    {
+      "table": "orders",
+      "column": "delivery_date",
+      "message": "column orders.delivery_date does not exist"
+    },
+    {
+      "table": "orders",
+      "column": "is_ahead_of_schedule",
+      "message": "column orders.is_ahead_of_schedule does not exist"
+    },
+    {
+      "table": "orders",
+      "column": "last_sector_finished_at",
+      "message": "column orders.last_sector_finished_at does not exist"
+    },
+    {
+      "table": "orders",
+      "column": "material_gate_reason",
+      "message": "column orders.material_gate_reason does not exist"
+    },
+    {
+      "table": "orders",
+      "column": "material_ready_date",
+      "message": "column orders.material_ready_date does not exist"
+    },
+    {
+      "table": "orders",
+      "column": "material_status",
+      "message": "column orders.material_status does not exist"
+    },
+    {
+      "table": "orders",
+      "column": "sale_order_item_id",
+      "message": "column orders.sale_order_item_id does not exist"
+    },
+    {
+      "table": "products",
+      "column": "blocked_qty",
+      "message": "column products.blocked_qty does not exist"
+    },
+    {
+      "table": "products",
+      "column": "code",
+      "message": "column products.code does not exist"
+    },
+    {
+      "table": "products",
+      "column": "consumption_unit",
+      "message": "column products.consumption_unit does not exist"
+    },
+    {
+      "table": "products",
+      "column": "conversion_rate",
+      "message": "column products.conversion_rate does not exist"
+    },
+    {
+      "table": "products",
+      "column": "current_stock",
+      "message": "column products.current_stock does not exist"
+    },
+    {
+      "table": "products",
+      "column": "ean",
+      "message": "column products.ean does not exist"
+    },
+    {
+      "table": "products",
+      "column": "fachete_material_group_id",
+      "message": "column products.fachete_material_group_id does not exist"
+    },
+    {
+      "table": "products",
+      "column": "heel_height",
+      "message": "column products.heel_height does not exist"
+    },
+    {
+      "table": "products",
+      "column": "insole_mode",
+      "message": "column products.insole_mode does not exist"
+    },
+    {
+      "table": "products",
+      "column": "is_artisanal",
+      "message": "column products.is_artisanal does not exist"
+    },
+    {
+      "table": "products",
+      "column": "is_fachetado",
+      "message": "column products.is_fachetado does not exist"
+    },
+    {
+      "table": "products",
+      "column": "is_standard_sole_item",
+      "message": "column products.is_standard_sole_item does not exist"
+    },
+    {
+      "table": "products",
+      "column": "lead_time_days",
+      "message": "column products.lead_time_days does not exist"
+    },
+    {
+      "table": "products",
+      "column": "min_order_quantity",
+      "message": "column products.min_order_quantity does not exist"
+    },
+    {
+      "table": "products",
+      "column": "ncm",
+      "message": "column products.ncm does not exist"
+    },
+    {
+      "table": "products",
+      "column": "production_unit",
+      "message": "column products.production_unit does not exist"
+    },
+    {
+      "table": "products",
+      "column": "purchase_multiple",
+      "message": "column products.purchase_multiple does not exist"
+    },
+    {
+      "table": "products",
+      "column": "purchase_order_unit",
+      "message": "column products.purchase_order_unit does not exist"
+    },
+    {
+      "table": "products",
+      "column": "purchase_price",
+      "message": "column products.purchase_price does not exist"
+    },
+    {
+      "table": "products",
+      "column": "purchase_unit",
+      "message": "column products.purchase_unit does not exist"
+    },
+    {
+      "table": "products",
+      "column": "quarantine_qty",
+      "message": "column products.quarantine_qty does not exist"
+    },
+    {
+      "table": "products",
+      "column": "reserved_stock",
+      "message": "column products.reserved_stock does not exist"
+    },
+    {
+      "table": "products",
+      "column": "safety_stock",
+      "message": "column products.safety_stock does not exist"
+    },
+    {
+      "table": "products",
+      "column": "sole_classification",
+      "message": "column products.sole_classification does not exist"
+    },
+    {
+      "table": "products",
+      "column": "sole_material",
+      "message": "column products.sole_material does not exist"
+    },
+    {
+      "table": "products",
+      "column": "sole_moq",
+      "message": "column products.sole_moq does not exist"
+    },
+    {
+      "table": "products",
+      "column": "sole_technical_notes",
+      "message": "column products.sole_technical_notes does not exist"
+    },
+    {
+      "table": "products",
+      "column": "supplier_id",
+      "message": "column products.supplier_id does not exist"
+    },
+    {
+      "table": "products",
+      "column": "supplier_lead_time_days",
+      "message": "column products.supplier_lead_time_days does not exist"
+    },
+    {
+      "table": "profiles",
+      "column": "is_sales_rep",
+      "message": "column profiles.is_sales_rep does not exist"
+    },
+    {
+      "table": "profiles",
+      "column": "sales_target_monthly_brl",
+      "message": "column profiles.sales_target_monthly_brl does not exist"
+    },
+    {
+      "table": "profiles",
+      "column": "sales_target_monthly_pairs",
+      "message": "column profiles.sales_target_monthly_pairs does not exist"
+    },
+    {
+      "table": "purchase_order_items",
+      "column": "box_type_id",
+      "message": "column purchase_order_items.box_type_id does not exist"
+    },
+    {
+      "table": "purchase_order_items",
+      "column": "color",
+      "message": "column purchase_order_items.color does not exist"
+    },
+    {
+      "table": "purchase_order_items",
+      "column": "grade",
+      "message": "column purchase_order_items.grade does not exist"
+    },
+    {
+      "table": "purchase_order_items",
+      "column": "received_at",
+      "message": "column purchase_order_items.received_at does not exist"
+    },
+    {
+      "table": "purchase_order_items",
+      "column": "received_quantity",
+      "message": "column purchase_order_items.received_quantity does not exist"
+    },
+    {
+      "table": "purchase_orders",
+      "column": "linked_sale_order_ids",
+      "message": "column purchase_orders.linked_sale_order_ids does not exist"
+    },
+    {
+      "table": "purchase_orders",
+      "column": "promised_date",
+      "message": "column purchase_orders.promised_date does not exist"
+    },
+    {
+      "table": "purchase_orders",
+      "column": "purchase_by_date",
+      "message": "column purchase_orders.purchase_by_date does not exist"
+    },
+    {
+      "table": "purchase_orders",
+      "column": "received_at",
+      "message": "column purchase_orders.received_at does not exist"
+    },
+    {
+      "table": "purchase_orders",
+      "column": "received_date",
+      "message": "column purchase_orders.received_date does not exist"
+    },
+    {
+      "table": "purchase_orders",
+      "column": "source_pv_ids",
+      "message": "column purchase_orders.source_pv_ids does not exist"
+    },
+    {
+      "table": "purchase_orders",
+      "column": "source_type",
+      "message": "column purchase_orders.source_type does not exist"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "active",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "display_order",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "insole_consumption_override",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "insole_material_group_id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "insole_material_product_id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "lining_consumption_override",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "lining_material_group_id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "lining_material_product_id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "main_material_group_id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "material_name",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "reference_id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "sku",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "sole_consumption_override",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "sole_material_product_id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "unit_price_override",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "upper_consumption_override",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "upper_material_group_id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "reference_material_variants",
+      "column": "upper_material_product_id",
+      "message": "Could not find the table 'public.reference_material_variants' in the schema cache"
+    },
+    {
+      "table": "sale_order_items",
+      "column": "material_variant_commercial_snapshot",
+      "message": "column sale_order_items.material_variant_commercial_snapshot does not exist"
+    },
+    {
+      "table": "sale_order_items",
+      "column": "material_variant_id",
+      "message": "column sale_order_items.material_variant_id does not exist"
+    },
+    {
+      "table": "sale_order_items",
+      "column": "production_excluded_at",
+      "message": "column sale_order_items.production_excluded_at does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "billing_week",
+      "message": "column sale_orders.billing_week does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "box_grouping",
+      "message": "column sale_orders.box_grouping does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "command_error",
+      "message": "column sale_orders.command_error does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "command_job_id",
+      "message": "column sale_orders.command_job_id does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "command_phase",
+      "message": "column sale_orders.command_phase does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "command_started_at",
+      "message": "column sale_orders.command_started_at does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "command_target_status",
+      "message": "column sale_orders.command_target_status does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "company_id",
+      "message": "column sale_orders.company_id does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "costs_dirty_at",
+      "message": "column sale_orders.costs_dirty_at does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "delivery_month",
+      "message": "column sale_orders.delivery_month does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "delivery_week",
+      "message": "column sale_orders.delivery_week does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "factoring_config_id",
+      "message": "column sale_orders.factoring_config_id does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "is_factoring",
+      "message": "column sale_orders.is_factoring does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "is_standalone_nfe",
+      "message": "column sale_orders.is_standalone_nfe does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "nfe_external",
+      "message": "column sale_orders.nfe_external does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "nfe_required",
+      "message": "column sale_orders.nfe_required does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "order_type",
+      "message": "column sale_orders.order_type does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "order_version",
+      "message": "column sale_orders.order_version does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "packaging_mode",
+      "message": "column sale_orders.packaging_mode does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "parent_order_id",
+      "message": "column sale_orders.parent_order_id does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "picking_individually_done_at",
+      "message": "column sale_orders.picking_individually_done_at does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "shipped_at",
+      "message": "column sale_orders.shipped_at does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "transporter_id",
+      "message": "column sale_orders.transporter_id does not exist"
+    },
+    {
+      "table": "sale_orders",
+      "column": "valor_frete",
+      "message": "column sale_orders.valor_frete does not exist"
+    },
+    {
+      "table": "sheet_materials",
+      "column": "consumption_sector",
+      "message": "column sheet_materials.consumption_sector does not exist"
+    },
+    {
+      "table": "sheet_materials",
+      "column": "material_variant_id",
+      "message": "column sheet_materials.material_variant_id does not exist"
+    },
+    {
+      "table": "stock_movements",
+      "column": "new_grade",
+      "message": "column stock_movements.new_grade does not exist"
+    },
+    {
+      "table": "stock_movements",
+      "column": "previous_grade",
+      "message": "column stock_movements.previous_grade does not exist"
+    },
+    {
+      "table": "stock_movements",
+      "column": "unit_price_at_movement",
+      "message": "column stock_movements.unit_price_at_movement does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "assembly_capacity_per_day",
+      "message": "column technical_sheets.assembly_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "aviamento_size_ranges",
+      "message": "column technical_sheets.aviamento_size_ranges does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "aviamento_steps",
+      "message": "column technical_sheets.aviamento_steps does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "brand",
+      "message": "column technical_sheets.brand does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "clone_cleanup_request_id",
+      "message": "column technical_sheets.clone_cleanup_request_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "clone_completed_request_id",
+      "message": "column technical_sheets.clone_completed_request_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "color_images",
+      "message": "column technical_sheets.color_images does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "component_colors_enabled",
+      "message": "column technical_sheets.component_colors_enabled does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "cor_predominante_id",
+      "message": "column technical_sheets.cor_predominante_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "cor_solado_id",
+      "message": "column technical_sheets.cor_solado_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "corte_palmilha_capacity_per_day",
+      "message": "column technical_sheets.corte_palmilha_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "costura_cabedal_capacity_per_day",
+      "message": "column technical_sheets.costura_cabedal_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "costura_capacity_per_day",
+      "message": "column technical_sheets.costura_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "costura_palmilha_capacity_per_day",
+      "message": "column technical_sheets.costura_palmilha_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "cutting_capacity_per_day",
+      "message": "column technical_sheets.cutting_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "default_silk_url",
+      "message": "column technical_sheets.default_silk_url does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "expedition_capacity_per_day",
+      "message": "column technical_sheets.expedition_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "fachete_material",
+      "message": "column technical_sheets.fachete_material does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "finishing_capacity_per_day",
+      "message": "column technical_sheets.finishing_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "gluing_capacity_per_day",
+      "message": "column technical_sheets.gluing_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "insole_consumption_per_size",
+      "message": "column technical_sheets.insole_consumption_per_size does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "insole_has_lining",
+      "message": "column technical_sheets.insole_has_lining does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "insole_lining_consumption",
+      "message": "column technical_sheets.insole_lining_consumption does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "insole_lining_consumption_per_size",
+      "message": "column technical_sheets.insole_lining_consumption_per_size does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "insole_perforated",
+      "message": "column technical_sheets.insole_perforated does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "insole_ready_made",
+      "message": "column technical_sheets.insole_ready_made does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "knife_size_ranges",
+      "message": "column technical_sheets.knife_size_ranges does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "lead_time_acabamento_dias",
+      "message": "column technical_sheets.lead_time_acabamento_dias does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "lead_time_buffer_material_dias",
+      "message": "column technical_sheets.lead_time_buffer_material_dias does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "lead_time_corte_dias",
+      "message": "column technical_sheets.lead_time_corte_dias does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "lead_time_costura_dias",
+      "message": "column technical_sheets.lead_time_costura_dias does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "lead_time_expedicao_dias",
+      "message": "column technical_sheets.lead_time_expedicao_dias does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "lead_time_montagem_dias",
+      "message": "column technical_sheets.lead_time_montagem_dias does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "lining_consumption_per_size",
+      "message": "column technical_sheets.lining_consumption_per_size does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "lining_material_product_id",
+      "message": "column technical_sheets.lining_material_product_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "mesa_daily_capacity",
+      "message": "column technical_sheets.mesa_daily_capacity does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "model",
+      "message": "column technical_sheets.model does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "primary_sole_id",
+      "message": "column technical_sheets.primary_sole_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "requires_cutting",
+      "message": "column technical_sheets.requires_cutting does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "requires_sewing",
+      "message": "column technical_sheets.requires_sewing does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "retired_at",
+      "message": "column technical_sheets.retired_at does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "sewing_capacity_per_day",
+      "message": "column technical_sheets.sewing_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "silk_capacity_per_day",
+      "message": "column technical_sheets.silk_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "sole_drives_consumption",
+      "message": "column technical_sheets.sole_drives_consumption does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "sole_group_id",
+      "message": "column technical_sheets.sole_group_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "soling_capacity_per_day",
+      "message": "column technical_sheets.soling_capacity_per_day does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "status_ficha",
+      "message": "column technical_sheets.status_ficha does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "strap_base_group_id",
+      "message": "column technical_sheets.strap_base_group_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "upper_consumption_per_size",
+      "message": "column technical_sheets.upper_consumption_per_size does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "upper_corte_a_fio",
+      "message": "column technical_sheets.upper_corte_a_fio does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "upper_material_group_id",
+      "message": "column technical_sheets.upper_material_group_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "upper_material_product_id",
+      "message": "column technical_sheets.upper_material_product_id does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "upper_sewing_pieces_per_pair",
+      "message": "column technical_sheets.upper_sewing_pieces_per_pair does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "variant_drives_fachete",
+      "message": "column technical_sheets.variant_drives_fachete does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "variant_drives_lining",
+      "message": "column technical_sheets.variant_drives_lining does not exist"
+    },
+    {
+      "table": "technical_sheets",
+      "column": "variant_drives_upper",
+      "message": "column technical_sheets.variant_drives_upper does not exist"
+    }
+  ]
+}
