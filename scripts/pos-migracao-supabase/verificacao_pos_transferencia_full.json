@@ -1,0 +1,35 @@
+{
+  "project": "https://cknbzfqvqwqdhajspazn.supabase.co",
+  "summary": {
+    "ok": 906,
+    "column_missing": 3,
+    "table_missing": 1,
+    "other": 0
+  },
+  "missing": [
+    {
+      "kind": "COLUMN_MISSING",
+      "table": "orders",
+      "column": "delivery_date",
+      "message": "column orders.delivery_date does not exist"
+    },
+    {
+      "kind": "COLUMN_MISSING",
+      "table": "products",
+      "column": "code",
+      "message": "column products.code does not exist"
+    },
+    {
+      "kind": "COLUMN_MISSING",
+      "table": "products",
+      "column": "ean",
+      "message": "column products.ean does not exist"
+    },
+    {
+      "kind": "TABLE_MISSING",
+      "table": "references",
+      "column": "name",
+      "message": "Could not find the table 'public.references' in the schema cache"
+    }
+  ]
+}
