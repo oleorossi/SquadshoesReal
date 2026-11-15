@@ -108,7 +108,9 @@ jobs:
         timeout-minutes: 25
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          # Fixo no banco vivo (ssvx). Mesma trava do vercel-deploy.yml —
+          # secret SUPABASE_PROJECT_ID apontava para outro projeto.
+          SUPABASE_PROJECT_ID: 'ssvxfoybzmjlypnipqzn'
         run: bash scripts/wait-for-supabase-migrations.sh
 
       - name: Refuse a stale main commit
