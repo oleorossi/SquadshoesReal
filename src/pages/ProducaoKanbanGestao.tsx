@@ -199,6 +199,10 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const coarsePointer = useIsCoarsePointer();
   // iPhone não tem Fullscreen API pra elementos (só vídeo) — esconde o botão.
   const canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled;
+  // Faixa secundária (Na rua / Adiantadas / Destacar·Filtrar): no celular fica
+  // fechada pra liberar altura pro quadro. Abre sozinha quando algum filtro
+  // secundário está ativo, senão o operador não vê o estado ligado.
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   const [search, setSearch] = useState('');
   // PADRÃO 'filtrar' (decisão do dono 2026-07-26): buscar deve deixar no quadro
@@ -212,6 +216,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     setSortMode(mode);
     writeKanbanSortMode(mode);
   };
+  const secondaryFiltersActive = filterAtelierRua || filterAdiantadas || viewMode === 'destacar';
+  const showSecondaryTools = toolsOpen || secondaryFiltersActive;
 
   const { data: soleByRefColor } = useQuery({
     queryKey: ['kanban-sole-color-keys'],
@@ -559,10 +565,10 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * duas coisas são independentes — o setor sem match continua no quadro (como
    * trilho fino, ver `isRail` no render) e segue sendo alvo de soltar.
    *
-   * No CELULAR o setor sem match continua saindo (decisão do dono 26/07/2026:
-   * cada coluna ocupa uma tela e passar por 9 vazias é ruído puro) — mas isso
-   * é feito por CSS (`hidden md:flex`), não aqui, pra não precisar medir
-   * viewport em JS nem duplicar a lista de colunas.
+   * No CELULAR e no TABLET o setor sem match continua saindo (decisão do dono
+   * 26/07/2026 + otimização iPad 2026-11: snap de 1–2 colunas não tolera tela
+   * em branco) — mas isso é feito por CSS (`hidden lg:flex`), não aqui, pra
+   * não precisar medir viewport em JS nem duplicar a lista de colunas.
    */
   const matchedColumns = useMemo(() => {
     if (!filtering || !matchedIds) return null;
@@ -580,7 +586,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
    * décimo setor exigia nove swipes sem nenhuma noção de distância. No desktop
    * o trilho também evita arrastar a barra horizontal até achar um setor.
    * Durante uma busca filtrada ele lista só os setores que continuam visíveis
-   * no celular, espelhando a regra `hidden md:flex` das colunas sem resultado.
+   * no celular/tablet, espelhando a regra `hidden lg:flex` das colunas sem
+   * resultado.
    */
   const navigableColumns = useMemo(
     () => (filtering && matchedColumns
@@ -988,11 +995,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           sectionLabel="PRODUÇÃO · KANBAN · GESTÃO"
           title="Central de Produção"
           live
-          className="shrink-0 px-2 md:px-3 pt-2 pb-0"
+          density="compact"
+          className="shrink-0 px-2 md:px-3 pt-1.5 pb-0"
           actions={
-            <Button asChild variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" title="Voltar para o Planejamento de Produção">
+            <Button asChild variant="outline" size="sm" className="h-11 w-11 p-0 lg:h-9 lg:w-auto lg:gap-1.5 lg:px-3" title="Voltar para o Planejamento de Produção">
               <Link to="/producao/planejamento" aria-label="Voltar para o Planejamento de Produção">
-                <ArrowLeft className="h-4 w-4" /> Planejamento
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden lg:inline">Planejamento</span>
               </Link>
             </Button>
           }
@@ -1023,52 +1032,33 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
         </Tabs>
       </div>
 
-      {/* ── Barra de comando ─────────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-1.5 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] 2xl:grid-cols-[minmax(20rem,1fr)_auto_auto] items-center gap-2 md:gap-3">
+      {/* ── Barra de comando ───────────────────────────────────────────────
+          iPhone: busca + faixa primária enxuta (ordenação · Filtros · Selecionar).
+          Secundário (Na rua / Adiantadas / Destacar·Filtrar) atrás de Filtros.
+          Bipar some abaixo de md — no celular não dá pra bipar a ficha.
+          Alvos de toque ficam h-11 até lg: o iPad passa de md e herdava 36px. */}
+      <div className="shrink-0 border-b border-border bg-card px-2 md:px-3 py-1 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] 2xl:grid-cols-[minmax(20rem,1fr)_auto_auto] items-center gap-1.5 md:gap-3">
         <SearchInput
           value={search}
           onChange={setSearch}
           autoFocus={!coarsePointer}
           enterKeyHint="search"
-          placeholder="Buscar OP, referência, cor, cliente, PV — ou bipe o QR da ficha…"
+          placeholder="Buscar OP, referência, cor, cliente, PV…"
           resultCount={matchedOrders.length}
           totalCount={kpis.ops}
           className="w-full min-w-0 max-w-none 2xl:max-w-xl"
-          inputClassName="h-11 md:h-9"
+          inputClassName="h-11 lg:h-9"
         />
 
-        {/* No celular as ações ficam numa faixa própria: a busca vem primeiro e
-            nenhum botão comprime a viewport. O overflow é intencional — gesto
-            horizontal curto, com alvos de 44px e rótulos sempre visíveis. */}
-        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden xl:overflow-visible">
-        <div className="flex w-max items-center gap-1.5 xl:w-auto">
-          <Button variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" onClick={() => setScanOpen(true)}>
-            <QrCode className="h-4 w-4" /> Bipar
-          </Button>
-          <Button
-            variant={filterAtelierRua ? 'default' : 'outline'}
-            size="sm"
-            className="h-11 md:h-9 gap-1.5"
-            title="Destaca OPs com material Ateliê no prestador"
-            onClick={() => setFilterAtelierRua((v) => !v)}
-          >
-            Na rua
-          </Button>
-          <Button
-            variant={filterAdiantadas ? 'default' : 'outline'}
-            size="sm"
-            className="h-11 md:h-9 gap-1.5"
-            title="Destaca OPs liberadas pela Fila de Corte"
-            onClick={() => setFilterAdiantadas((v) => !v)}
-          >
-            Adiantadas
-          </Button>
-          <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Ordenação da coluna">
+        <div className="min-w-0 space-y-1.5">
+        <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {/* Primário — sempre visível */}
+          <div className="flex shrink-0 rounded-md border border-border overflow-hidden" role="group" aria-label="Ordenação da coluna">
             <button
               type="button"
               onClick={() => setSortModePersist('atraso')}
               aria-pressed={sortMode === 'atraso'}
-              className={`h-11 md:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+              className={`h-11 lg:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                 sortMode === 'atraso' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
               }`}
               title="Mais atrasadas no topo (padrão)"
@@ -1079,7 +1069,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               type="button"
               onClick={() => setSortModePersist('setup')}
               aria-pressed={sortMode === 'setup'}
-              className={`h-11 md:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors border-l border-border ${
+              className={`h-11 lg:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors border-l border-border ${
                 sortMode === 'setup' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
               }`}
               title="Agrupar por solado + cor; pin continua no topo"
@@ -1087,74 +1077,163 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               <Layers className="h-4 w-4" /> Setup
             </button>
           </div>
-          {/* Segmented: os dois modos visíveis (tooltip não existe no toque) */}
-          <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Modo da busca">
-            <button
-              type="button"
-              onClick={() => setViewMode('destacar')}
-              aria-pressed={viewMode === 'destacar'}
-              className={`h-11 md:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                viewMode === 'destacar' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
-              }`}
-            >
-              <Highlighter className="h-4 w-4" /> Destacar
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('filtrar')}
-              aria-pressed={viewMode === 'filtrar'}
-              className={`h-11 md:h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors border-l border-border ${
-                viewMode === 'filtrar' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
-              }`}
-            >
-              <Funnel className="h-4 w-4" /> Filtrar
-            </button>
-          </div>
+          <Button
+            variant={showSecondaryTools ? 'default' : 'outline'}
+            size="sm"
+            className="h-11 shrink-0 gap-1.5 lg:hidden"
+            aria-expanded={showSecondaryTools}
+            aria-pressed={secondaryFiltersActive}
+            onClick={() => setToolsOpen(v => !v)}
+            title={showSecondaryTools ? 'Recolher filtros' : 'Mais filtros'}
+          >
+            <Funnel className="h-4 w-4" />
+            Filtros
+            {secondaryFiltersActive && (
+              <span className="font-mono text-[10px] opacity-80">
+                {(filterAtelierRua ? 1 : 0) + (filterAdiantadas ? 1 : 0) + (viewMode === 'destacar' ? 1 : 0)}
+              </span>
+            )}
+          </Button>
+          {/* iPad (md–lg): Bipar na primária. No iPhone (<md) some — não dá pra bipar. */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden h-11 shrink-0 gap-1.5 md:inline-flex lg:hidden"
+            onClick={() => setScanOpen(true)}
+          >
+            <QrCode className="h-4 w-4" /> Bipar
+          </Button>
           {canEdit && boardMode === 'chao' && (
             <Button
               variant={selectMode ? 'default' : 'outline'}
               size="sm"
-              className="h-11 md:h-9 gap-1.5"
+              className="h-11 shrink-0 lg:h-9 gap-1.5"
               onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
               aria-pressed={selectMode}
             >
-              <CheckSquare className="h-4 w-4" /> {selectMode ? 'Sair da seleção' : 'Selecionar OPs'}
+              <CheckSquare className="h-4 w-4" />
+              <span className="lg:hidden">{selectMode ? 'Sair' : 'Selecionar'}</span>
+              <span className="hidden lg:inline">{selectMode ? 'Sair da seleção' : 'Selecionar OPs'}</span>
             </Button>
           )}
-          {/* No celular os KPIs somem, mas o frescor não pode sumir: é onde o
-              operador mais depende do realtime sem ter espaço pra diagnóstico. */}
-          <span
-            className={`flex h-11 shrink-0 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[10px] md:hidden ${
-              stale ? 'border-warning/40 bg-warning/10 text-warning' : 'border-border bg-muted/30 text-muted-foreground'
-            }`}
-            role="status"
-            title={stale
-              ? `Nenhum dado novo há ${staleMin} minutos.`
-              : `Último dado recebido às ${updatedLabel}.`}
-          >
-            <span className={`h-2 w-2 rounded-full ${stale ? 'bg-warning' : 'bg-success'}`} aria-hidden="true" />
-            {stale ? `sem atualizar · ${staleMin} min` : `dados · ${updatedLabel}`}
-          </span>
+
+          {/* Secundário no desktop (lg+) — mesma faixa horizontal */}
+          <div className="hidden lg:flex items-center gap-1.5 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1.5"
+              onClick={() => setScanOpen(true)}
+            >
+              <QrCode className="h-4 w-4" /> Bipar
+            </Button>
+            <Button
+              variant={filterAtelierRua ? 'default' : 'outline'}
+              size="sm"
+              className="h-9 gap-1.5"
+              title="Destaca OPs com material Ateliê no prestador"
+              onClick={() => setFilterAtelierRua((v) => !v)}
+            >
+              Na rua
+            </Button>
+            <Button
+              variant={filterAdiantadas ? 'default' : 'outline'}
+              size="sm"
+              className="h-9 gap-1.5"
+              title="Destaca OPs liberadas pela Fila de Corte"
+              onClick={() => setFilterAdiantadas((v) => !v)}
+            >
+              Adiantadas
+            </Button>
+            <div className="flex rounded-md border border-border overflow-hidden" role="group" aria-label="Modo da busca">
+              <button
+                type="button"
+                onClick={() => setViewMode('destacar')}
+                aria-pressed={viewMode === 'destacar'}
+                className={`h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                  viewMode === 'destacar' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
+                }`}
+              >
+                <Highlighter className="h-4 w-4" /> Destacar
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('filtrar')}
+                aria-pressed={viewMode === 'filtrar'}
+                className={`h-9 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors border-l border-border ${
+                  viewMode === 'filtrar' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
+                }`}
+              >
+                <Funnel className="h-4 w-4" /> Filtrar
+              </button>
+            </div>
+          </div>
+
           {/* Dentro do ERP o atalho é abrir a Central (tela cheia dedicada);
               fullscreen do navegador só faz sentido na rota própria. */}
           {embedded ? (
-            <Button asChild variant="outline" size="sm" className="h-11 md:h-9 gap-1.5" title="Abrir a Central de Produção em tela cheia, sem a casca do ERP">
+            <Button asChild variant="outline" size="sm" className="h-11 shrink-0 lg:h-9 gap-1.5" title="Abrir a Central de Produção em tela cheia, sem a casca do ERP">
               <Link to="/producao/kanban/gestao" aria-label="Abrir Modo Gestão em página dedicada">
                 <ArrowsOutSimple className="h-4 w-4" /> <span className="hidden sm:inline">Modo Gestão</span>
               </Link>
             </Button>
           ) : canFullscreen && (
-            <Button variant="outline" size="sm" className="h-11 w-11 md:h-9 md:w-9 p-0" onClick={toggleFullscreen} title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}>
+            <Button variant="outline" size="sm" className="h-11 w-11 shrink-0 lg:h-9 lg:w-9 p-0" onClick={toggleFullscreen} title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}>
               {isFullscreen ? <ArrowsInSimple className="h-4 w-4" /> : <ArrowsOutSimple className="h-4 w-4" />}
             </Button>
           )}
         </div>
+
+        {/* Secundário no celular/iPad portrait — linha própria só quando Filtros aberto */}
+        {showSecondaryTools && (
+          <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto lg:hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <Button
+              variant={filterAtelierRua ? 'default' : 'outline'}
+              size="sm"
+              className="h-11 shrink-0 gap-1.5"
+              title="Destaca OPs com material Ateliê no prestador"
+              onClick={() => setFilterAtelierRua((v) => !v)}
+            >
+              Na rua
+            </Button>
+            <Button
+              variant={filterAdiantadas ? 'default' : 'outline'}
+              size="sm"
+              className="h-11 shrink-0 gap-1.5"
+              title="Destaca OPs liberadas pela Fila de Corte"
+              onClick={() => setFilterAdiantadas((v) => !v)}
+            >
+              Adiantadas
+            </Button>
+            <div className="flex shrink-0 rounded-md border border-border overflow-hidden" role="group" aria-label="Modo da busca">
+              <button
+                type="button"
+                onClick={() => setViewMode('destacar')}
+                aria-pressed={viewMode === 'destacar'}
+                className={`h-11 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                  viewMode === 'destacar' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
+                }`}
+              >
+                <Highlighter className="h-4 w-4" /> Destacar
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('filtrar')}
+                aria-pressed={viewMode === 'filtrar'}
+                className={`h-11 px-3 text-xs font-semibold flex items-center gap-1.5 transition-colors border-l border-border ${
+                  viewMode === 'filtrar' ? 'bg-foreground text-background' : 'bg-card text-muted-foreground hover:bg-muted/40'
+                }`}
+              >
+                <Funnel className="h-4 w-4" /> Filtrar
+              </button>
+            </div>
+          </div>
+        )}
         </div>
 
         {/* KPIs do quadro + relógio (painel de sala de controle). No celular
-            ficam ocultos — os headers das colunas já carregam as contagens. Em
-            notebook ocupam uma segunda linha previsível; em 2XL voltam pra
-            mesma linha sem disputar largura com a busca. */}
+            ficam ocultos — o live do header cobre o frescor. Em tablet/desktop
+            as contagens entram; em 2XL voltam pra mesma linha da busca. */}
         <div className="hidden md:flex col-span-1 xl:col-span-2 2xl:col-span-1 items-center justify-end gap-4 shrink-0 font-mono text-xs border-t border-border/60 pt-1 2xl:border-0 2xl:pt-0 2xl:ml-auto">
           <span><strong className="text-sm">{kpis.ops}</strong> <span className="text-muted-foreground">{boardMode === 'fila' ? 'reservadas' : 'OPs'}</span></span>
           <span><strong className="text-sm">{kpis.pares.toLocaleString('pt-BR')}</strong> <span className="text-muted-foreground">pares</span></span>
@@ -1345,8 +1424,10 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               <span>
                 <strong className="uppercase tracking-wide">Gargalo: {constraintSector}</strong>
                 <span className="text-muted-foreground">
-                  {' · '}<span className="font-mono">{wipBySector.get(constraintSector)}</span> OPs acumuladas
-                  {idleBelowConstraint > 0 ? <> · <span className="font-mono">{idleBelowConstraint}</span> setores ociosos abaixo</> : null}
+                  {' · '}<span className="font-mono">{wipBySector.get(constraintSector)}</span> OPs
+                  <span className="hidden sm:inline"> acumuladas
+                    {idleBelowConstraint > 0 ? <> · <span className="font-mono">{idleBelowConstraint}</span> setores ociosos abaixo</> : null}
+                  </span>
                 </span>
               </span>
             </div>
@@ -1357,8 +1438,12 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                 {Math.round((kpis.atrasadas / Math.max(kpis.ops, 1)) * 100)}%
               </strong>
               <span>
-                <span className="font-mono font-semibold">{kpis.atrasadas}</span> de <span className="font-mono">{kpis.ops}</span> OPs atrasadas
-                <span className="text-muted-foreground"> — ordenadas primeiro em cada coluna</span>
+                <span className="font-mono font-semibold">{kpis.atrasadas}</span>
+                <span className="sm:hidden"> atrasadas</span>
+                <span className="hidden sm:inline">
+                  {' '}de <span className="font-mono">{kpis.ops}</span> OPs atrasadas
+                  <span className="text-muted-foreground"> — ordenadas primeiro em cada coluna</span>
+                </span>
               </span>
             </div>
           )}
@@ -1368,10 +1453,10 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             <div className="flex shrink-0 max-w-[calc(100vw-1rem)] md:max-w-none items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 px-2.5 py-1">
               <Package className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               <span>
-                <span className="font-mono font-semibold">{travadasMaterial.n}</span> OP(s) sem material
+                <span className="font-mono font-semibold">{travadasMaterial.n}</span> sem material
                 {travadasMaterial.pior && (
-                  <span className="text-muted-foreground">
-                    {' — '}o último chega em{' '}
+                  <span className="text-muted-foreground hidden sm:inline">
+                    {' — '}último em{' '}
                     <span className="font-mono">
                       {new Date(`${travadasMaterial.pior}T12:00:00`).toLocaleDateString('pt-BR')}
                     </span>
@@ -1388,8 +1473,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             <div className="flex shrink-0 max-w-[calc(100vw-1rem)] md:max-w-none items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
               <span>
-                <strong>Agenda de hoje indisponível</strong>
-                <span className="text-muted-foreground">
+                <strong>Agenda indisponível</strong>
+                <span className="text-muted-foreground hidden sm:inline">
                   {' '}— o <span className="font-mono">hoje:</span> das colunas sai como{' '}
                   <span className="font-mono">—</span>. Não é capacidade zerada: a consulta falhou.
                 </span>
@@ -1400,8 +1485,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             <div className="flex shrink-0 max-w-[calc(100vw-1rem)] md:max-w-none items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1">
               <Package className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
               <span>
-                <strong>Gate de material indisponível</strong>
-                <span className="text-muted-foreground">
+                <strong>Gate de material falhou</strong>
+                <span className="text-muted-foreground hidden sm:inline">
                   {' '}— nenhuma OP aparece marcada como sem matéria-prima porque a consulta falhou,
                   não porque todas têm material.
                 </span>
@@ -1421,7 +1506,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             <Button
               variant="ghost"
               size="icon"
-              className="h-11 w-11 md:h-8 md:w-8 shrink-0"
+              className="h-11 w-11 lg:h-8 lg:w-8 shrink-0"
               aria-label="Ir ao setor anterior"
               onClick={() => goToAdjacentSector(-1)}
               disabled={activeSectorIndex <= 0}
@@ -1448,7 +1533,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                     aria-current={isActive ? 'step' : undefined}
                     aria-label={`${index + 1} de ${navigableColumns.length}: ${sector}, ${count} OP${count === 1 ? '' : 's'}${isConstraint ? ', gargalo atual' : ''}`}
                     onClick={() => scrollToSector(sector)}
-                    className={`group h-11 md:h-8 shrink-0 flex items-center gap-2 rounded-sm border px-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                    className={`group h-11 lg:h-8 shrink-0 flex items-center gap-2 rounded-sm border px-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                       isActive
                         ? 'border-foreground bg-foreground text-background shadow-sm'
                         : isConstraint
@@ -1477,7 +1562,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             <Button
               variant="ghost"
               size="icon"
-              className="h-11 w-11 md:h-8 md:w-8 shrink-0"
+              className="h-11 w-11 lg:h-8 lg:w-8 shrink-0"
               aria-label="Ir ao próximo setor"
               onClick={() => goToAdjacentSector(1)}
               disabled={activeSectorIndex >= navigableColumns.length - 1}
@@ -1495,7 +1580,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       {isLoading ? (
         <div className="flex-1 flex gap-2 p-3 overflow-hidden">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="flex-1 min-w-[calc(100vw-4rem)] md:min-w-[13.5rem]" />
+            <Skeleton key={i} className="flex-1 min-w-[calc(100vw-4rem)] md:min-w-[calc(50vw-1.75rem)] lg:min-w-[13.5rem]" />
           ))}
         </div>
       ) : loadError ? (
@@ -1572,7 +1657,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                     {canEdit ? (
                       <Button
                         size="sm"
-                        className="h-11 md:h-9 shrink-0 min-w-[5.5rem]"
+                        className="h-11 lg:h-9 shrink-0 min-w-[5.5rem]"
                         onClick={() => setDetailStage({ card })}
                       >
                         Mover
@@ -1581,7 +1666,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-11 md:h-9 shrink-0"
+                        className="h-11 lg:h-9 shrink-0"
                         onClick={() => setDetailStage({ card })}
                       >
                         Ver
@@ -1624,7 +1709,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           data-marquee-container={selectMode ? true : undefined}
           onMouseDown={selectMode ? sel.onContainerMouseDown : undefined}
           onScroll={syncActiveSector}
-          className="relative flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain scroll-px-3 px-3 py-2 snap-x snap-mandatory md:snap-none [scrollbar-width:thin]"
+          className="relative flex-1 min-h-0 flex gap-2 overflow-x-auto overscroll-x-contain scroll-px-3 px-3 py-2 snap-x snap-mandatory lg:snap-none [scrollbar-width:thin]"
         >
           {columns.map((sector, colIdx) => {
             const isPalmilhaCol = sector === PALMILHA_COLUMN;
@@ -1662,21 +1747,20 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             const pGroup = isPalmilhaCol ? null : parallelGroupOf.get(sector);
             const isParallelPair = !!pGroup && (parallelGroupSize.get(pGroup) || 0) > 1;
             return (
-              /* Celular: uma coluna por swipe (85vw + snap-center); iPad/desktop:
-                 colunas fluidas lado a lado como antes. */
+              /* Celular: 1 coluna + snap. iPad (md–lg): 2 colunas + snap.
+                 Desktop lg+: multi-coluna sem snap; trilho fino só aqui. */
               <div
                 key={sector}
                 data-kb-col={sector}
                 style={{ animationDelay: `${colIdx * 45}ms` }}
-                /* `hidden md:flex` = a regra do celular (26/07/2026: setor sem
-                   OP da busca sai, pra não passar o dedo por telas em branco)
-                   vive SÓ no CSS. O desktop nunca perde o setor. */
-                className={`kb-col-in flex-col min-h-0 snap-center md:snap-align-none transition-[min-width,max-width,opacity] duration-200 ${
-                  filtering && !hasMatch ? 'hidden md:flex' : 'flex'
+                /* `hidden lg:flex` = setor sem OP da busca some no celular E no
+                   tablet (snap de 1–2 colunas). Desktop mantém o trilho. */
+                className={`kb-col-in flex-col min-h-0 snap-center lg:snap-align-none transition-[min-width,max-width,opacity] duration-200 ${
+                  filtering && !hasMatch ? 'hidden lg:flex' : 'flex'
                 } ${
                   isRail && !railOpen
-                    ? 'flex-1 basis-0 min-w-[calc(100vw-4rem)] max-w-[calc(100vw-4rem)] md:flex-none md:min-w-[3.5rem] md:max-w-[3.5rem] md:opacity-70 md:hover:opacity-100'
-                    : 'flex-1 basis-0 min-w-[calc(100vw-4rem)] max-w-[calc(100vw-4rem)] md:min-w-[13.5rem] lg:min-w-[14rem] 2xl:min-w-[15rem] md:max-w-[20rem]'
+                    ? 'flex-1 basis-0 min-w-[calc(100vw-4rem)] max-w-[calc(100vw-4rem)] md:min-w-[calc(50vw-1.75rem)] md:max-w-[calc(50vw-1.75rem)] lg:flex-none lg:min-w-[3.5rem] lg:max-w-[3.5rem] lg:opacity-70 lg:hover:opacity-100'
+                    : 'flex-1 basis-0 min-w-[calc(100vw-4rem)] max-w-[calc(100vw-4rem)] md:min-w-[calc(50vw-1.75rem)] md:max-w-[calc(50vw-1.75rem)] lg:min-w-[13.5rem] lg:max-w-[20rem] 2xl:min-w-[15rem]'
                 }`}
                 onDragOver={e => {
                   e.preventDefault();
@@ -1685,15 +1769,16 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                 }}
                 onDrop={e => { e.preventDefault(); setDragOverSector(null); handleDrop(sector); }}
               >
-                {/* ── Trilho fechado (só desktop) ──────────────────────────
+                {/* ── Trilho fechado (só desktop lg+) ───────────────────────
                     Traz a CONTAGEM REAL do setor, não a da busca: um trilho
                     com "48" diz "aqui tem trabalho, só não desta busca", e um
                     com "0" diz "setor parado". Sem esse número dava pra soltar
                     uma OP num setor achando que estava livre quando havia 48
-                    na frente dela. */}
+                    na frente dela. No tablet o snap de 2 colunas não tolera
+                    trilho fino no meio do gesto. */}
                 {isRail && !railOpen && (
                   <div
-                    className={`hidden md:flex flex-1 min-h-0 flex-col items-center gap-2 rounded-md border py-2 transition-colors ${
+                    className={`hidden lg:flex flex-1 min-h-0 flex-col items-center gap-2 rounded-md border py-2 transition-colors ${
                       isConstraint ? 'bg-amber-500/10 border-amber-500/50' : 'bg-muted/40 border-border'
                     } ${dragCard && dragEligibilityBySector?.get(sector)?.ok ? 'border-primary/60 bg-primary/5' : ''}`}
                     title={`${sector} — ${colWip} OP${colWip === 1 ? '' : 's'} no setor${
@@ -1717,7 +1802,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                   </div>
                 )}
                 <div className={`shrink-0 rounded-t-md px-2.5 py-1.5 border ${
-                  isRail && !railOpen ? 'md:hidden' : ''
+                  isRail && !railOpen ? 'lg:hidden' : ''
                 } ${
                   isConstraint ? 'bg-amber-500/10 border-amber-500/50' : 'bg-muted border-border'
                 } ${isParallelPair ? 'kb-parallel-pair' : ''}`}>
@@ -1828,7 +1913,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                 </div>
                 {/* kb-fade: as máscaras de rolagem moram no WRAPPER, não no
                     scroller — senão elas rolariam junto com as OPs. */}
-                <div className={`kb-fade flex-1 min-h-0 ${isRail && !railOpen ? 'md:hidden' : ''}`}>
+                <div className={`kb-fade flex-1 min-h-0 ${isRail && !railOpen ? 'lg:hidden' : ''}`}>
                 <div
                   data-kb-list={sector}
                   onScroll={e => syncColumnFade(e.currentTarget)}

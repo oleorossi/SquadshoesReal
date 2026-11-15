@@ -100,7 +100,7 @@ export function KanbanOpCard({
 
   return (
     <Card
-      className={`relative overflow-hidden ${compact ? 'p-1.5 md:p-1' : 'p-2'} ${isPartial ? 'pl-2.5' : ''} cursor-pointer select-none
+      className={`relative overflow-hidden ${compact ? 'p-2 lg:p-1.5' : 'p-2'} ${isPartial ? 'pl-2.5' : ''} cursor-pointer select-none
         transition-[transform,box-shadow,border-color,opacity] duration-150 ease-out
         hover:-translate-y-0.5 hover:shadow-md active:translate-y-0
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/70 focus-visible:ring-offset-1 focus-visible:ring-offset-background
@@ -166,30 +166,32 @@ export function KanbanOpCard({
             alt={q.reference_name || 'Referência'}
             fit="contain"
             loading="lazy"
-            buttonClassName={`${compact ? 'h-8 w-8 md:h-7 md:w-7' : 'h-9 w-9'} rounded bg-muted shrink-0`}
+            buttonClassName={`${compact ? 'h-9 w-9 lg:h-7 lg:w-7' : 'h-9 w-9'} rounded bg-muted shrink-0`}
             className="rounded object-contain"
           />
         ) : (
-          <div className={`${compact ? 'h-8 w-8 md:h-7 md:w-7' : 'h-9 w-9'} rounded bg-muted shrink-0`} />
+          <div className={`${compact ? 'h-9 w-9 lg:h-7 lg:w-7' : 'h-9 w-9'} rounded bg-muted shrink-0`} />
         )}
         <div className="min-w-0 flex-1">
-          {/* 1) PV + cliente — hierarquia comercial */}
+          {/* 1) PV + cliente — hierarquia comercial.
+              No celular a tipografia sobe um degrau (selo 9→10/11px) pra leitura
+              no chão; lg+ volta ao denso do modo gestão. */}
           <div className="flex items-start justify-between gap-1.5">
             <div className="min-w-0 flex-1">
               {selectable || !q.sale_order_id ? (
-                <p className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} font-bold truncate leading-tight`}>
+                <p className={`font-mono ${compact ? 'text-[13px] lg:text-[11px]' : 'text-xs'} font-bold truncate leading-tight`}>
                   {pv}
                 </p>
               ) : (
                 <Link
                   to={`/sales?pv=${q.sale_order_id}`}
                   onClick={e => e.stopPropagation()}
-                  className={`font-mono ${compact ? 'text-xs md:text-[11px]' : 'text-xs'} font-bold hover:underline truncate block leading-tight`}
+                  className={`font-mono ${compact ? 'text-[13px] lg:text-[11px]' : 'text-xs'} font-bold hover:underline truncate block leading-tight`}
                 >
                   {pv}
                 </Link>
               )}
-              <p className={`${compact ? 'text-[11px] md:text-[10px]' : 'text-[11px]'} truncate font-semibold text-foreground leading-tight`}>
+              <p className={`${compact ? 'text-xs lg:text-[10px]' : 'text-[11px]'} truncate font-semibold text-foreground leading-tight`}>
                 {client}
               </p>
             </div>
@@ -197,7 +199,7 @@ export function KanbanOpCard({
               {earlyReleaseBadge && (
                 <Badge
                   variant="outline"
-                  className="text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
+                  className="text-[10px] lg:text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
                   title="OP liberada pela Fila de Corte (adiantada)"
                 >
                   Adiantada
@@ -206,7 +208,7 @@ export function KanbanOpCard({
               {atelierBadge && (
                 <Badge
                   variant="outline"
-                  className="text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
+                  className="text-[10px] lg:text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
                   title="Estado do cabedal no Ateliê (rua)"
                 >
                   {atelierBadge}
@@ -215,7 +217,7 @@ export function KanbanOpCard({
               {isPartial && (
                 <Badge
                   variant="outline"
-                  className="text-[9px] bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/50 shrink-0 font-semibold"
+                  className="text-[10px] lg:text-[9px] bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/50 shrink-0 font-semibold"
                   title={`Entrega parcial neste setor — faltam ${restante} pares. O card fica preso até fechar.`}
                 >
                   preso · −{restante}
@@ -224,7 +226,7 @@ export function KanbanOpCard({
               {parallelSiblings.length > 0 && (
                 <Badge
                   variant="outline"
-                  className="text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
+                  className="text-[10px] lg:text-[9px] bg-primary/10 text-primary border-primary/30 shrink-0"
                   title={`Em paralelo também em: ${parallelSiblings.join(', ')}. Cada setor aponta o SEU trabalho.`}
                 >
                   ‖ paralelo
@@ -233,26 +235,26 @@ export function KanbanOpCard({
               {upstreamGap && (
                 <Badge
                   variant="outline"
-                  className="text-[9px] bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/40 shrink-0"
+                  className="text-[10px] lg:text-[9px] bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/40 shrink-0"
                   title={`${upstreamGap.missing} pares nunca passaram por ${upstreamGap.sector}.`}
                 >
                   −{upstreamGap.missing} em {upstreamGap.sector}
                 </Badge>
               )}
               {q.late_days > 0 && (
-                <Badge variant="outline" className="text-[9px] bg-red-500/10 text-red-600 border-red-500/30 gap-0.5 shrink-0">
-                  <AlertTriangle className="h-2.5 w-2.5" /> +{q.late_days}d
+                <Badge variant="outline" className="text-[10px] lg:text-[9px] bg-red-500/10 text-red-600 border-red-500/30 gap-0.5 shrink-0">
+                  <AlertTriangle className="h-3 w-3 lg:h-2.5 lg:w-2.5" /> +{q.late_days}d
                 </Badge>
               )}
               {(materialGateDate || materialGateReason) && (
                 <Badge
                   variant="outline"
                   className={materialGateDate
-                    ? 'text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/40 gap-0.5 shrink-0'
-                    : 'text-[9px] bg-destructive/10 text-destructive border-destructive/30 gap-0.5 shrink-0'}
+                    ? 'text-[10px] lg:text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/40 gap-0.5 shrink-0'
+                    : 'text-[10px] lg:text-[9px] bg-destructive/10 text-destructive border-destructive/30 gap-0.5 shrink-0'}
                   title={materialGateReason || `Material disponível a partir de ${fmtDate(materialGateDate)}`}
                 >
-                  <Package className="h-2.5 w-2.5" />
+                  <Package className="h-3 w-3 lg:h-2.5 lg:w-2.5" />
                   {materialGateDate ? fmtDate(materialGateDate) : 'Material'}
                 </Badge>
               )}
@@ -260,7 +262,7 @@ export function KanbanOpCard({
           </div>
 
           {/* 2) Ref + cor */}
-          <p className={`${compact ? 'text-[11px] md:text-[10px]' : 'text-[11px]'} truncate mt-0.5`}>
+          <p className={`${compact ? 'text-xs lg:text-[10px]' : 'text-[11px]'} truncate mt-0.5`}>
             <span className="font-semibold text-primary">{q.reference_name || '—'}</span>
             {q.color ? <span className="text-muted-foreground"> · {q.color}</span> : null}
           </p>
@@ -268,60 +270,60 @@ export function KanbanOpCard({
           {/* 3) OP + entregue/total do setor */}
           <div className="mt-1 flex items-center justify-between gap-1">
             {selectable ? (
-              <span className={`font-mono ${compact ? 'text-[10px]' : 'text-[10px]'} text-muted-foreground truncate`}>
+              <span className="font-mono text-[11px] lg:text-[10px] text-muted-foreground truncate">
                 {q.order_number}
               </span>
             ) : (
               <Link
                 to={`/orders/${q.order_id}/edit`}
                 onClick={e => e.stopPropagation()}
-                className={`font-mono ${compact ? 'text-[10px]' : 'text-[10px]'} text-muted-foreground hover:underline truncate`}
+                className="font-mono text-[11px] lg:text-[10px] text-muted-foreground hover:underline truncate"
               >
                 {q.order_number}
               </Link>
             )}
-            <span className={`font-mono ${compact ? 'text-sm md:text-xs' : 'text-xs'} font-bold shrink-0`}>
+            <span className={`font-mono ${compact ? 'text-base lg:text-xs' : 'text-xs'} font-bold shrink-0`}>
               <span className={isPartial ? 'text-amber-700 dark:text-amber-400' : ''}>{shown}</span>
               <span className="font-normal opacity-60">/{total}</span>
             </span>
           </div>
 
           {isPartial && (
-            <p className="mt-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400 leading-tight">
+            <p className="mt-0.5 text-[11px] lg:text-[10px] font-semibold text-amber-700 dark:text-amber-400 leading-tight">
               Faltam {restante.toLocaleString('pt-BR')} pares neste setor
             </p>
           )}
 
           {palmilhaChecks && (palmilhaChecks.showFibra || palmilhaChecks.showForracao) && (
             <div
-              className="mt-1 flex flex-wrap items-center gap-1.5"
+              className="mt-1 flex flex-wrap items-center gap-2"
               title="Passos de Palmilha nesta OP — lado N/A não aparece"
             >
               {palmilhaChecks.showFibra && (
                 <span
-                  className={`inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                  className={`inline-flex items-center gap-1 text-[11px] lg:text-[9px] font-semibold uppercase tracking-wide ${
                     palmilhaChecks.fibraDone
                       ? 'text-emerald-700 dark:text-emerald-400'
                       : 'text-muted-foreground'
                   }`}
                 >
                   {palmilhaChecks.fibraDone
-                    ? <CheckCircle2 className="h-3 w-3" weight="fill" />
-                    : <Circle className="h-3 w-3" />}
+                    ? <CheckCircle2 className="h-3.5 w-3.5 lg:h-3 lg:w-3" weight="fill" />
+                    : <Circle className="h-3.5 w-3.5 lg:h-3 lg:w-3" />}
                   Fibra
                 </span>
               )}
               {palmilhaChecks.showForracao && (
                 <span
-                  className={`inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                  className={`inline-flex items-center gap-1 text-[11px] lg:text-[9px] font-semibold uppercase tracking-wide ${
                     palmilhaChecks.forracaoDone
                       ? 'text-emerald-700 dark:text-emerald-400'
                       : 'text-muted-foreground'
                   }`}
                 >
                   {palmilhaChecks.forracaoDone
-                    ? <CheckCircle2 className="h-3 w-3" weight="fill" />
-                    : <Circle className="h-3 w-3" />}
+                    ? <CheckCircle2 className="h-3.5 w-3.5 lg:h-3 lg:w-3" weight="fill" />
+                    : <Circle className="h-3.5 w-3.5 lg:h-3 lg:w-3" />}
                   Forração
                 </span>
               )}
@@ -331,7 +333,7 @@ export function KanbanOpCard({
           <div className="mt-0.5 flex items-center justify-end gap-1.5">
             {materialStatus && (
               <span
-                className={`mr-auto inline-flex min-w-0 items-center gap-0.5 truncate rounded px-1 text-[9px] font-semibold uppercase tracking-wide ${
+                className={`mr-auto inline-flex min-w-0 items-center gap-0.5 truncate rounded px-1.5 py-0.5 text-[10px] lg:text-[9px] font-semibold uppercase tracking-wide ${
                   materialStatus === 'falta'
                     ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
                     : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
@@ -341,14 +343,14 @@ export function KanbanOpCard({
                   : 'Todo o material do PV está empenhado.')}
               >
                 {materialStatus === 'falta'
-                  ? <AlertTriangle className="h-2.5 w-2.5 shrink-0" weight="fill" />
-                  : <CheckCircle2 className="h-2.5 w-2.5 shrink-0" weight="fill" />}
+                  ? <AlertTriangle className="h-3 w-3 lg:h-2.5 lg:w-2.5 shrink-0" weight="fill" />
+                  : <CheckCircle2 className="h-3 w-3 lg:h-2.5 lg:w-2.5 shrink-0" weight="fill" />}
                 <span className="truncate">{materialStatus === 'falta' ? 'Falta material' : 'Material completo'}</span>
               </span>
             )}
             {idade && (
               <span
-                className={`text-[10px] font-mono flex items-center gap-0.5 ${
+                className={`text-[11px] lg:text-[10px] font-mono flex items-center gap-0.5 ${
                   idade.dias >= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
                 }`}
                 title={
@@ -357,11 +359,11 @@ export function KanbanOpCard({
                     : `Na fila deste setor há ${idade.dias} dia(s)`
                 }
               >
-                <Timer className="h-2.5 w-2.5" />{idade.dias}d
+                <Timer className="h-3 w-3 lg:h-2.5 lg:w-2.5" />{idade.dias}d
               </span>
             )}
-            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-              <CalendarBlank className="h-2.5 w-2.5" /> {fmtDate(q.due_date)}
+            <span className="text-[11px] lg:text-[10px] text-muted-foreground flex items-center gap-0.5">
+              <CalendarBlank className="h-3 w-3 lg:h-2.5 lg:w-2.5" /> {fmtDate(q.due_date)}
             </span>
           </div>
         </div>
