@@ -71,6 +71,17 @@ describe('TechnicalStrapSourceEditor', () => {
 
   it('fica desabilitado enquanto o catálogo carrega', () => {
     mount(initial, undefined, true);
-    expect(screen.getByText(/Carregando catálogo do Hub/i)).toBeInTheDocument();
+    expect(screen.getByText(/Carregando catálogo auxiliar/i)).toBeInTheDocument();
+  });
+
+  it('com grupo de estoque já pinado, não duplica o seletor de grupo acabado', () => {
+    mount({
+      ...initial,
+      identity_basis: 'finished_product_group',
+      identity_group_id: 'strass6',
+      color_mode: 'select_on_order',
+    });
+    expect(screen.getByText(/Comprar pronto — grupo de estoque selecionado/i)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Grupo acabado/i })).not.toBeInTheDocument();
   });
 });
