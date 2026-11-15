@@ -19,3 +19,28 @@ export function validateCnpj(raw: string): boolean {
   const d2 = calc(digits.slice(0, 13), w2);
   return d2 === Number(digits[13]);
 }
+
+export function validateCpf(raw: string): boolean {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+  const calc = (len: number) => {
+    let sum = 0;
+    for (let i = 0; i < len; i++) sum += Number(digits[i]) * (len + 1 - i);
+    const rem = (sum * 10) % 11;
+    return rem === 10 ? 0 : rem;
+  };
+  return calc(9) === Number(digits[9]) && calc(10) === Number(digits[10]);
+}
+
+/**
+ * Mesma regra do banco (`public.is_valid_cpf_cnpj`, trigger tg_validate_party_document):
+ * vazio é permitido; preenchido precisa ser CPF (11) ou CNPJ (14) com dígitos válidos.
+ */
+export function validateCpfCnpj(raw: string | null | undefined): boolean {
+  const digits = (raw ?? '').replace(/\D/g, '');
+  if (digits === '') return true;
+  if (digits.length === 14) return validateCnpj(digits);
+  if (digits.length === 11) return validateCpf(digits);
+  return false;
+}

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { partySaveErrorText } from '@/lib/partyDocumentErrors';
 import { sanitizeUuidFields } from '@/lib/utils';
 import { searchNormOrFilter } from '@/lib/searchUtils';
 import { fetchPage } from '@/lib/pagination';
@@ -162,7 +163,7 @@ export function useCreateClient() {
       invalidateAllClientQueries(qc);
       toast.success('Cliente cadastrado!');
     },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: Error) => toast.error(partySaveErrorText(err, 'cliente'), { duration: 8000 }),
   });
 }
 
@@ -177,7 +178,7 @@ export function useUpdateClient() {
       invalidateAllClientQueries(qc);
       toast.success('Cliente atualizado!');
     },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: Error) => toast.error(partySaveErrorText(err, 'cliente'), { duration: 8000 }),
   });
 }
 

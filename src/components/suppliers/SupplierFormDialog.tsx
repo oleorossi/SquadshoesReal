@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Info, Plus, Star, Trash } from '@phosphor-icons/react';
 import type { Supplier } from '@/hooks/useSuppliers';
+import { validateCpfCnpj } from '@/lib/validateCnpj';
 
 const STATES = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
 
@@ -122,9 +123,13 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
     && Math.abs(termsTotal - 100) < 0.01
   );
 
+  const cnpjValid = validateCpfCnpj(form.cnpj);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!termsValid) return;
+    // Mesma regra do trigger do banco: barrar aqui evita fechar o dialog e perder o que foi digitado.
+    if (!cnpjValid) return;
     onSubmit({
       ...form,
       payment_terms_structured: form.is_own_manufacturing ? null : terms,
@@ -160,7 +165,18 @@ export default function SupplierFormDialog({ open, onOpenChange, editing, onSubm
               </div>
               <div>
                 <Label>CNPJ</Label>
-                <Input value={form.cnpj || ''} onChange={e => set('cnpj', e.target.value)} className="mt-1" placeholder="00.000.000/0000-00" />
+                <Input
+                  value={form.cnpj || ''}
+                  onChange={e => set('cnpj', e.target.value)}
+                  className="mt-1"
+                  placeholder="00.000.000/0000-00"
+                  aria-invalid={!cnpjValid}
+                />
+                {!cnpjValid && (
+                  <p className="mt-1 text-xs text-destructive">
+                    CNPJ/CPF inválido — confira os números (dígitos verificadores ou quantidade de dígitos).
+                  </p>
+                )}
               </div>
               <div>
                 <Label>Inscrição Estadual</Label>

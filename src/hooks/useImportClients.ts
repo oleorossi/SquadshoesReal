@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { partyDocumentErrorMessage } from '@/lib/partyDocumentErrors';
 import { invalidateAllClientQueries } from './useClients';
 
 /**
@@ -285,7 +286,7 @@ export function useSaveImportedClient() {
       invalidateAllClientQueries(qc);
     },
     onError: (err: Error) => {
-      toast.error(`Falha ao salvar cliente: ${err.message}`);
+      toast.error(partyDocumentErrorMessage(err, 'cliente') ?? `Falha ao salvar cliente: ${err.message}`);
     },
   });
 }
