@@ -7,7 +7,7 @@
  *   "O pedido NÃO foi salvo. Tira sem cor/variante canonica congelada no PV"
  *
  * A 40200 aceitou finished_product_id SEM variante. Superada na pré-checagem
- * pela 46800 (so-registra): Comprar pronto de napa congela só color_id, sem
+ * pela 46900 (so-registra): Comprar pronto de napa congela só color_id, sem
  * SKU nem variante — ver strapAlignmentComprarProntoSoRegistraPrecheck.
  */
 import { readFileSync, readdirSync } from 'node:fs';
@@ -18,9 +18,9 @@ const ROOT = resolve(__dirname, '../..');
 const MIGRATIONS = resolve(ROOT, 'supabase/migrations');
 const FILE = '20270101040200_alinhamento-strap-aceita-sku-acabado.sql';
 const MARKER = 'strap_alinhamento_sku_acabado_sem_variante_20270101040200';
-const SO_PRECHECK = '20270101046800_alinhamento-comprar-pronto-so-registra-precheck.sql';
+const SO_PRECHECK = '20270101046900_alinhamento-comprar-pronto-so-registra-precheck.sql';
 const SO_PRECHECK_MARKER =
-  'strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046800';
+  'strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046900';
 const migration = readFileSync(resolve(MIGRATIONS, FILE), 'utf8');
 
 function latestMigrationMentioning(needle: string): string {
@@ -34,14 +34,14 @@ function latestMigrationMentioning(needle: string): string {
 }
 
 describe('Alinhamento da tira — buy_ready do PV identifica por SKU acabado', () => {
-  it('arquivo 40200 patcha o corpo VIVO (histórico; pré-checagem viva = 46800)', () => {
+  it('arquivo 40200 patcha o corpo VIVO (histórico; pré-checagem viva = 46900)', () => {
     expect(migration).toContain(MARKER);
     expect(migration).toContain('pg_get_functiondef');
     expect(migration).toContain(
       "'public.tg_validate_sale_order_item_strap_color_alignment()'",
     );
-    // A 46800 cita o marcador 40200 no v_old que substitui — autoridade viva
-    // da pré-checagem é a 46800.
+    // A 46900 cita o marcador 40200 no v_old que substitui — autoridade viva
+    // da pré-checagem é a 46900.
     expect(latestMigrationMentioning(MARKER)).toBe(SO_PRECHECK);
     expect(latestMigrationMentioning(SO_PRECHECK_MARKER)).toBe(SO_PRECHECK);
   });

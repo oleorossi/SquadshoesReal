@@ -12,10 +12,17 @@ name: Supabase — Apply Migrations
 #                                Rodar sem migration pendente é um no-op seguro.
 #
 # Pré-requisitos (settings repo > Secrets and variables > Actions > Secrets):
-#   SUPABASE_ACCESS_TOKEN   → personal access token
-#                             criar em: https://supabase.com/dashboard/account/tokens
 #   SUPABASE_DB_PASSWORD    → senha do banco (Database > Settings > Reset password)
-#   SUPABASE_PROJECT_ID     → ID do projeto (atual: ssvxfoybzmjlypnipqzn)
+#   SUPABASE_PROJECT_ID     → ID do projeto (atual: cknbzfqvqwqdhajspazn)
+#
+# Opcional (Settings > Variables > Actions):
+#   SUPABASE_DB_POOLER_HOST → host do pooler Supavisor (padrão:
+#                             aws-1-sa-east-1.pooler.supabase.com)
+#
+# Conexão: direto no Postgres via pooler Supavisor em modo sessão (porta 5432,
+# usuário postgres.<project_ref>, sslmode=require), com `--db-url`/psql.
+# NÃO usa personal access token nem Management API: o projeto fica numa
+# organização gerenciada pelo Vercel, inacessível a PATs de contas pessoais.
 #
 # Cutover: migrations até 20270101009300 vêm exclusivamente do snapshot remoto
 # validado. O workflow só acrescenta ao workdir arquivos locais posteriores a
@@ -50,6 +57,7 @@ jobs:
     timeout-minutes: 15
     env:
       SUPABASE_MIGRATION_CUTOFF: '20270101009300'
+      SUPABASE_DB_POOLER_HOST: ${{ vars.SUPABASE_DB_POOLER_HOST || 'aws-1-sa-east-1.pooler.supabase.com' }}
 
     steps:
       - name: Checkout
@@ -69,14 +77,33 @@ jobs:
 
       - name: Validate secrets
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_ID:  ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
-          : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN não configurado em Secrets}"
           : "${SUPABASE_DB_PASSWORD:?SUPABASE_DB_PASSWORD não configurado em Secrets}"
           : "${SUPABASE_PROJECT_ID:?SUPABASE_PROJECT_ID não configurado em Secrets}"
+          if [[ ! "${SUPABASE_PROJECT_ID}" =~ ^[a-z0-9]{20}$ ]]; then
+            echo "SUPABASE_PROJECT_ID com formato inválido" >&2
+            exit 1
+          fi
           echo "✓ Secrets presentes"
+
+      - name: Build database connection URL
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_ID:  ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          encoded_password="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')"
+          echo "::add-mask::${encoded_password}"
+          db_url="postgresql://postgres.${SUPABASE_PROJECT_ID}:${encoded_password}@${SUPABASE_DB_POOLER_HOST}:5432/postgres?sslmode=require"
+          echo "::add-mask::${db_url}"
+          echo "SUPABASE_DB_URL=${db_url}" >> "${GITHUB_ENV}"
+          echo "✓ URL de conexão montada (pooler ${SUPABASE_DB_POOLER_HOST}, modo sessão)"
+
+      - name: Check database connectivity
+        run: |
+          psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT 'conectado: ' || current_user || ' @ ' || current_database() || ' (' || split_part(version(), ' ', 2) || ')'"
 
       - name: Validate local migration cutover
         run: |
@@ -93,23 +120,10 @@ jobs:
           cp supabase/config.toml "${migration_workdir}/supabase/config.toml"
           echo "SUPABASE_MIGRATION_WORKDIR=${migration_workdir}" >> "${GITHUB_ENV}"
 
-      - name: Link isolated project
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_PROJECT_ID:    ${{ secrets.SUPABASE_PROJECT_ID }}
-        run: |
-          supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" link \
-            --project-ref "${SUPABASE_PROJECT_ID}" \
-            --yes
-
       - name: Fetch and validate remote migration snapshot
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" migration fetch \
-            --linked \
+            --db-url "${SUPABASE_DB_URL}" \
             --yes
           bun scripts/check-supabase-migration-cutover.mjs remote \
             "${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations"
@@ -160,25 +174,19 @@ jobs:
           echo "Migrations pós-cutover já remotas: ${already_remote}"
 
       - name: Show migration status
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           echo "═══════════════════════════════════════════"
           echo "  Migration status (local vs remote)"
           echo "═══════════════════════════════════════════"
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" migration list \
-            --linked \
+            --db-url "${SUPABASE_DB_URL}" \
             --yes
 
       - name: Dry run pending migrations
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" db push \
-            --linked \
+            --db-url "${SUPABASE_DB_URL}" \
             --include-all \
             --dry-run \
             --yes
@@ -186,10 +194,6 @@ jobs:
 
       - name: Apply pending migrations
         if: github.event_name == 'workflow_run' || github.event.inputs.dry_run == 'false'
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_PROJECT_ID:   ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           echo "🟢 Aplicando migrations pendentes..."
           # O snapshot isolado contém o histórico remoto e somente as novas
@@ -200,8 +204,8 @@ jobs:
           # Sem repair, o push tenta recriar índices e falha com 42P07.
           #
           # 22600: db push aplica o SQL e falha com 42501 no INSERT em
-          # schema_migrations. Bootstrap via Management API (mesmo endpoint do
-          # MCP / supabase-db-exec) + repair — padrão do stamp 19900.
+          # schema_migrations. Bootstrap via psql (conexão direta) + repair —
+          # padrão do stamp 19900.
           for stamp in 20270101022600; do
             shopt -s nullglob
             matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
@@ -210,35 +214,20 @@ jobs:
               continue
             fi
             sql_file="${matches[0]}"
-            check_query="SELECT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${stamp}') AS present"
-            jq -nc --arg query "$check_query" '{query: $query}' > /tmp/mig-check-query.json
-            check_code=$(curl -sS -o /tmp/mig-check-response.json -w '%{http_code}' -X POST \
-              "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
-              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-              -H "Content-Type: application/json" \
-              --data @/tmp/mig-check-query.json)
-            if [ "$check_code" -lt 200 ] || [ "$check_code" -ge 300 ]; then
-              echo "Falha ao consultar schema_migrations para ${stamp}: HTTP $check_code" >&2
-              head -c 4000 /tmp/mig-check-response.json >&2 || true
+            check_query="SELECT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${stamp}')"
+            if ! present="$(psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 -tAc "$check_query")"; then
+              echo "Falha ao consultar schema_migrations para ${stamp}" >&2
               exit 1
             fi
-            present="$(jq -r 'if type == "array" then (.[0].present // false) else false end' /tmp/mig-check-response.json)"
-            if [ "$present" = "true" ]; then
+            if [ "$present" = "t" ]; then
               echo "✓ ${stamp} já registrada em schema_migrations"
             else
-              echo "↪ Aplicando ${stamp} via Management API ($(basename "$sql_file"))"
-              jq -Rs '{query: .}' < "$sql_file" > /tmp/mig-apply-body.json
-              apply_code=$(curl -sS -o /tmp/mig-apply-response.json -w '%{http_code}' -X POST \
-                "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
-                -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-                -H "Content-Type: application/json" \
-                --data @/tmp/mig-apply-body.json)
-              if [ "$apply_code" -lt 200 ] || [ "$apply_code" -ge 300 ]; then
-                echo "Falha ao aplicar ${stamp} via Management API: HTTP $apply_code" >&2
-                head -c 8000 /tmp/mig-apply-response.json >&2 || true
+              echo "↪ Aplicando ${stamp} via psql ($(basename "$sql_file"))"
+              if ! psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 --single-transaction -f "$sql_file"; then
+                echo "Falha ao aplicar ${stamp} via psql" >&2
                 exit 1
               fi
-              echo "✓ SQL de ${stamp} aplicado via Management API"
+              echo "✓ SQL de ${stamp} aplicado via psql"
             fi
           done
 
@@ -254,7 +243,7 @@ jobs:
             fi
           done
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" db push \
-            --linked \
+            --db-url "${SUPABASE_DB_URL}" \
             --include-all \
             --yes
           echo "✅ Concluído"
@@ -262,24 +251,15 @@ jobs:
       - name: Verify SP124 post-deploy contract
         if: github.event_name == 'workflow_run' || github.event.inputs.dry_run == 'false'
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID:   ${{ secrets.SUPABASE_PROJECT_ID }}
           SQL_PATH: supabase/tests/sp124_composite_upper_guards_postdeploy.sql
         run: |
           test -f "$SQL_PATH" || { echo "Contrato pós-deploy ausente: $SQL_PATH" >&2; exit 1; }
-          marker_query="SELECT EXISTS (SELECT 1 FROM public.deployment_postdeploy_checks WHERE check_key = '20270101014800_sp124_composite_upper_guards') AS verified"
-          jq -nc --arg query "$marker_query" '{query: $query}' > /tmp/sp124-marker-query.json
-          marker_code=$(curl -sS -o /tmp/sp124-marker-response.json -w '%{http_code}' -X POST \
-            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data @/tmp/sp124-marker-query.json)
-          if [ "$marker_code" -lt 200 ] || [ "$marker_code" -ge 300 ]; then
-            echo "Falha ao consultar marcador pós-deploy: HTTP $marker_code" >&2
-            head -c 20000 /tmp/sp124-marker-response.json
+          marker_query="SELECT EXISTS (SELECT 1 FROM public.deployment_postdeploy_checks WHERE check_key = '20270101014800_sp124_composite_upper_guards')"
+          if ! verified="$(psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 -tAc "$marker_query")"; then
+            echo "Falha ao consultar marcador pós-deploy" >&2
             exit 1
           fi
-          if [ "$(jq -r 'if type == "array" then (.[0].verified // false) else false end' /tmp/sp124-marker-response.json)" = "true" ]; then
+          if [ "$verified" = "t" ]; then
             echo "✓ Contrato pós-deploy SP124 já foi aprovado; marcador durável encontrado."
             exit 0
           fi
@@ -302,16 +282,17 @@ jobs:
             details = EXCLUDED.details;
           SQL
           } > /tmp/sp124-postdeploy-with-marker.sql
-          jq -Rs '{query: .}' < /tmp/sp124-postdeploy-with-marker.sql > /tmp/sp124-postdeploy.json
-          code=$(curl -sS -o /tmp/sp124-postdeploy-response.json -w '%{http_code}' -X POST \
-            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data @/tmp/sp124-postdeploy.json)
-          echo "Pós-deploy SP124: HTTP $code"
-          head -c 20000 /tmp/sp124-postdeploy-response.json
+          set +e
+          # Sem --single-transaction: o contrato abre sua própria transação
+          # READ ONLY; ON_ERROR_STOP impede o INSERT do marcador se falhar.
+          psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 \
+            -f /tmp/sp124-postdeploy-with-marker.sql > /tmp/sp124-postdeploy-output.txt 2>&1
+          code=$?
+          set -e
+          echo "Pós-deploy SP124: psql exit $code"
+          head -c 20000 /tmp/sp124-postdeploy-output.txt
           echo
-          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+          if [ "$code" -ne 0 ]; then
             echo "Contrato pós-deploy SP124 falhou; release bloqueado." >&2
             exit 1
           fi
@@ -319,16 +300,13 @@ jobs:
 
       - name: Final status
         if: always()
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           echo "═══════════════════════════════════════════"
           echo "  Status final"
           echo "═══════════════════════════════════════════"
           if [[ -n "${SUPABASE_MIGRATION_WORKDIR:-}" ]]; then
             supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" migration list \
-              --linked \
+              --db-url "${SUPABASE_DB_URL}" \
               --yes || true
           else
             echo "Workdir isolado não foi preparado."

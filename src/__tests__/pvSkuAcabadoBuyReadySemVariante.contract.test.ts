@@ -40,8 +40,13 @@ describe('pv sku_acabado buy_ready sem variante — contrato 31900', () => {
     expect(sql).toContain('resolve_committed_strap_identity');
     expect(sql).toContain('enqueue_sale_order_strap_demands');
     expect(FILE).toContain('20270101031900');
+    // 45300 continua a autoridade do writer; 46900 só cita o marcador
+    // para exigir o ramo vivo antes de afrouxar a pré-checagem.
+    const soFile = '20270101045300_tira-comprar-pronto-so-registra.sql';
+    expect(readFileSync(resolve(MIGRATIONS, soFile), 'utf8'))
+      .toContain('strap_comprar_pronto_so_registra_20270101045300');
     expect(latestPatchMigration('strap_comprar_pronto_so_registra_20270101045300').file)
-      .toBe('20270101045300_tira-comprar-pronto-so-registra.sql');
+      .toBe('20270101046900_alinhamento-comprar-pronto-so-registra-precheck.sql');
   });
 
   it('prepare histórico 31900 congelava finished_product_id; 45300 zera SKU na napa', () => {
@@ -52,7 +57,10 @@ describe('pv sku_acabado buy_ready sem variante — contrato 31900', () => {
     expect(sql).not.toMatch(
       /sku_acabado[\s\S]{0,800}resolve_artisanal_strap_catalog/,
     );
-    const so = latestPatchMigration('strap_comprar_pronto_so_registra_20270101045300').sql;
+    const so = readFileSync(
+      resolve(MIGRATIONS, '20270101045300_tira-comprar-pronto-so-registra.sql'),
+      'utf8',
+    );
     expect(so).toContain("'finished_product_id', NULL");
     expect(so).toContain("'source_mode', 'buy_ready'");
   });

@@ -40,8 +40,12 @@ describe('pv sku_acabado exige cadastro Hub — contrato 45200 (histórico)', ()
   });
 
   it('45300 so-registra é a autoridade viva do ramo napa + sku_acabado', () => {
-    expect(latestFileWith(SO_MARKER)).toBe(SO_REGISTRA);
+    // 46900 cita o marcador 45300 só para exigir o ramo vivo na pré-checagem;
+    // o writer continua definido no arquivo 45300.
+    expect(latestFileWith(SO_MARKER))
+      .toBe('20270101046900_alinhamento-comprar-pronto-so-registra-precheck.sql');
     const so = readFileSync(resolve(MIGRATIONS, SO_REGISTRA), 'utf8');
+    expect(so).toContain(SO_MARKER);
     expect(so).toContain("'finished_product_id', NULL");
     expect(so).toContain("'source_mode', 'buy_ready'");
     expect(so).toContain(MARKER); // guarda que o RAISE 45200 saiu do writer

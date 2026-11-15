@@ -21,7 +21,7 @@
 --   reference_base (demais)      → exige variante via EXISTS
 --   finished_product_group       → exige finished_product_id (45600)
 --
--- Marcador: strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046800
+-- Marcador: strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046900
 -- =============================================================================
 
 DO $patch_precheck$
@@ -46,7 +46,7 @@ DECLARE
            AND nullif(v_source ->> 'finished_product_id', '') IS NULL) THEN
       RAISE EXCEPTION 'Tira sem cor/variante canonica congelada no PV';
     END IF;$old$;
-  v_new text := $new$    -- strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046800
+  v_new text := $new$    -- strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046900
     -- 45300: Comprar pronto de napa congela buy_ready + color_id SEM
     -- finished_product_id e SEM variante. A 40200 aceitava variante OU SKU;
     -- faltou o terceiro caminho. Cada ramo abaixo revalida (sku_acabado
@@ -71,7 +71,7 @@ BEGIN
     RAISE EXCEPTION 'tg_validate_sale_order_item_strap_color_alignment() ausente';
   END IF;
   v_def := pg_get_functiondef(v_fn);
-  IF position('strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046800' IN v_def) > 0 THEN
+  IF position('strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046900' IN v_def) > 0 THEN
     RETURN; -- ja aplicado
   END IF;
 
@@ -79,13 +79,13 @@ BEGIN
   -- sem SKU na pre-checagem deixaria a linha sem validacao no ramo.
   IF position('strap_comprar_pronto_so_registra_20270101045300' IN v_def) = 0 THEN
     RAISE EXCEPTION
-      'Ramo so-registra (45300) ausente no corpo vivo; aplique a 45300 antes da 46800';
+      'Ramo so-registra (45300) ausente no corpo vivo; aplique a 45300 antes da 46900';
   END IF;
 
   v_hits := (length(v_def) - length(replace(v_def, v_old, ''))) / nullif(length(v_old), 0);
   IF v_hits IS DISTINCT FROM 1 THEN
     RAISE EXCEPTION
-      'Pre-checagem 40200 nao encontrada (hits=%); corpo mudou, revise 46800',
+      'Pre-checagem 40200 nao encontrada (hits=%); corpo mudou, revise 46900',
       coalesce(v_hits, 0);
   END IF;
   v_def := replace(v_def, v_old, v_new);
@@ -93,23 +93,23 @@ BEGIN
   EXECUTE v_def;
 
   v_def := pg_get_functiondef(v_fn);
-  IF position('strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046800' IN v_def) = 0
+  IF position('strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046900' IN v_def) = 0
      OR position($chk$AND v_source_mode IS DISTINCT FROM 'buy_ready') THEN$chk$ IN v_def) = 0 THEN
-    RAISE EXCEPTION 'Pre-checagem nao ficou com o contrato so-registra; revise 46800';
+    RAISE EXCEPTION 'Pre-checagem nao ficou com o contrato so-registra; revise 46900';
   END IF;
   -- Continua barrando internal sem variante (nao virou opcional).
   IF position($chk2$OR (v_source_variant_id IS NULL
            AND nullif(v_source ->> 'finished_product_id', '') IS NULL
            AND v_source_mode IS DISTINCT FROM 'buy_ready') THEN$chk2$ IN v_def) = 0 THEN
-    RAISE EXCEPTION 'Pre-checagem relaxou internal sem variante; revise 46800';
+    RAISE EXCEPTION 'Pre-checagem relaxou internal sem variante; revise 46900';
   END IF;
   -- Cor canonica continua obrigatoria.
   IF position($chk3$IF v_line_color_id IS NULL
        OR v_source_color_id IS DISTINCT FROM v_line_color_id$chk3$ IN v_def) = 0 THEN
-    RAISE EXCEPTION 'Pre-checagem perdeu a exigencia de cor; revise 46800';
+    RAISE EXCEPTION 'Pre-checagem perdeu a exigencia de cor; revise 46900';
   END IF;
 END;
 $patch_precheck$;
 
 COMMENT ON FUNCTION public.tg_validate_sale_order_item_strap_color_alignment() IS
-  'Valida sale_order_items.strap_colors/strap_sourcing contra a ficha tecnica vigente. Identidade congelada: strap_variant_id (internal) OU finished_product_id (strass buy_ready) OU so color_id em buy_ready de napa (45300/46800 so-registra). Cada ramo revalida o campo da sua identidade.';
+  'Valida sale_order_items.strap_colors/strap_sourcing contra a ficha tecnica vigente. Identidade congelada: strap_variant_id (internal) OU finished_product_id (strass buy_ready) OU so color_id em buy_ready de napa (45300/46900 so-registra). Cada ramo revalida o campo da sua identidade.';

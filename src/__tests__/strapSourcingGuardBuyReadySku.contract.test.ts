@@ -103,7 +103,7 @@ describe('TS e SQL contam a mesma identidade de strap_sourcing', () => {
     expect(isCompleteStrapSourcingSelection(
       sel({ strap_variant_id: null, finished_product_id: SKU }),
     )).toBe(true);
-    // Spec tira-comprar-pronto-so-registra / mig 45300+46800: napa só
+    // Spec tira-comprar-pronto-so-registra / mig 45300+46900: napa só
     // registra cor + metros — sem variante e sem SKU.
     expect(isCompleteStrapSourcingSelection(
       sel({ strap_variant_id: null, finished_product_id: null }),
