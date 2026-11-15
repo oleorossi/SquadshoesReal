@@ -12,13 +12,13 @@ name: Supabase — Apply Migrations
 #                                Rodar sem migration pendente é um no-op seguro.
 #
 # Pré-requisitos (settings repo > Secrets and variables > Actions > Secrets):
-#   SUPABASE_DB_PASSWORD    → senha do banco (Database > Settings > Reset password)
-#   SUPABASE_PROJECT_ID     → ID do projeto VIVO do app
-#                             (atual: ssvxfoybzmjlypnipqzn — VITE_SUPABASE_URL)
+#   SUPABASE_DB_PASSWORD    → senha do Postgres do projeto VIVO ssvxfoybzmjlypnipqzn
+#                             (Database > Settings > Reset database password)
 #
-# Pooler: FIXO em aws-0-us-west-2 (ssvx). A variável SUPABASE_DB_POOLER_HOST
-# costumava apontar para aws-1-sa-east-1 (cknbz) e o migrate "passava" no
-# projeto errado — run 43770073904. Não lemos mais essa variável.
+# Project ref e pooler são FIXOS neste workflow (ssvx / us-west-2).
+# O secret SUPABASE_PROJECT_ID foi IGNORADO de propósito: em 15/11/2026 ele
+# apontava para outro projeto e o migrate abortava (run 43771271660) ou
+# aplicava no banco errado (sa-east-1, run 43770073904).
 #
 # Conexão: direto no Postgres via pooler Supavisor em modo sessão (porta 5432,
 # usuário postgres.<project_ref>, sslmode=require), com `--db-url`/psql.
@@ -57,7 +57,8 @@ jobs:
     timeout-minutes: 15
     env:
       SUPABASE_MIGRATION_CUTOFF: '20270101009300'
-      # Fixo no pooler do ssvx — NÃO usar vars.SUPABASE_DB_POOLER_HOST (sa-east-1).
+      # Fixos no banco vivo do app (VITE_SUPABASE_URL = ssvx / us-west-2).
+      SUPABASE_PROJECT_ID: 'ssvxfoybzmjlypnipqzn'
       SUPABASE_DB_POOLER_HOST: 'aws-0-us-west-2.pooler.supabase.com'
 
     steps:
@@ -79,26 +80,13 @@ jobs:
       - name: Validate secrets
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_PROJECT_ID:  ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           : "${SUPABASE_DB_PASSWORD:?SUPABASE_DB_PASSWORD não configurado em Secrets}"
-          : "${SUPABASE_PROJECT_ID:?SUPABASE_PROJECT_ID não configurado em Secrets}"
-          if [[ ! "${SUPABASE_PROJECT_ID}" =~ ^[a-z0-9]{20}$ ]]; then
-            echo "SUPABASE_PROJECT_ID com formato inválido" >&2
-            exit 1
-          fi
-          # Banco vivo do app (VITE_SUPABASE_URL). Migrar outro projeto deixa
-          # o site com a função antiga e o bug "variante canonica congelada".
-          if [[ "${SUPABASE_PROJECT_ID}" != "ssvxfoybzmjlypnipqzn" ]]; then
-            echo "SUPABASE_PROJECT_ID=${SUPABASE_PROJECT_ID} ≠ ssvxfoybzmjlypnipqzn (banco vivo)" >&2
-            exit 1
-          fi
-          echo "✓ Secrets presentes (projeto ssvx)"
+          echo "✓ Senha presente (projeto fixo ${SUPABASE_PROJECT_ID} @ ${SUPABASE_DB_POOLER_HOST})"
 
       - name: Build database connection URL
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_PROJECT_ID:  ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           encoded_password="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')"
           echo "::add-mask::${encoded_password}"
