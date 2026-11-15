@@ -16,15 +16,13 @@ name: Supabase — Apply Migrations
 #   SUPABASE_PROJECT_ID     → ID do projeto VIVO do app
 #                             (atual: ssvxfoybzmjlypnipqzn — VITE_SUPABASE_URL)
 #
-# Opcional (Settings > Variables > Actions):
-#   SUPABASE_DB_POOLER_HOST → host do pooler Supavisor (padrão us-west-2 do ssvx:
-#                             aws-0-us-west-2.pooler.supabase.com)
+# Pooler: FIXO em aws-0-us-west-2 (ssvx). A variável SUPABASE_DB_POOLER_HOST
+# costumava apontar para aws-1-sa-east-1 (cknbz) e o migrate "passava" no
+# projeto errado — run 43770073904. Não lemos mais essa variável.
 #
 # Conexão: direto no Postgres via pooler Supavisor em modo sessão (porta 5432,
 # usuário postgres.<project_ref>, sslmode=require), com `--db-url`/psql.
 # NÃO usa personal access token nem Management API.
-# ⚠ O app de produção aponta para ssvx (us-west-2). NÃO use o pooler sa-east-1
-#   (cknbz) — migrate no projeto errado deixa o bug vivo no site.
 #
 # Cutover: migrations até 20270101009300 vêm exclusivamente do snapshot remoto
 # validado. O workflow só acrescenta ao workdir arquivos locais posteriores a
@@ -59,7 +57,8 @@ jobs:
     timeout-minutes: 15
     env:
       SUPABASE_MIGRATION_CUTOFF: '20270101009300'
-      SUPABASE_DB_POOLER_HOST: ${{ vars.SUPABASE_DB_POOLER_HOST || 'aws-0-us-west-2.pooler.supabase.com' }}
+      # Fixo no pooler do ssvx — NÃO usar vars.SUPABASE_DB_POOLER_HOST (sa-east-1).
+      SUPABASE_DB_POOLER_HOST: 'aws-0-us-west-2.pooler.supabase.com'
 
     steps:
       - name: Checkout
@@ -239,24 +238,10 @@ jobs:
             fi
           done
 
-          for stamp in 20270101019200 20270101019900 20270101022600; do
-            shopt -s nullglob
-            matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
-            shopt -u nullglob
-            if (( ${#matches[@]} == 1 )); then
-              echo "↪ migration repair --status applied ${stamp}"
-              # Sem --db-url o CLI exige `supabase link` (PAT) e aborta o
-              # pipeline no projeto vivo — run 43770073904.
-              supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" migration repair \
-                --db-url "${SUPABASE_DB_URL}" \
-                --status applied \
-                "${stamp}"
-            fi
-          done
-
-          # 46900: pré-checagem so-registra. Bootstrap via psql para não
-          # depender do db push se o repair/link ainda travar.
-          for stamp in 20270101046900; do
+          # Stamps já aplicados no banco mas sem registro sob o carimbo local
+          # (ou 46900 ainda pendente). Registro via psql — NÃO usar
+          # `migration repair` (exige link/PAT; run 43770073904).
+          for stamp in 20270101019200 20270101019900 20270101022600 20270101046900; do
             shopt -s nullglob
             matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
             shopt -u nullglob
@@ -264,6 +249,7 @@ jobs:
               continue
             fi
             sql_file="${matches[0]}"
+            stamp_name="$(basename "$sql_file" .sql | sed "s/^${stamp}_//")"
             check_query="SELECT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${stamp}')"
             if ! present="$(psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 -tAc "$check_query")"; then
               echo "Falha ao consultar schema_migrations para ${stamp}" >&2
@@ -271,18 +257,22 @@ jobs:
             fi
             if [ "$present" = "t" ]; then
               echo "✓ ${stamp} já registrada em schema_migrations"
-            else
+              continue
+            fi
+            # 46900: SQL ainda não rodou no vivo — aplicar antes de registrar.
+            if [ "$stamp" = "20270101046900" ]; then
               echo "↪ Aplicando ${stamp} via psql ($(basename "$sql_file"))"
               if ! psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 --single-transaction -f "$sql_file"; then
                 echo "Falha ao aplicar ${stamp} via psql" >&2
                 exit 1
               fi
-              psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 -c \
-                "INSERT INTO supabase_migrations.schema_migrations (version, name, statements)
-                 VALUES ('${stamp}', '$(basename "$sql_file" .sql | sed "s/^${stamp}_//")', ARRAY[]::text[])
-                 ON CONFLICT (version) DO NOTHING"
-              echo "✓ SQL de ${stamp} aplicado via psql"
             fi
+            echo "↪ registrando ${stamp} em schema_migrations via psql"
+            psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 -c \
+              "INSERT INTO supabase_migrations.schema_migrations (version, name, statements)
+               VALUES ('${stamp}', '${stamp_name}', ARRAY[]::text[])
+               ON CONFLICT (version) DO NOTHING"
+            echo "✓ ${stamp} registrada"
           done
 
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" db push \
