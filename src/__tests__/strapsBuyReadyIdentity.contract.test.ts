@@ -337,7 +337,8 @@ describe('Tiras compradas prontas — identidade de catálogo e PV', () => {
       /ri\.entity_type = 'buy_ready_strap_product'[\s\S]*ri\.legacy_id = p\.id::text[\s\S]*ri\.candidates ->> 'product_id' = p\.id::text/,
     );
 
-    expect(STRAP_EDITOR).toContain('const selectedIdentityBasis = selectedVariant?.identity_basis');
+    expect(STRAP_EDITOR).toContain('const resolvedIdentityBasis: ArtisanalStrapIdentityBasis = selectedVariant?.identity_basis');
+    expect(STRAP_EDITOR).toContain('urlGroupIsFinishedStrap');
     expect(STRAP_EDITOR).toContain('selectedVariant?.base_group_id || baseGroupId ||');
     expect(STRAP_EDITOR).toContain('selectedVariant?.color_id || colorId ||');
     expect(STRAP_EDITOR).toContain('measure: form.measureId');
@@ -369,7 +370,7 @@ describe('Tiras compradas prontas — identidade de catálogo e PV', () => {
     expect(STRAP_PAGE).toContain('baseGroupId: requiredIdentityGroupId');
     expect(STRAP_PAGE).toContain('buyReadyReviewId');
     expect(STRAP_PAGE).toContain('catalog.capabilities.resolve_strap_migration');
-    expect(STRAP_EDITOR).toContain("identityBasis === 'finished_product_group' ? finishedProductId : null");
+    expect(STRAP_EDITOR).toContain("resolvedIdentityBasis === 'finished_product_group' ? finishedProductId : null");
     expect(STRAP_EDITOR).toContain('const exactBuyReadyProductPrefill = mode === \'create\'');
     expect(STRAP_EDITOR).toContain('product.id === finishedProductId && product.group_id === baseGroupId');
     expect(STRAP_EDITOR).toContain('product.active !== false || product.id === form.finishedProductId');
@@ -379,8 +380,9 @@ describe('Tiras compradas prontas — identidade de catálogo e PV', () => {
     expect(STRAP_EDITOR).toContain('&& !exactBuyReadyProductPrefill\n      && canonicalStrapColorForProduct');
     expect(STRAP_EDITOR).toContain('Selecione explicitamente a família, a medida e a cor canônica');
     expect(STRAP_EDITOR).toContain("form.identityBasis === 'finished_product_group' && !exactBuyReadyProductPrefill");
+    // Review (atalho de Grupos sem variantId) também ativa — rótulo "Salvar e ativar".
     expect(STRAP_EDITOR).toMatch(
-      /status: \(mode === 'review' && variant\) \|\| exactBuyReadyProductPrefill[\s\S]*\? 'active'/,
+      /status: mode === 'review' \|\| exactBuyReadyProductPrefill[\s\S]*\? 'active'/,
     );
     expect(STRAP_PAGE).toContain('Cadastrar tira comprada');
   });

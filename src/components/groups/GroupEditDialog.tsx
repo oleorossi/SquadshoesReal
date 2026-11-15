@@ -1695,7 +1695,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
               {isCanonicalStrapGroup ? (
                 <div className="flex flex-col gap-3 rounded-md border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-muted-foreground">A fusão, criação e revisão de cores desta família pertencem ao catálogo canônico de Tiras.</p>
-                  <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`); }}>Revisar no Hub de Tiras</Button>
+                  <Button type="button" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=review&origin=grupos&purpose=stock_variant&identityBasis=finished_product_group&baseGroupId=${encodeURIComponent(group.id)}`); }}>Revisar no Hub de Tiras</Button>
                 </div>
               ) : !isColorAgnostic ? (
                 <GroupColorsTab
@@ -1743,7 +1743,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   Itens do Grupo ({products.length})
                 </Label>
                 <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => isCanonicalStrapGroup
-                  ? navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`)
+                  ? navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&purpose=stock_variant&identityBasis=finished_product_group&baseGroupId=${encodeURIComponent(group.id)}`)
                   : setAddDialogOpen(true)}>
                   <Plus className="h-3.5 w-3.5" />
                   {isCanonicalStrapGroup ? 'Cadastrar no Hub' : 'Mover item existente'}
@@ -1753,7 +1753,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
               {isCanonicalStrapGroup && (
                 <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-muted-foreground">Cores, produto acabado, piso e receita desta família são criados juntos no hub de Tiras.</p>
-                  <Button type="button" size="sm" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&purpose=stock_variant&baseGroupId=${encodeURIComponent(group.id)}`); }}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => { onOpenChange(false); navigate(`/tiras-artesanais?tab=cadastro&editor=1&mode=create&origin=grupos&purpose=stock_variant&identityBasis=finished_product_group&baseGroupId=${encodeURIComponent(group.id)}`); }}>
                     Abrir cadastro canônico
                   </Button>
                 </div>

@@ -344,7 +344,11 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
   it('abre variantes de grupos no editor canônico de estoque', () => {
     const strapEditorLinks = groupEditDialog.match(/\/tiras-artesanais\?tab=cadastro&editor=1[^`]+/g) || [];
     expect(strapEditorLinks.length).toBeGreaterThan(0);
-    strapEditorLinks.forEach((link) => expect(link).toContain('purpose=stock_variant'));
+    strapEditorLinks.forEach((link) => {
+      expect(link).toContain('purpose=stock_variant');
+      // Grupo canônico de tira = identidade acabada, NÃO napa-base (Prestador).
+      expect(link).toContain('identityBasis=finished_product_group');
+    });
   });
 
   it('abre em Operação e reduz a navegação principal a três áreas sem perder os links antigos', () => {

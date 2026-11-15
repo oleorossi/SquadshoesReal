@@ -15,6 +15,10 @@ vi.mock('@/hooks/useArtisanalStraps', () => ({
     isPending: false,
     mutateAsync,
   }),
+  useStrapBaseGroupCandidates: () => ({
+    data: [],
+    isLoading: false,
+  }),
 }));
 
 beforeAll(() => {
@@ -195,6 +199,98 @@ const matchingProductCatalog: ArtisanalStrapCatalog = {
     status: 'active',
   }],
 };
+
+const FINISHED_STRAP_GROUP_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const NAPA_GROUP_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+const gruposUrlCatalog: ArtisanalStrapCatalog = {
+  ...emptyCatalog,
+  types: [{ id: TYPE_ID, name: 'TIRA CHATA', active: true }],
+  measures: [{
+    id: MEASURE_ID,
+    strap_type_id: TYPE_ID,
+    display_name: '20 mm',
+    finished_width_mm: 20,
+    active: true,
+  }],
+  colors: [{ id: COLOR_ID, name: 'OFF WHITE', active: true }],
+  groups: [
+    { id: FINISHED_STRAP_GROUP_ID, name: 'TIRA CHATA 20MM', is_artisanal_strap: true },
+    { id: NAPA_GROUP_ID, name: 'NAPA SOFT', is_artisanal_strap: false },
+  ],
+  products: [{
+    id: PRODUCT_ID,
+    name: 'TIRA CHATA - 20 mm - OFF WHITE',
+    sku: 'TCH-20-OW',
+    group_id: FINISHED_STRAP_GROUP_ID,
+    color: 'OFF WHITE',
+    unit: 'm',
+    active: true,
+    purchase_price: 1.5,
+    purchase_unit: 'm',
+    conversion_rate: 1,
+    min_order_quantity: 1,
+    purchase_multiple: 1,
+  }],
+};
+
+describe('ArtisanalStrapEditor — URL de Grupos com tira acabada como baseGroupId', () => {
+  it('promove is_artisanal_strap a Comprar pronto e libera cor do produto', async () => {
+    const user = userEvent.setup();
+    mutateAsync.mockResolvedValue({ variant_id: 'new-variant', measure_id: MEASURE_ID });
+
+    renderWithQueryClient(
+      <ArtisanalStrapEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={gruposUrlCatalog}
+        capabilities={capabilities}
+        mode="review"
+        origin="grupos"
+        measureId={MEASURE_ID}
+        baseGroupId={FINISHED_STRAP_GROUP_ID}
+      />,
+    );
+
+    expect(screen.getByText('Grupo do produto comprado pronto *')).toBeInTheDocument();
+    expect(screen.queryByText('Material-base que será debitado *')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nenhum produto ativo desta napa-base/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Salvar e ativar/i }));
+
+    expect(await screen.findByText(/Selecione o produto comprado pronto/i)).toBeInTheDocument();
+    expect(screen.queryByText('Selecione a cor canônica.')).not.toBeInTheDocument();
+  });
+
+  it('com produto acabado da URL, salva e ativa', async () => {
+    const user = userEvent.setup();
+    mutateAsync.mockResolvedValue({ variant_id: 'new-variant', measure_id: MEASURE_ID });
+
+    renderWithQueryClient(
+      <ArtisanalStrapEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={gruposUrlCatalog}
+        capabilities={capabilities}
+        mode="review"
+        origin="grupos"
+        identityBasis="finished_product_group"
+        measureId={MEASURE_ID}
+        baseGroupId={FINISHED_STRAP_GROUP_ID}
+        finishedProductId={PRODUCT_ID}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Salvar e ativar/i }));
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    const { payload } = mutateAsync.mock.calls[0][0];
+    expect(payload.variant.identity_basis).toBe('finished_product_group');
+    expect(payload.variant.base_group_id).toBe(FINISHED_STRAP_GROUP_ID);
+    expect(payload.variant.color_id).toBe(COLOR_ID);
+    expect(payload.variant.status).toBe('active');
+  });
+});
 
 describe('ArtisanalStrapEditor — estoque mínimo removido (compra só por demanda de PV)', () => {
   const renderMatchingBuyReady = () => renderWithQueryClient(

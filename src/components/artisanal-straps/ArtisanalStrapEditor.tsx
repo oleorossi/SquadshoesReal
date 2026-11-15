@@ -35,6 +35,7 @@ import {
   type ArtisanalStrapSourceMode,
   type SaveArtisanalStrapBundleResult,
   useSaveArtisanalStrapBundle,
+  useStrapBaseGroupCandidates,
 } from '@/hooks/useArtisanalStraps';
 import {
   hubOrigemPadraoChoice,
@@ -215,6 +216,7 @@ export function ArtisanalStrapEditor({
   const saveBundle = useSaveArtisanalStrapBundle();
   const { data: suppliers = [] } = useSuppliers(open);
   const { data: contractors = [] } = useContractors();
+  const baseCandidatesQuery = useStrapBaseGroupCandidates(open);
 
   const variant = useMemo(
     () => catalog.variants.find((item) => item.id === variantId),
@@ -236,20 +238,39 @@ export function ArtisanalStrapEditor({
       (item) => item.id === (selectedVariant?.measure_id || measureId),
     );
     const selectedType = catalog.types.find((item) => item.id === selectedMeasure?.strap_type_id);
+    // Grupo canônico de tira acabada (ex.: TIRA CHATA 20MM) NÃO é napa-base.
+    // Links antigos de Grupos mandavam esse id em baseGroupId sem identityBasis
+    // → Prestador com cor vazia e "Salvar" bloqueado. Tratar como grupo acabado.
+    const urlGroup = baseGroupId
+      ? catalog.groups.find((item) => item.id === baseGroupId)
+      : undefined;
+    const urlGroupIsFinishedStrap = !selectedVariant
+      && urlGroup?.is_artisanal_strap === true;
+    const resolvedIdentityBasis: ArtisanalStrapIdentityBasis = selectedVariant?.identity_basis
+      || (identityBasis === 'finished_product_group' || urlGroupIsFinishedStrap
+        ? 'finished_product_group'
+        : 'reference_base');
     const selectedProductId = selectedVariant?.finished_product_id
-      || (identityBasis === 'finished_product_group' ? finishedProductId : null);
+      || (resolvedIdentityBasis === 'finished_product_group' ? finishedProductId : null);
     const product = catalog.products.find((item) => item.id === selectedProductId);
-    const selectedIdentityBasis = selectedVariant?.identity_basis
-      || (identityBasis === 'finished_product_group' ? identityBasis : 'reference_base');
     const selectedInternalProductionEnabled = selectedVariant?.internal_production_enabled !== false
-      && selectedIdentityBasis === 'reference_base';
-    const selectedIdentityGroupId = selectedIdentityBasis === 'finished_product_group'
+      && resolvedIdentityBasis === 'reference_base';
+    const selectedIdentityGroupId = resolvedIdentityBasis === 'finished_product_group'
       ? selectedVariant?.base_group_id || baseGroupId || product?.group_id || ''
       : '';
-    const selectedBaseId = selectedIdentityBasis === 'reference_base'
-      ? selectedVariant?.base_group_id || baseGroupId || ''
+    const rawBaseId = selectedVariant?.base_group_id || baseGroupId || '';
+    const rawBaseGroup = rawBaseId
+      ? catalog.groups.find((item) => item.id === rawBaseId)
+      : undefined;
+    // Napa-base nunca é família de tira acabada — descarta se veio sujo na URL.
+    const selectedBaseId = resolvedIdentityBasis === 'reference_base'
+      && rawBaseGroup?.is_artisanal_strap !== true
+      ? rawBaseId
       : '';
-    const selectedColorId = selectedVariant?.color_id || colorId || '';
+    const derivedProductColorId = resolvedIdentityBasis === 'finished_product_group' && selectedProductId
+      ? canonicalStrapColorForProduct(catalog, selectedProductId)?.id || ''
+      : '';
+    const selectedColorId = selectedVariant?.color_id || colorId || derivedProductColorId;
     const latestRecipe = selectedInternalProductionEnabled ? catalog.recipes
       .filter((item) => item.measure_id === selectedMeasure?.id && item.base_group_id === selectedBaseId)
       .sort((a, b) => Number(b.version) - Number(a.version))[0] : undefined;
@@ -278,7 +299,7 @@ export function ArtisanalStrapEditor({
       ),
       precoArtesanalPerM: numberOrZero(selectedMeasure?.preco_artesanal_per_m),
       precoPrestadorPerM: numberOrZero(selectedMeasure?.preco_prestador_per_m),
-      identityBasis: selectedIdentityBasis,
+      identityBasis: resolvedIdentityBasis,
       identityGroupId: selectedIdentityGroupId,
       internalProductionEnabled: selectedInternalProductionEnabled,
       baseGroupId: selectedBaseId,
@@ -312,7 +333,11 @@ export function ArtisanalStrapEditor({
         ? `Sugestão prospectiva baseada no rendimento real apurado de ${numberOrZero(suggestedYieldMPerM).toLocaleString('pt-BR')} m/m`
         : buyReadyReviewId && selectedProductId
           ? 'Cadastro nominal da tira comprada pronta em revisão'
-          : mode === 'create' ? 'Cadastro inicial da variante' : '',
+          : mode === 'create'
+            ? 'Cadastro inicial da variante'
+            : mode === 'review'
+              ? 'Revisão e ativação da variante de estoque'
+              : '',
     });
     setValidationError(null);
   }, [open, variantId, identityBasis, measureId, baseGroupId, colorId, finishedProductId,
@@ -367,6 +392,21 @@ export function ArtisanalStrapEditor({
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
       : availablePurchasedColors
     : availableRegisteredBaseColors;
+  // Napa-base elegível: RPC canônica + nunca família de tira acabada.
+  // Sem candidatos (loading/falha) cai no filtro local pra não esvaziar o select.
+  const napaBaseGroups = useMemo(() => {
+    const nonStrapGroups = catalog.groups
+      .filter((group) => group.is_artisanal_strap !== true)
+      .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
+    const candidateIds = new Set((baseCandidatesQuery.data || []).map((item) => item.id));
+    if (candidateIds.size === 0) return nonStrapGroups;
+    const filtered = nonStrapGroups.filter((group) => candidateIds.has(group.id));
+    if (form.baseGroupId && !filtered.some((group) => group.id === form.baseGroupId)) {
+      const current = catalog.groups.find((group) => group.id === form.baseGroupId);
+      if (current && current.is_artisanal_strap !== true) return [current, ...filtered];
+    }
+    return filtered;
+  }, [catalog.groups, baseCandidatesQuery.data, form.baseGroupId]);
   const selectedColorIsAvailable = !!form.colorId
     && availableIdentityColors.some((item) => item.id === form.colorId);
   const displayedColors = selectedColor && !selectedColorIsAvailable
@@ -562,11 +602,13 @@ export function ArtisanalStrapEditor({
           min_stock_m: 0,
           min_stock_replenishment_mode: effectiveReplenishmentMode,
           purchase_enabled: form.purchaseEnabled,
-          status: (mode === 'review' && variant) || exactBuyReadyProductPrefill
+          // "Salvar e ativar" (mode=review) ativa mesmo sem variante prévia —
+          // o atalho de Grupos abre review+identity sem variantId.
+          status: mode === 'review' || exactBuyReadyProductPrefill
             || (mode === 'create' && activateOnCreate)
             ? 'active'
             : variant?.status || 'review_required',
-          review_reason: (mode === 'review' && variant) || exactBuyReadyProductPrefill
+          review_reason: mode === 'review' || exactBuyReadyProductPrefill
             || (mode === 'create' && activateOnCreate)
             ? null
             : variant?.review_reason || null,
@@ -817,13 +859,16 @@ export function ArtisanalStrapEditor({
                       }}
                       disabled={readOnly || identityLocked || exactBuyReadyProductPrefill}
                     >
-                      <SelectTrigger><SelectValue placeholder="Selecione a base" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Ex.: NAPA SOFT" /></SelectTrigger>
                       <SelectContent>
-                        {catalog.groups.map((item) => (
+                        {napaBaseGroups.map((item) => (
                           <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Só famílias de napa/base elegíveis. Grupo de tira acabada (TIRA CHATA, STRASS…) não entra aqui.
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-1.5">
@@ -910,7 +955,9 @@ export function ArtisanalStrapEditor({
                     <p className="text-xs text-amber-700 dark:text-amber-400">
                       {form.identityBasis === 'finished_product_group'
                         ? 'Nenhum produto ativo deste grupo possui cor canônica mapeada.'
-                        : 'Nenhum produto ativo desta napa-base possui uma cor cadastrada.'}
+                        : form.baseGroupId && selectedBase?.is_artisanal_strap
+                          ? 'Este grupo é uma tira acabada, não uma napa-base. Escolha uma napa (ex.: NAPA SOFT) ou mude a origem para Comprar pronto.'
+                          : 'Nenhum produto ativo desta napa-base possui uma cor cadastrada.'}
                     </p>
                   )}
                   {form.colorId && !selectedColorIsAvailable && (
