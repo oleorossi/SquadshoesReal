@@ -6,7 +6,8 @@ import { inboundEntrySince, openInboundAllocationReview } from '@/lib/inboundAll
 /**
  * Inventário cíclico + curva ABC — paridade Tutor32 (estoque #4).
  * Classificação ABC por valor de estoque (view v_product_abc) e sessões de
- * contagem cíclica que reconciliam o saldo (RPCs open/apply_inventory_count).
+ * contagem cíclica que reconciliam o saldo (RPCs open/apply_inventory_count — esta aplica
+ * as divergências via execute_stock_command desde 20270101046700).
  */
 
 export interface AbcRow {
@@ -107,7 +108,10 @@ export function useApplyInventoryCount() {
       toast.success(`Contagem aplicada — ${res.divergences} divergência(s) reconciliada(s).`);
       void openInventoryCountReview(countId, res.inboundSince);
     },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    // A aplicação passa por execute_stock_command (lote atômico): item recusado — ex.: produto
+    // com grade por numeração ou saldo que mudou — não aplica nada e o hint diz o que fazer.
+    onError: (err: Error & { hint?: string | null }) =>
+      toast.error(`Erro: ${err.message}`, err.hint ? { description: err.hint, duration: 10000 } : undefined),
   });
 }
 

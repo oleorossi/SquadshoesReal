@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
+import { partySaveErrorText } from '@/lib/partyDocumentErrors';
 
 type SupplierRow = Tables<'suppliers'>;
 
@@ -164,7 +165,7 @@ export function useAddSupplier() {
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['suppliers'] }); toast.success('Fornecedor cadastrado!'); },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: Error) => toast.error(partySaveErrorText(err, 'fornecedor'), { duration: 8000 }),
   });
 }
 
@@ -176,7 +177,7 @@ export function useUpdateSupplier() {
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['suppliers'] }); toast.success('Fornecedor atualizado!'); },
-    onError: (err: Error) => toast.error(`Erro: ${err.message}`),
+    onError: (err: Error) => toast.error(partySaveErrorText(err, 'fornecedor'), { duration: 8000 }),
   });
 }
 
