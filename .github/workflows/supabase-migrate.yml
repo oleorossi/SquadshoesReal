@@ -15,10 +15,12 @@ name: Supabase — Apply Migrations
 #   SUPABASE_DB_PASSWORD    → senha do Postgres do projeto VIVO ssvxfoybzmjlypnipqzn
 #                             (Database > Settings > Reset database password)
 #
-# Project ref e pooler são FIXOS neste workflow (ssvx / us-west-2).
+# Project ref e pooler são FIXOS neste workflow (ssvx / aws-1-us-west-2).
 # O secret SUPABASE_PROJECT_ID foi IGNORADO de propósito: em 15/11/2026 ele
 # apontava para outro projeto e o migrate abortava (run 43771271660) ou
 # aplicava no banco errado (sa-east-1, run 43770073904).
+# Pooler aws-0-us-west-2 devolve ENOTFOUND para ssvx; aws-1 reconhece o
+# tenant (medido 15/11/2026 — auth fail com senha errada, não ENOTFOUND).
 #
 # Conexão: direto no Postgres via pooler Supavisor em modo sessão (porta 5432,
 # usuário postgres.<project_ref>, sslmode=require), com `--db-url`/psql.
@@ -57,9 +59,9 @@ jobs:
     timeout-minutes: 15
     env:
       SUPABASE_MIGRATION_CUTOFF: '20270101009300'
-      # Fixos no banco vivo do app (VITE_SUPABASE_URL = ssvx / us-west-2).
+      # Fixos no banco vivo do app (VITE_SUPABASE_URL = ssvx).
       SUPABASE_PROJECT_ID: 'ssvxfoybzmjlypnipqzn'
-      SUPABASE_DB_POOLER_HOST: 'aws-0-us-west-2.pooler.supabase.com'
+      SUPABASE_DB_POOLER_HOST: 'aws-1-us-west-2.pooler.supabase.com'
 
     steps:
       - name: Checkout
