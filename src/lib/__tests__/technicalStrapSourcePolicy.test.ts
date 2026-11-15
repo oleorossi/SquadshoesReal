@@ -9,11 +9,18 @@ const OVERLOCK = 'medida-overlock-5';
 const STRASS = 'medida-strass-6';
 const STRASS_GROUP = 'grupo-strass-6';
 const GLOW = 'grupo-glow';
+const ELASTICO = 'medida-elastico-25';
+const ELASTICO_LEAF = 'folha-25mm';
 const catalog: NonNullable<Parameters<typeof technicalStrapSourcePolicy>[0]> = {
-  types: [{ id: 'overlock', active: true }, { id: 'strass', active: true }],
+  types: [
+    { id: 'overlock', name: 'TIRA OVERLOCK', active: true },
+    { id: 'strass', name: 'TIRA STRASS', active: true },
+    { id: 'elastico', name: 'ELÁSTICO ESPECIAL G', active: true },
+  ],
   measures: [
-    { id: OVERLOCK, strap_type_id: 'overlock', active: true },
-    { id: STRASS, strap_type_id: 'strass', active: true },
+    { id: OVERLOCK, strap_type_id: 'overlock', active: true, finished_width_mm: 5 },
+    { id: STRASS, strap_type_id: 'strass', active: true, finished_width_mm: 6, origem_padrao: 'sempre_sku_acabado' },
+    { id: ELASTICO, strap_type_id: 'elastico', active: true, finished_width_mm: 25, origem_padrao: 'sempre_sku_acabado' },
   ],
   variants: [
     { measure_id: OVERLOCK, base_group_id: GLOW, identity_basis: 'reference_base', internal_production_enabled: true, status: 'active' },
@@ -21,14 +28,17 @@ const catalog: NonNullable<Parameters<typeof technicalStrapSourcePolicy>[0]> = {
   ],
   recipes: [],
   products: [
-    { id: 'cristal', group_id: STRASS_GROUP, active: true, unit: 'm' },
-    { id: 'glow', group_id: GLOW, active: true, unit: 'm' },
-    { id: 'sem-vinculo', group_id: 'outro-grupo', active: true, unit: 'm' },
+    { id: 'cristal', name: 'TIRA STRASS 6MM · CRISTAL', group_id: STRASS_GROUP, active: true, unit: 'm' },
+    { id: 'glow', name: 'NAPA GLOW', group_id: GLOW, active: true, unit: 'm' },
+    { id: 'sem-vinculo', name: 'TIRA STRASS 6MM · OUTRO', group_id: 'outro-grupo', active: true, unit: 'm' },
+    { id: 'elastico-preto', name: 'ELÁSTICO ESPECIAL G · PRETO', group_id: ELASTICO_LEAF, active: true, unit: 'm' },
   ],
   groups: [
     { id: STRASS_GROUP, name: 'TIRA STRASS 6MM' },
     { id: GLOW, name: 'GLOW METALIC + MASSABOX' },
     { id: 'outro-grupo', name: 'TIRA STRASS 6MM — nome parecido' },
+    { id: ELASTICO_LEAF, name: '25MM' },
+    { id: 'familia-elastico', name: 'ELÁSTICO ESPECIAL G' },
   ],
 };
 const overlockLine = {
@@ -107,8 +117,32 @@ describe('technicalStrapSourcePolicy', () => {
 
   it('bloqueia identidade enquanto falta catálogo ou a família/medida está inativa', () => {
     expect(technicalStrapSourcePolicy(undefined, STRASS)).toEqual({ loaded: false, allowsReferenceBase: false, finishedGroups: [] });
+    expect(technicalStrapSourcePolicy(catalog, null)).toEqual({ loaded: false, allowsReferenceBase: false, finishedGroups: [] });
+    expect(technicalStrapSourcePolicy(catalog, '')).toEqual({ loaded: false, allowsReferenceBase: false, finishedGroups: [] });
     expect(technicalStrapSourcePolicy({ ...catalog, types: [] }, STRASS).finishedGroups).toEqual([]);
     expect(technicalStrapSourcePolicy({ ...catalog, measures: [{ ...catalog.measures[1], active: false }] }, STRASS).finishedGroups).toEqual([]);
+  });
+
+  it('ELÁSTICO ESPECIAL G buy-ready resolve a folha 25MM pelos SKUs sem variante Hub', () => {
+    const policy = technicalStrapSourcePolicy(catalog, ELASTICO);
+    expect(policy).toEqual({
+      loaded: true,
+      allowsReferenceBase: false,
+      finishedGroups: [{ id: ELASTICO_LEAF, name: 'ELÁSTICO ESPECIAL G · 25MM' }],
+    });
+    expect(isTechnicalStrapSourceAllowed({
+      identity_basis: 'finished_product_group',
+      identity_group_id: ELASTICO_LEAF,
+    }, policy)).toBe(true);
+    const applied = applyTechnicalStrapMeasureWithSource(overlockLine, catalog.measures[2], catalog);
+    expect(applied).toMatchObject({
+      measure_id: ELASTICO,
+      strap_type_id: 'elastico',
+      identity_basis: 'finished_product_group',
+      identity_group_id: ELASTICO_LEAF,
+      color_mode: 'select_on_order',
+      internal_production_enabled: false,
+    });
   });
 
   it('trocar Overlock por Strass escolhe o único grupo pronto e separa a cor, preservando geometria e posição', () => {

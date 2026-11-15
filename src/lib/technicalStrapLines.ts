@@ -31,10 +31,14 @@ export interface TechnicalStrapMeasureLike {
   id: string;
   strap_type_id: string;
   active?: boolean | null;
+  finished_width_mm?: number | null;
+  origem_padrao?: string | null;
+  display_name?: string | null;
 }
 
 export interface TechnicalStrapTypeLike {
   id: string;
+  name?: string | null;
   active?: boolean | null;
 }
 

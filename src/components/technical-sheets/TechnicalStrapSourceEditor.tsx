@@ -40,10 +40,11 @@ export default function TechnicalStrapSourceEditor<T extends TechnicalStrapLineL
           {!loading && !failed && policy.allowsReferenceBase && policy.finishedGroups.length > 0 && (
             'Prestador ou Comprar pronto — o padrão vem do catálogo (Hub) e o Pedido de Venda pode trocar na exceção.'
           )}
-          {!loading && !failed && policy.loaded && !policy.allowsReferenceBase && policy.finishedGroups.length === 0 && (
+          {!loading && !failed && !!line.measure_id && policy.loaded && !policy.allowsReferenceBase && policy.finishedGroups.length === 0 && (
             'Esta medida ainda não tem origem ativa no Hub de Tiras.'
           )}
-          {!loading && !failed && !policy.loaded && 'Origem definida no Hub e no Pedido de Venda — não nesta ficha.'}
+          {!loading && !failed && !line.measure_id && 'Selecione a família e a medida para ver a origem.'}
+          {!loading && !failed && !!line.measure_id && !policy.loaded && 'Origem definida no Hub e no Pedido de Venda — não nesta ficha.'}
         </div>
         {policy.loaded && !sourceAllowed && !loading && !failed && onlyFinished && (
           <p className="text-xs text-destructive">
