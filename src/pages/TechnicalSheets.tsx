@@ -123,7 +123,6 @@ import {
   applyTechnicalStrapMulticolor,
   ensureTechnicalStrapLineIds,
   findDuplicateTechnicalStrapLabel,
-  hasCanonicalTechnicalStrapIdentity,
   newTechnicalStrapLineFromConsumptionTemplate,
   replicateFirstTechnicalStrapType,
   strapColorMode,
@@ -131,7 +130,14 @@ import {
   type StrapColorMode,
 } from '@/lib/technicalStrapLines';
 import { strapIdentityBasis } from '@/lib/strapIdentity';
-import { applyTechnicalStrapMeasureWithSource, isTechnicalStrapSourceAllowed, technicalStrapSourcePolicy } from '@/lib/technicalStrapSourcePolicy';
+import { isTechnicalStrapSourceAllowed, technicalStrapSourcePolicy } from '@/lib/technicalStrapSourcePolicy';
+import {
+  applyStockStrapGroupToLine,
+  hasTechnicalStrapLineIdentity,
+  isStrapInventorySelectableGroup,
+  strapStockGroupDisplayValue,
+  strapStockGroupSelectedId,
+} from '@/lib/strapInventorySelection';
 import { normalizeStrapMaterialPolicy, strapMaterialMode, validateStrapMaterialPolicy } from '@/lib/strapMaterialPolicy';
 import TechnicalStrapMaterialPolicyEditor from '@/components/technical-sheets/TechnicalStrapMaterialPolicyEditor';
 import TechnicalStrapSourceEditor from '@/components/technical-sheets/TechnicalStrapSourceEditor';
@@ -1594,20 +1600,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
   const { data: products = [] } = useProducts();
   const strapCatalogQuery = useArtisanalStrapCatalog(false);
   const strapCatalog = strapCatalogQuery.data;
-  const activeStrapMeasures = useMemo(() => {
-    const activeTypeIds = new Set((strapCatalog?.types || [])
-      .filter((type) => type.active)
-      .map((type) => type.id));
-    return (strapCatalog?.measures || [])
-      .filter((measure) => measure.active && activeTypeIds.has(measure.strap_type_id))
-      .sort((left, right) => {
-        const leftType = strapCatalog?.types.find((type) => type.id === left.strap_type_id)?.name || '';
-        const rightType = strapCatalog?.types.find((type) => type.id === right.strap_type_id)?.name || '';
-        const typeOrder = leftType.localeCompare(rightType, 'pt-BR');
-        if (typeOrder !== 0) return typeOrder;
-        return Number(left.finished_width_mm) - Number(right.finished_width_mm);
-      });
-  }, [strapCatalog]);
   const { data: sheetMaterials = [] } = useSheetMaterials(sheet.id);
   const { data: soleColorMappings = [] } = useSoleColorMappings(sheet.id);
   // soleSizeKeys deve refletir a grade do solado com conjugações aplicadas
@@ -2226,8 +2218,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         return;
       }
       if (form.has_straps) {
-        if (!strapCatalog || strapCatalogQuery.isError) {
-          toast.error('Não foi possível validar as famílias e medidas de tira. Recarregue o catálogo canônico.');
+        // Catálogo Hub é ponte opcional (measure_id). Identidade canônica da
+        // ficha = grupo de estoque (spec tira-material-de-estoque R4).
+        if (strapCatalogQuery.isError) {
+          toast.error('Catálogo de tiras indisponível. Recarregue a página antes de salvar.');
           return;
         }
         const needsOwnMaterial = normalizedStraps.some(line => strapMaterialMode(line) !== 'follow_reference');
@@ -2246,11 +2240,13 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           setAbaAtiva('range-aviamento');
           return;
         }
+        const measures = strapCatalog?.measures || [];
+        const types = strapCatalog?.types || [];
         const invalidLines = normalizedStraps.filter((line) => (
-          !hasCanonicalTechnicalStrapIdentity(line, strapCatalog.measures, strapCatalog.types)
+          !hasTechnicalStrapLineIdentity(line, measures, types)
         ));
         if (invalidLines.length > 0) {
-          toast.error(`${invalidLines.length} tira(s) sem família, medida ou base de identidade canônicas. Preencha os campos destacados antes de salvar.`);
+          toast.error(`${invalidLines.length} tira(s) sem grupo de estoque. Selecione o material da tira antes de salvar.`);
           setAbaAtiva('range-aviamento');
           return;
         }
@@ -2258,7 +2254,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           line, technicalStrapSourcePolicy(strapCatalog, line.measure_id),
         ));
         if (unsupportedSource) {
-          toast.error(`${unsupportedSource.label || 'Tira'}: escolha uma origem cadastrada para esta família e medida.`, { duration: 8000 });
+          toast.error(`${unsupportedSource.label || 'Tira'}: escolha o grupo de estoque da tira.`, { duration: 8000 });
           setAbaAtiva('range-aviamento');
           return;
         }
@@ -4370,14 +4366,14 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       aria-describedby="replicate-strap-type-help"
                       disabled={strapCatalogQuery.isLoading || strapCatalogQuery.isError
                         || strapIdentityBasis(form.strap_colors?.[0]) === 'finished_product_group'
-                        || !hasCanonicalTechnicalStrapIdentity(
+                        || !hasTechnicalStrapLineIdentity(
                         form.strap_colors[0],
                         strapCatalog?.measures || [],
                         strapCatalog?.types || [],
                       )}
                       title={strapIdentityBasis(form.strap_colors?.[0]) === 'finished_product_group'
                         ? 'A 1ª tira é SKU acabado; não replicar para não converter as demais'
-                        : 'Configure a família, medida e base da primeira tira para aplicar às demais'}
+                        : 'Configure o grupo de estoque da primeira tira para aplicar às demais'}
                       onClick={() => {
                         updateField('strap_colors', replicateFirstTechnicalStrapType(form.strap_colors));
                         toast.success('Estrutura e políticas de material e cor aplicadas às demais. Salve a ficha para confirmar.');
@@ -4554,81 +4550,59 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                       <div className="space-y-1.5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <Label className="text-xs font-semibold">
-                            Família e medida canônicas <span className="text-destructive">*</span>
+                            Grupo de estoque da tira <span className="text-destructive">*</span>
                           </Label>
                           <Link
-                            to="/tiras-artesanais?tab=cadastro"
+                            to="/estoque?tab=grupos"
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            Gerenciar catálogo de tiras
+                            Abrir grupos de estoque
                           </Link>
                         </div>
-                        <Select
-                          value={strap.measure_id || ''}
-                          disabled={
-                            strapCatalogQuery.isLoading
-                            || strapCatalogQuery.isError
-                            || activeStrapMeasures.length === 0
-                          }
-                          onValueChange={(measureId) => {
-                            const measure = activeStrapMeasures.find((entry) => entry.id === measureId);
-                            if (!measure) return;
-                            const updated = [...(form.strap_colors || [])];
-                            if (!strapCatalog) return;
-                            updated[idx] = applyTechnicalStrapMeasureWithSource(updated[idx], measure, strapCatalog);
-                            updateField('strap_colors', updated);
-                          }}
-                        >
-                          <SelectTrigger className={cn(
-                            'w-full',
-                            !hasCanonicalTechnicalStrapIdentity(
+                        <GroupMaterialSelect
+                          label=""
+                          value={strapStockGroupDisplayValue(strap)}
+                          selectedGroupId={strapStockGroupSelectedId(strap)}
+                          groupFilter={(group) => isStrapInventorySelectableGroup(group, new Set())}
+                          triggerClassName={cn(
+                            !hasTechnicalStrapLineIdentity(
                               strap,
                               strapCatalog?.measures || [],
                               strapCatalog?.types || [],
-                            )
-                              && 'border-destructive focus:ring-destructive',
-                          )}>
-                            <SelectValue
-                              placeholder={strapCatalogQuery.isLoading
-                                ? 'Carregando catálogo…'
-                                : activeStrapMeasures.length === 0
-                                  ? 'Catálogo sem família e medida ativa'
-                                  : 'Selecione família e medida'}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {activeStrapMeasures.length === 0 ? (
-                              <SelectItem value="__empty_strap_catalog__" disabled>
-                                Nenhuma família e medida ativa
-                              </SelectItem>
-                            ) : activeStrapMeasures.map((measure) => {
-                              const type = strapCatalog?.types.find((entry) => entry.id === measure.strap_type_id);
-                              return (
-                                <SelectItem key={measure.id} value={measure.id}>
-                                  {type?.name || 'Família não identificada'} · {measure.display_name}
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
+                            ) && 'border-destructive focus:ring-destructive',
+                          )}
+                          onChange={() => { /* path vem via onGroupSelect */ }}
+                          onGroupSelect={(group, path) => {
+                            const familyName = path.includes(' › ')
+                              ? path.split(' › ').slice(0, -1).join(' › ')
+                              : null;
+                            const updated = [...(form.strap_colors || [])];
+                            updated[idx] = applyStockStrapGroupToLine(
+                              updated[idx],
+                              group,
+                              path,
+                              strapCatalog,
+                              familyName,
+                            );
+                            updateField('strap_colors', updated);
+                          }}
+                        />
                         {strapCatalogQuery.isError ? (
-                          <p className="text-xs font-medium text-destructive">Catálogo indisponível. Recarregue a página antes de salvar.</p>
-                        ) : !strapCatalogQuery.isLoading && activeStrapMeasures.length === 0 ? (
-                          <p className="text-xs font-medium text-destructive">
-                            Nenhuma família e medida está ativa. Abra o catálogo de tiras para concluir o cadastro.
-                          </p>
-                        ) : !hasCanonicalTechnicalStrapIdentity(
+                          <p className="text-xs font-medium text-destructive">Catálogo auxiliar indisponível. Recarregue a página antes de salvar.</p>
+                        ) : !hasTechnicalStrapLineIdentity(
                           strap,
                           strapCatalog?.measures || [],
                           strapCatalog?.types || [],
                         ) ? (
-                          <p className="text-xs font-medium text-destructive">Selecione a identidade técnica; grupo ou nome antigo não resolvem esta tira.</p>
+                          <p className="text-xs font-medium text-destructive">
+                            Selecione o grupo de estoque da tira (ex.: ELÁSTICO ESPECIAL G › 25MM).
+                          </p>
                         ) : null}
-                        {(strap.group_name || strap.group_id) && (
+                        {strap.measure_id && (
                           <p className="text-xs text-muted-foreground">
-                            Rótulo legado preservado para diagnóstico: <strong className="text-foreground">{strap.group_name || strap.group_id}</strong>. Ele não participa do cálculo.
+                            Medida Hub vinculada automaticamente para o pedido de venda.
                           </p>
                         )}
                       </div>

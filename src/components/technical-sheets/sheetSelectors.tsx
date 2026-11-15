@@ -95,10 +95,16 @@ interface GroupMaterialSelectProps {
   value: string;
   /** Mantido por compatibilidade com todos os consumidores existentes. */
   onChange: (value: string) => void;
-  /** Entrega também a identidade estável do grupo-folha selecionado. */
-  onGroupSelect?: (group: ProductGroup) => void;
+  /** Entrega a identidade estável do grupo-folha e o rótulo de caminho. */
+  onGroupSelect?: (group: ProductGroup, pathLabel: string) => void;
   /** Restringe os grupos-folha a um setor industrial, quando informado. */
   sector?: string;
+  /** UUID do grupo-folha já gravado (vence o match por nome — folhas "25MM"). */
+  selectedGroupId?: string | null;
+  /** Filtro extra além de setor (ex.: só grupos de tira no estoque). */
+  groupFilter?: (group: ProductGroup) => boolean;
+  /** Classe extra no botão (validação visual). */
+  triggerClassName?: string;
 }
 
 type GroupSelectSummary = {
@@ -134,6 +140,9 @@ export function GroupMaterialSelect({
   onChange,
   onGroupSelect,
   sector,
+  selectedGroupId = null,
+  groupFilter,
+  triggerClassName,
 }: GroupMaterialSelectProps) {
   const { data: groups = [] } = useGroups();
   const { data: allProducts = [] } = useProducts();
@@ -172,9 +181,13 @@ export function GroupMaterialSelect({
     () => new Set(groups.map(group => group.parent_group_id).filter(Boolean) as string[]),
     [groups],
   );
+  const passesFilters = (group: ProductGroup) => (
+    (!sector || sectorOfGroup(group) === sector)
+    && (!groupFilter || groupFilter(group))
+  );
   const selectableGroups = useMemo<GroupSelectOption[]>(() => groups
     .filter(group => !parentIds.has(group.id))
-    .filter(group => !sector || sectorOfGroup(group) === sector)
+    .filter(passesFilters)
     .filter(group => (groupIndex[group.id]?.count || 0) > 0)
     .map(group => {
       const path = getGroupPath(groups, group.id);
@@ -185,7 +198,7 @@ export function GroupMaterialSelect({
         familyLabel: familyPath || null,
       };
     })
-    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupIndex]);
+    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex]);
 
   // Grupo-folha SEM item ativo continua fora da seleção (sem SKU o PV não tem o
   // que debitar e o custo/par sai R$ 0), mas aparece com atalho para cadastrar.
@@ -193,7 +206,7 @@ export function GroupMaterialSelect({
   // salvo (NAPA ROOTS, 11/10/2026 — spec grupo-cor-obrigatoria.md, D7).
   const emptyGroups = useMemo<GroupSelectOption[]>(() => groups
     .filter(group => !parentIds.has(group.id) && group.is_family !== true)
-    .filter(group => !sector || sectorOfGroup(group) === sector)
+    .filter(passesFilters)
     .filter(group => (groupIndex[group.id]?.count || 0) === 0)
     .map(group => {
       const path = getGroupPath(groups, group.id);
@@ -203,7 +216,7 @@ export function GroupMaterialSelect({
         familyLabel: null,
       };
     })
-    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupIndex]);
+    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex]);
   const [groupToFill, setGroupToFill] = useState<ProductGroup | null>(null);
 
   const [open, setOpen] = useState(false);
@@ -259,7 +272,7 @@ export function GroupMaterialSelect({
     const kids = childrenByParent.get(browseFamilyId) || [];
     return kids
       .filter((group) => (groupIndex[group.id]?.count || 0) > 0)
-      .filter((group) => !sector || sectorOfGroup(group) === sector)
+      .filter(passesFilters)
       .map((group) => {
         const path = getGroupPath(groups, group.id);
         return {
@@ -269,7 +282,7 @@ export function GroupMaterialSelect({
         };
       })
       .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR'));
-  }, [browseFamilyId, childrenByParent, groupIndex, sector, groups, browseFamily]);
+  }, [browseFamilyId, childrenByParent, groupIndex, sector, groupFilter, groups, browseFamily]);
 
   const familyEmptyOptions = useMemo(() => {
     if (!browseFamilyId) return [] as GroupSelectOption[];
@@ -277,7 +290,7 @@ export function GroupMaterialSelect({
     return kids
       .filter((group) => group.is_family !== true)
       .filter((group) => (groupIndex[group.id]?.count || 0) === 0)
-      .filter((group) => !sector || sectorOfGroup(group) === sector)
+      .filter(passesFilters)
       .map((group) => {
         const path = getGroupPath(groups, group.id);
         return {
@@ -287,7 +300,7 @@ export function GroupMaterialSelect({
         };
       })
       .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR'));
-  }, [browseFamilyId, childrenByParent, groupIndex, sector, groups, browseFamily]);
+  }, [browseFamilyId, childrenByParent, groupIndex, sector, groupFilter, groups, browseFamily]);
 
   const filtered = useMemo(() => {
     // Com família aberta: só os filhos. Na raiz com busca: todas as folhas (atalho).
@@ -358,20 +371,30 @@ export function GroupMaterialSelect({
     return [{ key: '__SEM_FAMILIA__', label: 'Grupos sem família', options: visibleOptions }];
   }, [browseFamilyId, browseFamily, visibleOptions, search]);
 
-  const selectedGroup = useMemo(() => groups.find(group =>
-    group.name.trim().localeCompare(value.trim(), 'pt-BR', { sensitivity: 'base' }) === 0), [groups, value]);
+  const selectedGroup = useMemo(() => {
+    if (selectedGroupId) {
+      const byId = groups.find((group) => group.id === selectedGroupId);
+      if (byId) return byId;
+    }
+    if (!value.trim()) return undefined;
+    return groups.find((group) =>
+      group.name.trim().localeCompare(value.trim(), 'pt-BR', { sensitivity: 'base' }) === 0);
+  }, [groups, value, selectedGroupId]);
   const selectedIsContainer = !!selectedGroup && parentIds.has(selectedGroup.id);
   const selectedHasActiveProduct = !!selectedGroup && (groupIndex[selectedGroup.id]?.count || 0) > 0;
   const selectedOption = selectedGroup
     ? selectableGroups.find(option => option.group.id === selectedGroup.id)
+      || emptyGroups.find(option => option.group.id === selectedGroup.id)
     : null;
   const selectedSummary = selectedGroup ? groupIndex[selectedGroup.id] : undefined;
 
   const chooseGroup = (group: ProductGroup) => {
+    const path = getGroupPath(groups, group.id).map((node) => node.name).join(' › ') || group.name;
     // Ordem intencional: primeiro preserva o contrato por nome; depois entrega o
     // UUID/metadados para consumidores novos persistirem a identidade estável.
-    onChange(group.name);
-    onGroupSelect?.(group);
+    // Em tiras, folhas "25MM" usam o path completo no value pra não colidir.
+    onChange(groupFilter ? path : group.name);
+    onGroupSelect?.(group, path);
     setOpen(false);
     setSearch('');
     setBrowseFamilyId(null);
@@ -393,8 +416,8 @@ export function GroupMaterialSelect({
         }
       }}>
         <PopoverTrigger asChild>
-          <Button variant="outline" role="combobox" aria-expanded={open} className="mt-1 h-9 w-full justify-between text-sm font-normal">
-            <span className={cn('min-w-0 truncate text-left', !value && 'text-muted-foreground')}>
+          <Button variant="outline" role="combobox" aria-expanded={open} className={cn('mt-1 h-9 w-full justify-between text-sm font-normal', triggerClassName)}>
+            <span className={cn('min-w-0 truncate text-left', !value && !selectedGroupId && 'text-muted-foreground')}>
               {selectedPathLabel || value || 'Selecionar material...'}
             </span>
             {selectedIsContainer && (

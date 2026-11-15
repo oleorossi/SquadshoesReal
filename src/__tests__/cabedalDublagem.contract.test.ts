@@ -37,8 +37,8 @@ describe('Cabedal dublado — contrato frontend e persistência', () => {
     expect(selector).toContain('Escolha um grupo dentro da família');
 
     const chooseGroup = section(selector, 'const chooseGroup =', '\n\n  return (');
-    expect(chooseGroup).toContain('onChange(group.name);');
-    expect(chooseGroup).toContain('onGroupSelect?.(group);');
+    expect(chooseGroup).toContain('onChange(groupFilter ? path : group.name);');
+    expect(chooseGroup).toContain('onGroupSelect?.(group, path);');
 
     expect(materialVariants).toContain('const parentGroupIds = useMemo(');
     expect(materialVariants).toContain('.filter(group => !parentGroupIds.has(group.id))');
