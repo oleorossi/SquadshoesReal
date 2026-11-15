@@ -272,6 +272,35 @@ type QueryResultLike<T = unknown> = {
   error?: { message?: string | null } | Error | null;
 };
 
+interface SheetMaterialBomRow {
+  id?: string | null;
+  sheet_id?: string | null;
+  product_id?: string | null;
+  group_id?: string | null;
+  quantity_per_unit?: number | null;
+  color?: string | null;
+  material_variant_id?: string | null;
+  is_active?: boolean | null;
+  include_in_consumption?: boolean | null;
+  consumption_type?: string | null;
+  consumption_per_size?: Record<string, unknown> | null;
+  wastage_percentage?: number | null;
+  created_at?: string | null;
+  products?: { name?: string | null; unit?: string | null; category?: string | null; color?: string | null } | null;
+  product_groups?: { name?: string | null } | null;
+}
+
+type SheetMaterialQuery = {
+  from: (table: 'sheet_materials') => {
+    select: (columns: string) => {
+      in: (column: string, values: readonly string[]) => Promise<{
+        data: SheetMaterialBomRow[] | null;
+        error: { message?: string } | null;
+      }>;
+    };
+  };
+};
+
 /**
  * A Lista de Separação é um documento operacional: uma consulta incompleta
  * não pode virar silenciosamente um BOM parcial. Mantemos o nome da fonte no
@@ -399,7 +428,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       .in('id', refIds),
     // is_active / include_in_consumption existem no banco (kits de precificação)
     // e ainda não estão no types.ts gerado — o select tipado vira SelectQueryError.
-    (supabase as any)
+    (supabase as unknown as SheetMaterialQuery)
       .from('sheet_materials')
       // material_variant_id: NULL = linha compartilhada; preenchido = específica
       // de uma variante (semântica get_effective_bom) — escopo aplicado no loop.
@@ -1641,16 +1670,16 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const sheetBomLines = (materials || []).filter((m) => m.sheet_id === order.reference_id);
     const bomVariantId = saleItem?.material_variant_id || null;
     const variantBomLines = bomVariantId
-      ? sheetBomLines.filter((m: any) => m.material_variant_id === bomVariantId)
+      ? sheetBomLines.filter((m) => m.material_variant_id === bomVariantId)
       : [];
-    const variantBomProductIds = new Set(variantBomLines.map((m: any) => m.product_id));
+    const variantBomProductIds = new Set(variantBomLines.map((m) => m.product_id));
     const itemMaterials = [
-      ...sheetBomLines.filter((m: any) => !m.material_variant_id && !variantBomProductIds.has(m.product_id)),
+      ...sheetBomLines.filter((m) => !m.material_variant_id && !variantBomProductIds.has(m.product_id)),
       ...variantBomLines,
     ];
-    const lineIds = new Set(itemMaterials.map((material: any) => material.id).filter(Boolean));
+    const lineIds = new Set(itemMaterials.map((material) => material.id).filter((id): id is string => !!id));
     const requirements = additionalMaterialLinesRequired({
-      lines: itemMaterials.map((material: any) => ({
+      lines: itemMaterials.map((material) => ({
         id: material.id,
         productId: material.product_id,
         quantityPerUnit: material.quantity_per_unit,
@@ -1666,8 +1695,8 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       grading: sheetMaterialGrading.filter((row) => lineIds.has(row.sheetMaterialId)),
       scaleGradeToQuantity: true,
     });
-    const materialByProduct = new Map<string, any>();
-    for (const material of itemMaterials as any[]) {
+    const materialByProduct = new Map<string, SheetMaterialBomRow>();
+    for (const material of itemMaterials) {
       if (material.product_id && !materialByProduct.has(material.product_id)) {
         materialByProduct.set(material.product_id, material);
       }
@@ -1675,8 +1704,8 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
     for (const requirement of requirements) {
       const material = materialByProduct.get(requirement.productId);
-      const product = material?.products as any;
-      const group = material?.product_groups as any;
+      const product = material?.products;
+      const group = material?.product_groups;
       if (!product) continue;
       if (legacyPackagingProductIds.has(requirement.productId)) continue;
 
@@ -1699,7 +1728,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       const rawQty = requirement.requiredRaw;
       let totalQty = rawQty;
       let widthMissing = false;
-      const cs = (componentSheets || []).find((c: any) => c.product_id === requirement.productId) || null;
+      const cs = (componentSheets || []).find((c) => c.product_id === requirement.productId) || null;
       if (isLinearUnit && cs) {
         if (isNativeLinearMaterial(cs as ComponentSheetCandidate)) {
           totalQty = unitLc === 'cm' ? rawQty / 100 : rawQty;
