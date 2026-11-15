@@ -3,6 +3,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 // Fase 1 — reconciliação de prestadores e vínculo do ponto.
+//
+// ⚠ Escrita DESATIVADA: `punch_map_resolve` está fechada para `authenticated` desde
+// 20261018120000_punch-reconciliation-fail-closed (matrícula reciclada entre pessoas
+// transferiria o histórico de batidas). O contrato de ACL foi restaurado no cknb, então
+// a chamada só devolvia "permission denied". Até existir vínculo com vigência
+// (valid_from/valid_to) e checagem de papel de RH dentro da função, os hooks de escrita
+// falham ANTES de tocar no banco, com mensagem clara — inclusive sem criar o prestador.
+export const PUNCH_MAP_WRITE_ENABLED = false;
+export const PUNCH_MAP_DISABLED_MESSAGE =
+  'Vínculo de matrícula do relógio desativado: falta vigência por período no mapa do ponto. ' +
+  'Peça ao RH/admin para fazer o vínculo pelo banco enquanto a Fase 2 não sai.';
 // As RPCs (get_punch_reconciliation / punch_map_resolve) foram criadas na
 // migration 20260627120000 e ainda NÃO estão no types.ts gerado, por isso o
 // cast `(supabase as any).rpc(...)`. Regenerar os tipos depois remove o cast.
@@ -47,6 +58,7 @@ export function usePunchMapResolve() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (p: ResolveInput) => {
+      if (!PUNCH_MAP_WRITE_ENABLED) throw new Error(PUNCH_MAP_DISABLED_MESSAGE);
       const { error } = await (supabase as any).rpc('punch_map_resolve', {
         p_device_id: p.device_id,
         p_employee_id: p.employee_id,
@@ -84,6 +96,8 @@ export function useCreateProviderAndLink() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (p: CreateProviderInput) => {
+      // Falha antes do insert: sem o vínculo o cadastro ficaria órfão.
+      if (!PUNCH_MAP_WRITE_ENABLED) throw new Error(PUNCH_MAP_DISABLED_MESSAGE);
       const { data, error } = await supabase
         .from('employees')
         .insert({

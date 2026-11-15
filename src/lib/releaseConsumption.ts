@@ -115,7 +115,20 @@ export async function consumeReservationsOnRelease(
   }
 }
 
-export async function convertReservationToOutGuarded(orderId: string): Promise<{ blocked_no_sheet?: boolean }> {
+/**
+ * Faturamento × reservas — a baixa NÃO sai mais do browser.
+ *
+ * `convert_reservation_to_out` foi internalizado pelo contrato de command boundary
+ * (20270101010800 / 20270101012500): o EXECUTE é só do banco. Quem consome as reservas
+ * no faturamento é o próprio banco — a transição `auto_bill_sale_order` e o gatilho
+ * `trg_aa_settle_reservations_on_finalize` (`settle_open_reservations_for_order`).
+ * Chamar a RPC daqui só produzia "permission denied" depois que o contrato de ACL foi
+ * restaurado no cknb. Mantemos o guard da ficha (aviso ao operador) e devolvemos sem
+ * efeito: o banco é a fonte única da baixa.
+ */
+export async function convertReservationToOutGuarded(
+  orderId: string,
+): Promise<{ blocked_no_sheet?: boolean; settled_by_database?: boolean }> {
   const guard = await guardDebitForOrder(orderId);
   if (!guard.allowed) {
     toast.warning(
@@ -125,7 +138,5 @@ export async function convertReservationToOutGuarded(orderId: string): Promise<{
     );
     return { blocked_no_sheet: true };
   }
-  const { error } = await supabase.rpc('convert_reservation_to_out' as never, { p_order_id: orderId } as never);
-  if (error) throw new Error(error.message);
-  return {};
+  return { settled_by_database: true };
 }
