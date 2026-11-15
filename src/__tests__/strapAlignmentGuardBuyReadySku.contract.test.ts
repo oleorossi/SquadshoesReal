@@ -1,28 +1,14 @@
 /**
  * Guarda de ALINHAMENTO da tira (`tg_validate_sale_order_item_strap_color_alignment`)
- * × writer do PV.
+ * × writer do PV — histórico 40200 (aceitar SKU sem variante).
  *
  * Bug (13/10/2026): trocar a ORIGEM de uma tira `reference_base` para "Comprar
  * pronto" abortava o PV INTEIRO com
  *   "O pedido NÃO foi salvo. Tira sem cor/variante canonica congelada no PV"
  *
- * É a MESMA divergência writer × guarda que a 39600 fechou, só que na SEGUNDA
- * guarda da cadeia. Ordem alfabética dos BEFORE triggers de `sale_order_items`
- * no INSERT:
- *   trg_guard_sale_order_item_strap_sourcing_insert       → corrigida pela 39600
- *   trg_validate_sale_order_item_strap_color_alignment_insert → esta aqui
- *
- * O writer (ramo sku_acabado introduzido pela migration 20270101031900) congela
- * `strap_variant_id = NULL` + `finished_product_id = <SKU acabado>`. A 31900
- * patchou ESTA função para ganhar o ramo `pv_origem = 'sku_acabado'` — que exige
- * `v_source_variant_id IS NULL` — mas deixou intacta a pré-checagem genérica
- * logo acima, que exigia o OPOSTO. As duas condições são mutuamente impossíveis:
- * a linha nunca chegava ao ramo que a aceitaria.
- *
- * ⚠ Este arquivo aponta para a migration que define a pré-checagem AGORA
- * (40200). Contrato lendo arquivo superado passa verde enquanto a função viva
- * perde uma guarda — a prova do corpo VIVO está nas asserções pós-EXECUTE da
- * própria 40200, que falham alto na aplicação.
+ * A 40200 aceitou finished_product_id SEM variante. Superada na pré-checagem
+ * pela 46800 (so-registra): Comprar pronto de napa congela só color_id, sem
+ * SKU nem variante — ver strapAlignmentComprarProntoSoRegistraPrecheck.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -32,6 +18,9 @@ const ROOT = resolve(__dirname, '../..');
 const MIGRATIONS = resolve(ROOT, 'supabase/migrations');
 const FILE = '20270101040200_alinhamento-strap-aceita-sku-acabado.sql';
 const MARKER = 'strap_alinhamento_sku_acabado_sem_variante_20270101040200';
+const SO_PRECHECK = '20270101046800_alinhamento-comprar-pronto-so-registra-precheck.sql';
+const SO_PRECHECK_MARKER =
+  'strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046800';
 const migration = readFileSync(resolve(MIGRATIONS, FILE), 'utf8');
 
 function latestMigrationMentioning(needle: string): string {
@@ -45,12 +34,16 @@ function latestMigrationMentioning(needle: string): string {
 }
 
 describe('Alinhamento da tira — buy_ready do PV identifica por SKU acabado', () => {
-  it('é a migration canônica do marcador e patcha o corpo VIVO', () => {
-    expect(latestMigrationMentioning(MARKER)).toBe(FILE);
+  it('arquivo 40200 patcha o corpo VIVO (histórico; pré-checagem viva = 46800)', () => {
+    expect(migration).toContain(MARKER);
     expect(migration).toContain('pg_get_functiondef');
     expect(migration).toContain(
       "'public.tg_validate_sale_order_item_strap_color_alignment()'",
     );
+    // A 46800 cita o marcador 40200 no v_old que substitui — autoridade viva
+    // da pré-checagem é a 46800.
+    expect(latestMigrationMentioning(MARKER)).toBe(SO_PRECHECK);
+    expect(latestMigrationMentioning(SO_PRECHECK_MARKER)).toBe(SO_PRECHECK);
   });
 
   it('casa com o texto exato da pré-checagem antes de substituir', () => {

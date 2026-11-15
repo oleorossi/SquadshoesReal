@@ -40,6 +40,18 @@ describe('tira Comprar pronto só registra (45300)', () => {
     expect(mig).toContain('strap_pv_sku_acabado_exige_cadastro_hub_20270101045200');
   });
 
+  it('46800 completa a pré-checagem que a 45300 deixou barrando buy_ready sem SKU', () => {
+    // Sem isto o writer 45300 e o ramo 45300 nunca se encontram: a
+    // pré-checagem 40200 exige variante OU SKU antes do ramo.
+    const precheck = readFileSync(
+      resolve(ROOT, 'supabase/migrations/20270101046800_alinhamento-comprar-pronto-so-registra-precheck.sql'),
+      'utf8',
+    );
+    expect(precheck).toContain('strap_alinhamento_comprar_pronto_so_registra_precheck_20270101046800');
+    expect(precheck).toContain("v_source_mode IS DISTINCT FROM 'buy_ready'");
+    expect(precheck).toContain('strap_comprar_pronto_so_registra_20270101045300');
+  });
+
   it('tela libera Comprar pronto sem group_id e não coerces para Prestador', () => {
     expect(origem).toContain('tira-comprar-pronto-so-registra');
     expect(origem).toMatch(

@@ -104,7 +104,10 @@ export function setStrapSourcing(
 }
 
 /**
- * Origem confirmável: cor canônica + (variante Hub OU SKU acabado do PV).
+ * Origem confirmável:
+ * - internal: cor canônica + variante Hub
+ * - buy_ready: cor canônica basta (spec so-registra — napa só registra
+ *   cor + metros; strass/legado pode ainda trazer finished_product_id)
  * Texto/grupo nunca completam identidade.
  */
 export function isCompleteStrapSourcingSelection(
@@ -114,7 +117,7 @@ export function isCompleteStrapSourcingSelection(
   if (selection.source_mode !== 'internal' && selection.source_mode !== 'buy_ready') return false;
   if (!isUuid(selection.color_id)) return false;
   if (selection.source_mode === 'buy_ready') {
-    return isUuid(selection.strap_variant_id) || isUuid(selection.finished_product_id);
+    return true;
   }
   return isUuid(selection.strap_variant_id);
 }
