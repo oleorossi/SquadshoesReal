@@ -1,6 +1,9 @@
 /**
  * Lista de Separação — demanda via motor SQL canônico (mesmo do Consumo do PV).
  * Substitui calculateBomForOrders como fonte de quantidade na UI de picking.
+ * As linhas de materiais adicionais saem de calculate_order_consumption_by_grade
+ * (sheet_material_lines_required, mig 20270101045900): inativa/fora do consumo
+ * não conta, per_size soma a grade, perda % entra, repetidas somam.
  */
 import {
   fetchCanonicalConsumptionReport,

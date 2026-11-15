@@ -40,6 +40,12 @@ import {
 } from '@/lib/canonicalStrapDemandPreview';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isPalmilhaProntaClassification, soleClassificationOf } from '@/lib/soleClassification';
+import {
+  additionalMaterialLinesRequired,
+  perSizeFallbackWarning,
+  soleStandardDuplicateWarning,
+  type SheetMaterialGradingInput,
+} from '@/lib/additionalMaterialLines';
 
 export type ConsumptionRow = {
   componentType: string;
@@ -159,6 +165,22 @@ const calcGroupPlateAreaDm2 = (group: any): number => {
   if (unit === 'm') { l *= 1000; w *= 1000; }
   return (l * w) / 10000;
 };
+
+function findConsumptionRowByProduct(
+  map: Map<string, ConsumptionRow>,
+  productId: string,
+): ConsumptionRow | undefined {
+  for (const row of map.values()) {
+    if (row.productIds?.includes(productId)) return row;
+  }
+  return undefined;
+}
+
+function appendConsumptionWarning(row: ConsumptionRow, warning: string) {
+  const text = warning.trim();
+  if (!text) return;
+  row.warning = row.warning?.trim() ? `${row.warning} | ${text}` : text;
+}
 
 const addConsumptionRow = (map: Map<string, ConsumptionRow>, row: ConsumptionRow) => {
   const totalQuantity = Number(row.totalQuantity) || 0;
@@ -375,11 +397,13 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       .from('technical_sheets')
       .select('id, upper_material, upper_material_product_id, upper_consumption, upper_consumption_per_size, lining_material, lining_material_product_id, lining_consumption, lining_consumption_per_size, insole_material, insole_consumption, insole_consumption_per_size, insole_ready_made, insole_has_lining, insole_lining_consumption, insole_lining_consumption_per_size, sole_material, sole_consumption, sole_color, sole_group_id, primary_sole_id, lining_accessories, components_accessories, strap_colors, sole_drives_consumption, direct_components, component_colors_enabled, variant_drives_upper, variant_drives_lining, variant_drives_fachete, fachete_material')
       .in('id', refIds),
-    supabase
+    // is_active / include_in_consumption existem no banco (kits de precificação)
+    // e ainda não estão no types.ts gerado — o select tipado vira SelectQueryError.
+    (supabase as any)
       .from('sheet_materials')
       // material_variant_id: NULL = linha compartilhada; preenchido = específica
       // de uma variante (semântica get_effective_bom) — escopo aplicado no loop.
-      .select('sheet_id, product_id, group_id, quantity_per_unit, color, material_variant_id, products(name, unit, category), product_groups(name)')
+      .select('id, sheet_id, product_id, group_id, quantity_per_unit, color, material_variant_id, is_active, include_in_consumption, consumption_type, consumption_per_size, wastage_percentage, created_at, products(name, unit, category), product_groups(name)')
       .in('sheet_id', refIds),
     // Grupos são baratos; products sem filtro era o custo (P1.1).
     supabase.from('product_groups').select('id, name, is_color_agnostic, composite_layers:product_group_layers!product_group_layers_composite_group_id_fkey(composite_group_id), dimensions_length, dimensions_width, dimensions_unit, box_type_id, box_type_master_id, box_type_colmeia_id, box_type_fitilho_id, pairs_per_box_individual, pairs_per_box_master, pairs_per_box_colmeia, pairs_per_box_fitilho'),
@@ -418,6 +442,29 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
 
   const sheetsData = sheetsResult.data || [];
   const materials = materialsResult.data || [];
+  const materialLineIds = [...new Set(
+    (materials as Array<{ id?: string | null }>)
+      .map((material) => material.id)
+      .filter((id): id is string => !!id),
+  )];
+  const gradingResult = materialLineIds.length > 0
+    ? await supabase
+      .from('sheet_material_grading')
+      .select('sheet_material_id, size_number, specific_consumption, created_at')
+      .in('sheet_material_id', materialLineIds)
+    : { data: [] as Array<{
+      sheet_material_id: string;
+      size_number: number;
+      specific_consumption: number | null;
+      created_at: string | null;
+    }>, error: null };
+  assertQuerySucceeded('consumo por numeração das linhas adicionais', gradingResult);
+  const sheetMaterialGrading: SheetMaterialGradingInput[] = (gradingResult.data || []).map((row) => ({
+    sheetMaterialId: row.sheet_material_id,
+    sizeNumber: Number(row.size_number),
+    specificConsumption: row.specific_consumption == null ? null : Number(row.specific_consumption),
+    createdAt: row.created_at,
+  }));
   const productGroups = productGroupsResult.data || [];
   const saleOrderItems = saleOrderItemsResult.data || [];
   const soleColorMappings = soleColorMappingsResult.data || [];
@@ -1501,6 +1548,7 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
             productUnit: converted != null ? (prod.unit || a.unit || 'un') : (a.unit || prod.unit || 'un'),
             color: prod.color || '—',
             totalQuantity: converted != null ? converted : a.required,
+            productIds: [pid],
             warning: converted == null
               ? `Unidade do item-padrão (${a.unit || '?'}) incompatível com a unidade do produto (${prod.unit || '?'}) — quantidade NÃO convertida; cadastre a unidade correta`
               : undefined,
@@ -1545,7 +1593,6 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
     const directComponents = Array.isArray(sheet?.direct_components)
       ? sheet.direct_components
       : [];
-    const directProductIds = new Set<string>();
     const seenDirectProductIds = new Set<string>();
     for (const dc of directComponents) {
       const pid = (dc as any)?.product_id as string | null | undefined;
@@ -1573,7 +1620,6 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       seenDirectProductIds.add(pid);
       const prod = (allProducts || []).find((p: any) => p.id === pid);
       if (!prod) continue;
-      directProductIds.add(pid);
       const dcGroupName = groupNameById((prod as any).group_id)
         || (dc as any)?.product_name || (prod as any).name || 'Componente';
       addConsumptionRow(consumptionMap, {
@@ -1583,19 +1629,15 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         productUnit: (prod as any).unit || (dc as any)?.unit || 'un',
         color: (prod as any).color || '—',
         totalQuantity: qtyPerPair * itemQuantity,
+        productIds: [pid],
       });
     }
 
-    // BOM materials
-    const specGroupsWithConsumption = new Map<string, number>();
-    if (upperMatch?.group) specGroupsWithConsumption.set(upperMatch.group.toLowerCase(), upperMatch.consumption);
-    if (liningMatch?.group) specGroupsWithConsumption.set(liningMatch.group.toLowerCase(), liningMatch.consumption);
-    if ((insoleVariantGroup || sheet?.insole_material) && (Number(sheet?.insole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(insoleVariantGroup || sheet.insole_material).toLowerCase(), Number(sheet.insole_consumption));
-    if (sheet?.sole_material && (Number(sheet?.sole_consumption) || 0) > 0) specGroupsWithConsumption.set(String(sheet.sole_material).toLowerCase(), Number(sheet.sole_consumption));
-
-    // BOM efetivo (semântica get_effective_bom): compartilhadas (variant NULL)
-    // + linhas da variante DESTE item (que sobrepõem a compartilhada de mesmo
-    // product_id); linhas de OUTRA variante ficam fora.
+    // Linhas de materiais adicionais — mesmas regras de
+    // public.sheet_material_lines_required (mig 20270101045900): inativa e
+    // fora do consumo ficam de fora; per_size soma a grade; perda % entra;
+    // repetidas somam e fundem com o cabeçalho (cabedal/direto). Solado e
+    // item padrão do solado continuam de fora; o item padrão ganha aviso.
     const sheetBomLines = (materials || []).filter((m) => m.sheet_id === order.reference_id);
     const bomVariantId = saleItem?.material_variant_id || null;
     const variantBomLines = bomVariantId
@@ -1606,67 +1648,66 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
       ...sheetBomLines.filter((m: any) => !m.material_variant_id && !variantBomProductIds.has(m.product_id)),
       ...variantBomLines,
     ];
+    const lineIds = new Set(itemMaterials.map((material: any) => material.id).filter(Boolean));
+    const requirements = additionalMaterialLinesRequired({
+      lines: itemMaterials.map((material: any) => ({
+        id: material.id,
+        productId: material.product_id,
+        quantityPerUnit: material.quantity_per_unit,
+        consumptionType: material.consumption_type,
+        consumptionPerSize: material.consumption_per_size,
+        wastagePercentage: material.wastage_percentage,
+        isActive: material.is_active,
+        includeInConsumption: material.include_in_consumption,
+        createdAt: material.created_at,
+      })),
+      grade: (item.grade || null) as Record<string, unknown> | null,
+      quantity: itemQuantity,
+      grading: sheetMaterialGrading.filter((row) => lineIds.has(row.sheetMaterialId)),
+      scaleGradeToQuantity: true,
+    });
+    const materialByProduct = new Map<string, any>();
+    for (const material of itemMaterials as any[]) {
+      if (material.product_id && !materialByProduct.has(material.product_id)) {
+        materialByProduct.set(material.product_id, material);
+      }
+    }
 
-    for (const material of itemMaterials) {
-      const product = material.products as any;
-      const group = material.product_groups as any;
+    for (const requirement of requirements) {
+      const material = materialByProduct.get(requirement.productId);
+      const product = material?.products as any;
+      const group = material?.product_groups as any;
       if (!product) continue;
-      if (legacyPackagingProductIds.has(material.product_id)) continue;
+      if (legacyPackagingProductIds.has(requirement.productId)) continue;
 
-      // Skip se já entrou via componentes diretos/por cor (BOM-6) — direct tem
-      // prioridade; BOM é fallback pra materiais não declarados direto (mesma
-      // regra do motor canônico).
-      if (directProductIds.has(material.product_id)) continue;
-      // Skip se o produto veio do ITEM-PADRÃO do solado (F2-01) — mesmo dedup
-      // do SQL (v_covered_product_ids): o BOM homônimo NÃO soma por cima.
-      if (stdCoveredProductIds.has(material.product_id)) continue;
+      const category = String(product.category || '').trim().toLowerCase();
+      if (requirement.productId === resolvedSolePid || category === 'solado') continue;
+
+      if (stdCoveredProductIds.has(requirement.productId)) {
+        const covered = findConsumptionRowByProduct(consumptionMap, requirement.productId);
+        if (covered) {
+          appendConsumptionWarning(covered, soleStandardDuplicateWarning(requirement.requiredRaw));
+        }
+        continue;
+      }
+      if (!(requirement.requiredRaw > 0)) continue;
 
       const groupName = group?.name || product.category || product.name || 'Outros';
-      const groupKey = groupName.toLowerCase();
-      const specHasGroup = specGroupsWithConsumption.has(groupKey);
-      const bomType = classifyBomMaterial(groupName, product.name || '', product.category || '');
-
-      if (specHasGroup) {
-        const isUpperGroup = upperMatch?.group?.toLowerCase() === groupKey;
-        const isLiningGroup = liningMatch?.group?.toLowerCase() === groupKey;
-        const isInsoleGroup = (insoleVariantGroup || sheet?.insole_material || '').toLowerCase() === groupKey;
-        const isSoleGroup = sheet?.sole_material?.toLowerCase() === groupKey;
-        const shouldSkip = (isUpperGroup && bomType === 'Cabedal') ||
-                           (isLiningGroup && bomType === 'Forração') ||
-                           (isInsoleGroup && (bomType === 'Palmilha' || product.category?.toLowerCase().includes('palmilha'))) ||
-                           (isSoleGroup && bomType === 'Solado');
-        if (shouldSkip) continue;
-      }
-
       let productUnit = product.unit || 'un';
       const unitLc = (productUnit || '').toString().toLowerCase().trim();
-      // Set canônico (materialConsumption) — a lista inline omitia 'm linear'
-      // e o item nessa unidade não convertia dm²→m no caminho BOM (UNIT-1).
       const isLinearUnit = LINEAR_UNITS.has(unitLc);
-      const rawQty = (Number(material.quantity_per_unit) || 0) * itemQuantity;
+      const rawQty = requirement.requiredRaw;
       let totalQty = rawQty;
       let widthMissing = false;
-
-      // Materiais de ÁREA cortados de bobina (napa/couro): têm ficha de
-      // componente e quantity_per_unit está em dm²/par. Converter para metros
-      // lineares pela largura — senão aparece ~100× inflado. Tiras/itens
-      // lineares sem ficha passam direto. (Espelha o motor canônico —
-      // orderConsumption.ts, caminho BOM.)
-      const cs = (componentSheets || []).find((c: any) => c.product_id === material.product_id) || null;
+      const cs = (componentSheets || []).find((c: any) => c.product_id === requirement.productId) || null;
       if (isLinearUnit && cs) {
         if (isNativeLinearMaterial(cs as ComponentSheetCandidate)) {
-          // Linear direto (fita/elástico): rawQty JÁ está na unidade de estoque do
-          // item. O ramo `unitLc === 'cm'` abaixo é inalcançável aqui (há ficha),
-          // então o /100 do centímetro precisa acontecer nesta perna — senão um
-          // produto em 'cm' sai rotulado 'metro' com o número 100× maior.
           totalQty = unitLc === 'cm' ? rawQty / 100 : rawQty;
           productUnit = 'metro';
         } else if (!isLinearWidthMissing(cs as ComponentSheetCandidate, productUnit)) {
           totalQty = convertDm2ToLinearMeters(rawQty, cs as ComponentSheetCandidate);
           productUnit = 'metro';
         } else {
-          // Ficha de área SEM largura → não dá pra converter dm²→metro.
-          // Mantém o valor em dm² (regra canônica) e marca o aviso.
           widthMissing = true;
           totalQty = rawQty;
           productUnit = 'dm2';
@@ -1676,11 +1717,33 @@ export async function calculateBomForOrders(orderIds: string[]): Promise<Consump
         productUnit = 'metro';
       }
 
+      if (
+        category === 'embalagem'
+        && ['un', 'par', 'placa'].includes(unitLc)
+        && totalQty > 0
+      ) {
+        totalQty = Math.ceil(totalQty);
+      }
+
+      const fallbackWarning = perSizeFallbackWarning(requirement.fallbackSizes);
+      const existing = findConsumptionRowByProduct(consumptionMap, requirement.productId);
+      if (existing) {
+        existing.totalQuantity += totalQty;
+        if (widthMissing) existing.widthMissing = true;
+        if (fallbackWarning) appendConsumptionWarning(existing, fallbackWarning);
+        continue;
+      }
+
       addConsumptionRow(consumptionMap, {
-        componentType: bomType,
-        groupName, materialName: product.name || groupName, productUnit,
-        color: material.color || '—', totalQuantity: totalQty,
+        componentType: classifyBomMaterial(groupName, product.name || '', product.category || ''),
+        groupName,
+        materialName: product.name || groupName,
+        productUnit,
+        color: material.color || product.color || '—',
+        totalQuantity: totalQty,
         widthMissing,
+        warning: fallbackWarning || undefined,
+        productIds: [requirement.productId],
       });
     }
   }

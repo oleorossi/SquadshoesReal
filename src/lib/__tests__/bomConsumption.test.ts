@@ -991,7 +991,7 @@ describe('calculateBomForOrders — direct_components e componentes por cor (BOM
     expect(bin?.materialName).toBe('BINÓCULO 6MM');
   });
 
-  it('produto em direct_components E no BOM: direct prevalece, sem duplicar', async () => {
+  it('produto em direct_components E no BOM: as quantidades somam na mesma linha', async () => {
     const t = withBinoculo(buildBomTables());
     (t.technical_sheets[0] as any).direct_components = [{ product_id: 'p-bin', quantity: 8 }];
     t.sheet_materials = [...(t.sheet_materials as any[]), {
@@ -1002,9 +1002,9 @@ describe('calculateBomForOrders — direct_components e componentes por cor (BOM
     mockDb.tables = t;
     const rows = await calculateBomForOrders(['op1']);
     const binRows = rows.filter(r => r.groupName === 'BINOCULO 6MM');
-    const total = binRows.reduce((s, r) => s + r.totalQuantity, 0);
-    // Só o direct (8/par); a linha do BOM (1/par = 720) é pulada.
-    expect(total).toBe(8 * 720);
+    // Direct 8/par + linha adicional 1/par, fundidos no mesmo produto.
+    expect(binRows).toHaveLength(1);
+    expect(binRows[0].totalQuantity).toBe((8 + 1) * 720);
   });
 
   it('component_colors_enabled é ignorado — pin de direct_components vence', async () => {
@@ -1188,5 +1188,142 @@ describe('calculateBomForOrders — paridade eixo A com orderConsumption', () =>
     expect(tiras[0].groupName).toMatch(/STRASS/i);
     expect(tiras[0].color).toBe('—');
     expect(tiras.some((row) => /OVERLOCK/i.test(row.groupName))).toBe(false);
+  });
+});
+
+describe('calculateBomForOrders — linhas adicionais (sheet_materials)', () => {
+  function withExtra(t: Record<string, unknown[]>, line: Record<string, unknown>) {
+    t.products = [...(t.products as any[]), {
+      id: 'p-extra', name: 'COLA EXTRA', color: null, group_id: 'g-extra',
+      unit: 'kg', quantity: 10, sole_classification: null,
+    }];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-extra', name: 'COLA', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    t.sheet_materials = [...(t.sheet_materials as any[]), {
+      id: 'sm-extra',
+      sheet_id: 'ts1',
+      product_id: 'p-extra',
+      group_id: 'g-extra',
+      quantity_per_unit: 1,
+      color: null,
+      products: { name: 'COLA EXTRA', unit: 'kg', category: 'Cola / Químico' },
+      product_groups: { name: 'COLA' },
+      ...line,
+    }];
+    return t;
+  }
+
+  it('não conta linha inativa nem linha fora do consumo', async () => {
+    const t = withExtra(buildBomTables(), { is_active: false, quantity_per_unit: 4 });
+    t.sheet_materials = [...(t.sheet_materials as any[]), {
+      id: 'sm-price',
+      sheet_id: 'ts1',
+      product_id: 'p-extra',
+      group_id: 'g-extra',
+      quantity_per_unit: 9,
+      include_in_consumption: false,
+      products: { name: 'COLA EXTRA', unit: 'kg', category: 'Cola / Químico' },
+      product_groups: { name: 'COLA' },
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    expect(rows.find((row) => row.materialName === 'COLA EXTRA')).toBeUndefined();
+  });
+
+  it('aplica a perda e soma duas linhas do mesmo produto', async () => {
+    const t = withExtra(buildBomTables(), { quantity_per_unit: 1, wastage_percentage: 10 });
+    t.sheet_materials = [...(t.sheet_materials as any[]), {
+      id: 'sm-extra-2',
+      sheet_id: 'ts1',
+      product_id: 'p-extra',
+      group_id: 'g-extra',
+      quantity_per_unit: 2,
+      products: { name: 'COLA EXTRA', unit: 'kg', category: 'Cola / Químico' },
+      product_groups: { name: 'COLA' },
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const cola = rows.filter((row) => row.materialName === 'COLA EXTRA');
+    expect(cola).toHaveLength(1);
+    // (1 × 1,10 + 2) × 720 pares
+    expect(cola[0].totalQuantity).toBeCloseTo((1.1 + 2) * 720, 6);
+  });
+
+  it('per_size soma cada numeração e escala a grade-base até a quantidade do pedido', async () => {
+    const t = withExtra(buildBomTables(), {
+      consumption_type: 'per_size',
+      quantity_per_unit: 10,
+      consumption_per_size: { '35': 1, '36': 2, '37': 3 },
+    });
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const cola = rows.find((row) => row.materialName === 'COLA EXTRA');
+    // Grade-base Σ 12: 2×1 + 4×2 + 4×3 + 2×10 = 42; × (720/12) = 2520
+    expect(cola?.totalQuantity).toBeCloseTo(2520, 6);
+    expect(cola?.warning).toMatch(/38/);
+  });
+
+  it('não descarta linha só porque a categoria é Cabedal', async () => {
+    const t = buildBomTables();
+    (t.technical_sheets[0] as any).upper_material = 'NAPA EXTRA';
+    (t.technical_sheets[0] as any).upper_consumption = 2;
+    (t.technical_sheets[0] as any).strap_colors = [];
+    t.products = [...(t.products as any[]), {
+      id: 'p-napa', name: 'NAPA EXTRA PRETO', color: 'PRETO', group_id: 'g-napa', unit: 'm', quantity: 100,
+    }, {
+      id: 'p-fivela', name: 'FIVELA DO CABEDAL', color: 'PRETO', group_id: 'g-napa', unit: 'un', quantity: 100,
+    }];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-napa', name: 'NAPA EXTRA', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    t.component_sheets = [...(t.component_sheets as any[]), {
+      product_id: 'p-napa', dimensions_width: 1370, dimensions_length: 1000, dimensions_unit: 'mm',
+      yield_per_size: null, yield_per_sole: null,
+      products: { group_id: 'g-napa', name: 'NAPA EXTRA PRETO', color: 'PRETO', unit: 'm' },
+    }];
+    t.sheet_materials = [...(t.sheet_materials as any[]), {
+      id: 'sm-fivela',
+      sheet_id: 'ts1',
+      product_id: 'p-fivela',
+      group_id: 'g-napa',
+      quantity_per_unit: 1,
+      products: { name: 'FIVELA DO CABEDAL', unit: 'un', category: 'Cabedal' },
+      product_groups: { name: 'NAPA EXTRA' },
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const fivela = rows.find((row) => row.materialName === 'FIVELA DO CABEDAL');
+    expect(fivela?.totalQuantity).toBe(720);
+  });
+
+  it('item padrão do solado continua de fora e a linha ganha aviso', async () => {
+    const t = withSole(buildBomTables());
+    t.products = [...(t.products as any[]), {
+      id: 'p-cola', name: 'COLA ADESIVO', color: null, group_id: 'g-cola', unit: 'kg', quantity: 5,
+    }];
+    t.product_groups = [...(t.product_groups as any[]), {
+      id: 'g-cola', name: 'COLA', dimensions_length: null, dimensions_width: null, dimensions_unit: 'mm',
+    }];
+    t.sole_group_standard_items = [{
+      sole_group_id: 'g-sole', role: null, material_product_id: 'p-cola',
+      consumption_per_pair: 0.01, consumption_per_size: {}, unit: 'kg',
+    }];
+    t.sheet_materials = [...(t.sheet_materials as any[]), {
+      id: 'sm-cola',
+      sheet_id: 'ts1',
+      product_id: 'p-cola',
+      group_id: 'g-cola',
+      quantity_per_unit: 0.0018,
+      products: { name: 'COLA ADESIVO', unit: 'kg', category: 'Cola / Químico' },
+      product_groups: { name: 'COLA' },
+    }];
+    mockDb.tables = t;
+    const rows = await calculateBomForOrders(['op1']);
+    const cola = rows.filter((row) => row.materialName === 'COLA ADESIVO');
+    expect(cola).toHaveLength(1);
+    expect(cola[0].totalQuantity).toBeCloseTo(0.01 * 720, 6);
+    expect(cola[0].warning).toMatch(/IGNORADA/);
+    expect(cola[0].warning).toMatch(/1\.296/);
   });
 });
