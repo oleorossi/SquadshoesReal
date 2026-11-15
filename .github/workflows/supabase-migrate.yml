@@ -245,11 +245,46 @@ jobs:
             shopt -u nullglob
             if (( ${#matches[@]} == 1 )); then
               echo "↪ migration repair --status applied ${stamp}"
+              # Sem --db-url o CLI exige `supabase link` (PAT) e aborta o
+              # pipeline no projeto vivo — run 43770073904.
               supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" migration repair \
+                --db-url "${SUPABASE_DB_URL}" \
                 --status applied \
                 "${stamp}"
             fi
           done
+
+          # 46900: pré-checagem so-registra. Bootstrap via psql para não
+          # depender do db push se o repair/link ainda travar.
+          for stamp in 20270101046900; do
+            shopt -s nullglob
+            matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
+            shopt -u nullglob
+            if (( ${#matches[@]} != 1 )); then
+              continue
+            fi
+            sql_file="${matches[0]}"
+            check_query="SELECT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${stamp}')"
+            if ! present="$(psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 -tAc "$check_query")"; then
+              echo "Falha ao consultar schema_migrations para ${stamp}" >&2
+              exit 1
+            fi
+            if [ "$present" = "t" ]; then
+              echo "✓ ${stamp} já registrada em schema_migrations"
+            else
+              echo "↪ Aplicando ${stamp} via psql ($(basename "$sql_file"))"
+              if ! psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 --single-transaction -f "$sql_file"; then
+                echo "Falha ao aplicar ${stamp} via psql" >&2
+                exit 1
+              fi
+              psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 -c \
+                "INSERT INTO supabase_migrations.schema_migrations (version, name, statements)
+                 VALUES ('${stamp}', '$(basename "$sql_file" .sql | sed "s/^${stamp}_//")', ARRAY[]::text[])
+                 ON CONFLICT (version) DO NOTHING"
+              echo "✓ SQL de ${stamp} aplicado via psql"
+            fi
+          done
+
           supabase --workdir "${SUPABASE_MIGRATION_WORKDIR}" db push \
             --db-url "${SUPABASE_DB_URL}" \
             --include-all \
