@@ -53,22 +53,24 @@ describe('strapSourcing — identidade por linha técnica UUID', () => {
     expect(missingStrapSourcingLineIds(map, [{ technical_strap_line_id: LINE_A }])).toEqual([]);
   });
 
-  it('buy_ready do PV completa com finished_product_id sem variante Hub', () => {
+  it('buy_ready do PV completa só com cor (so-registra); SKU é opcional', () => {
     const productId = '55555555-6666-4777-8888-999999999999';
-    const incomplete = setStrapSourcing({}, LINE_A, {
+    // Spec so-registra: napa Comprar pronto congela só color_id (+ metros).
+    const napaOnly = setStrapSourcing({}, LINE_A, {
       source_mode: 'buy_ready',
       color_id: COLOR_A,
       strap_variant_id: null,
+      finished_product_id: null,
     });
-    expect(isCompleteStrapSourcingSelection(incomplete[LINE_A])).toBe(false);
+    expect(isCompleteStrapSourcingSelection(napaOnly[LINE_A])).toBe(true);
 
-    const complete = setStrapSourcing({}, LINE_A, {
+    const withSku = setStrapSourcing({}, LINE_A, {
       source_mode: 'buy_ready',
       color_id: COLOR_A,
       strap_variant_id: null,
       finished_product_id: productId,
     });
-    expect(isCompleteStrapSourcingSelection(complete[LINE_A])).toBe(true);
+    expect(isCompleteStrapSourcingSelection(withSku[LINE_A])).toBe(true);
   });
 
   it('limpar volta ao estado pendente, sem herança', () => {

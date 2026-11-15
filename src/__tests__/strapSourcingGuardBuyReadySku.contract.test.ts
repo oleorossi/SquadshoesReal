@@ -98,17 +98,16 @@ describe('TS e SQL contam a mesma identidade de strap_sourcing', () => {
     ...over,
   });
 
-  it('buy_ready: variante OU SKU acabado completam a identidade', () => {
+  it('buy_ready: cor canônica completa (so-registra); SKU/variante opcionais', () => {
     expect(isCompleteStrapSourcingSelection(sel({ strap_variant_id: VARIANT }))).toBe(true);
     expect(isCompleteStrapSourcingSelection(
       sel({ strap_variant_id: null, finished_product_id: SKU }),
     )).toBe(true);
-  });
-
-  it('buy_ready sem nenhum dos dois é incompleto nos dois lados', () => {
+    // Spec tira-comprar-pronto-so-registra / mig 45300+46800: napa só
+    // registra cor + metros — sem variante e sem SKU.
     expect(isCompleteStrapSourcingSelection(
       sel({ strap_variant_id: null, finished_product_id: null }),
-    )).toBe(false);
+    )).toBe(true);
   });
 
   it('internal exige a variante — SKU acabado não substitui', () => {
