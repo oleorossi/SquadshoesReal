@@ -2454,12 +2454,21 @@ export default function SaleOrderForm() {
   }
 
   if (referencesFailed) {
+    const detail = referencesError instanceof Error ? referencesError.message : '';
+    const looksLikeTransport =
+      /upstream connect|connect error|ECONNREFUSED|Failed to fetch|NetworkError|503|111/i.test(detail);
     return (
       <div className="mx-auto max-w-xl space-y-4 rounded-lg border border-destructive/40 bg-destructive/5 p-6">
-        <h1 className="text-lg font-bold">Não foi possível carregar as fichas técnicas</h1>
+        <h1 className="text-lg font-bold">
+          {looksLikeTransport
+            ? 'Não foi possível conectar ao banco na abertura do pedido'
+            : 'Não foi possível carregar o catálogo de fichas técnicas'}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          A criação e a edição ficam bloqueadas até a fonte técnica responder.
-          {referencesError instanceof Error ? ` ${referencesError.message}` : ''}
+          {looksLikeTransport
+            ? 'Isso aconteceu ao abrir a tela — antes de qualquer preenchimento. A criação e a edição ficam bloqueadas até a API do Supabase responder.'
+            : 'O formulário precisa do catálogo de referências para abrir. A criação e a edição ficam bloqueadas até essa leitura responder.'}
+          {detail ? ` ${detail}` : ''}
         </p>
         <div className="flex gap-2">
           <Button onClick={() => void refetchReferences()}>Tentar novamente</Button>
