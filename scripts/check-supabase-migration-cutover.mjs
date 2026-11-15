@@ -40,11 +40,15 @@ export const LOCAL_LEGACY_BASELINE = Object.freeze({
 // dois carimbos MCP de calendário saíram da zona legada (remap para versão
 // canônica pós-corte, ex.: 20261025173108 → 20270101045000). Baseline
 // remediado medindo o banco vivo.
+// Em 15/11/2026 (pós-migração ssvx→cknb), medido no cknb vivo: 2328. Os 22
+// carimbos de calendário a mais vêm de MCP (14–15/11), entre eles os seis do
+// contrato de ACL/correções (20261115125147…20261115130126), espelhados nas
+// versões canônicas 20270101046100…20270101046600 (idempotentes).
 // Marcadores temporários podem ter qualquer nome descritivo: o contrato do
 // Supabase compara os timestamps.
 export const REMOTE_LEGACY_BASELINE = Object.freeze({
-  count: 2306,
-  sha256: '49fbc06f845628f93317085573b2a5e4cfdfd643ec5c2425346377c9581ccd68',
+  count: 2328,
+  sha256: '2926b98b833c94438cb2f4ee4cb222d4dc15d530bf27886ece8487fca38bda02',
 });
 
 const MIGRATION_FILE = /^(\d{14})_(.+)\.sql$/;
