@@ -138,6 +138,12 @@ export function isTechnicalStrapSourceAllowed(
   line: TechnicalStrapLineLike,
   policy: TechnicalStrapSourcePolicy,
 ): boolean {
+  // Buy-ready já pinado no grupo de estoque (R4): válido mesmo sem medida Hub.
+  if (strapIdentityBasis(line) === 'finished_product_group' && line.identity_group_id) {
+    if (!policy.loaded) return true;
+    if (policy.finishedGroups.length === 0) return true;
+    return policy.finishedGroups.some(group => group.id === line.identity_group_id);
+  }
   if (!policy.loaded) return false;
   return strapIdentityBasis(line) === 'reference_base'
     ? policy.allowsReferenceBase

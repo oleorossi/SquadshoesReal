@@ -181,14 +181,12 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     expect(batchMatrix).not.toContain("from('products')");
   });
 
-  it('grava família e medida canônicas na linha UUID da ficha técnica', () => {
-    expect(technicalSheets).toContain('applyTechnicalStrapMeasureWithSource');
+  it('grava identidade da tira pelo grupo de estoque (R4) com ponte Hub opcional', () => {
+    expect(technicalSheets).toContain('applyStockStrapGroupToLine');
     expect(technicalStrapSourcePolicy).toContain('applyCanonicalTechnicalStrapMeasure');
-    expect(technicalSheets).toContain('hasCanonicalTechnicalStrapIdentity');
+    expect(technicalSheets).toContain('hasTechnicalStrapLineIdentity');
     expect(technicalSheets).toContain("setAbaAtiva('range-aviamento')");
-    expect(technicalSheets).toContain('activeStrapMeasures.length === 0');
-    expect(technicalSheets).toContain('Nenhuma família e medida está ativa');
-    expect(technicalSheets).toContain('Catálogo sem família e medida ativa');
+    expect(technicalSheets).toContain('Grupo de estoque da tira');
     expect(technicalSheets).toContain('target="_blank"');
     expect(technicalSheets).not.toContain('<StrapGroupCombobox');
   });
