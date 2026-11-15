@@ -28,8 +28,11 @@ export default function TechnicalStrapSourceEditor<T extends TechnicalStrapLineL
   const onlyFinished = (policy.loaded && !policy.allowsReferenceBase && policy.finishedGroups.length > 0)
     || (stockPinned && (!line.measure_id || !policy.allowsReferenceBase));
   const onlyFactory = policy.loaded && policy.allowsReferenceBase && policy.finishedGroups.length === 0 && !stockPinned;
-  const showFinishedPicker = (strapIdentityBasis(line) === 'finished_product_group' || onlyFinished)
-    && policy.finishedGroups.length > 1
+  // Grupo já pinado no seletor de estoque: não duplica o picker. Sem pin,
+  // medida buy-ready do Hub ainda precisa escolher o grupo acabado aqui.
+  const showFinishedPicker = !stockPinned
+    && (strapIdentityBasis(line) === 'finished_product_group' || onlyFinished)
+    && policy.finishedGroups.length > 0
     && !!line.measure_id;
 
   return (
