@@ -13,16 +13,18 @@ name: Supabase — Apply Migrations
 #
 # Pré-requisitos (settings repo > Secrets and variables > Actions > Secrets):
 #   SUPABASE_DB_PASSWORD    → senha do banco (Database > Settings > Reset password)
-#   SUPABASE_PROJECT_ID     → ID do projeto (atual: cknbzfqvqwqdhajspazn)
+#   SUPABASE_PROJECT_ID     → ID do projeto VIVO do app
+#                             (atual: ssvxfoybzmjlypnipqzn — VITE_SUPABASE_URL)
 #
 # Opcional (Settings > Variables > Actions):
-#   SUPABASE_DB_POOLER_HOST → host do pooler Supavisor (padrão:
-#                             aws-1-sa-east-1.pooler.supabase.com)
+#   SUPABASE_DB_POOLER_HOST → host do pooler Supavisor (padrão us-west-2 do ssvx:
+#                             aws-0-us-west-2.pooler.supabase.com)
 #
 # Conexão: direto no Postgres via pooler Supavisor em modo sessão (porta 5432,
 # usuário postgres.<project_ref>, sslmode=require), com `--db-url`/psql.
-# NÃO usa personal access token nem Management API: o projeto fica numa
-# organização gerenciada pelo Vercel, inacessível a PATs de contas pessoais.
+# NÃO usa personal access token nem Management API.
+# ⚠ O app de produção aponta para ssvx (us-west-2). NÃO use o pooler sa-east-1
+#   (cknbz) — migrate no projeto errado deixa o bug vivo no site.
 #
 # Cutover: migrations até 20270101009300 vêm exclusivamente do snapshot remoto
 # validado. O workflow só acrescenta ao workdir arquivos locais posteriores a
@@ -57,7 +59,7 @@ jobs:
     timeout-minutes: 15
     env:
       SUPABASE_MIGRATION_CUTOFF: '20270101009300'
-      SUPABASE_DB_POOLER_HOST: ${{ vars.SUPABASE_DB_POOLER_HOST || 'aws-1-sa-east-1.pooler.supabase.com' }}
+      SUPABASE_DB_POOLER_HOST: ${{ vars.SUPABASE_DB_POOLER_HOST || 'aws-0-us-west-2.pooler.supabase.com' }}
 
     steps:
       - name: Checkout
@@ -86,7 +88,13 @@ jobs:
             echo "SUPABASE_PROJECT_ID com formato inválido" >&2
             exit 1
           fi
-          echo "✓ Secrets presentes"
+          # Banco vivo do app (VITE_SUPABASE_URL). Migrar outro projeto deixa
+          # o site com a função antiga e o bug "variante canonica congelada".
+          if [[ "${SUPABASE_PROJECT_ID}" != "ssvxfoybzmjlypnipqzn" ]]; then
+            echo "SUPABASE_PROJECT_ID=${SUPABASE_PROJECT_ID} ≠ ssvxfoybzmjlypnipqzn (banco vivo)" >&2
+            exit 1
+          fi
+          echo "✓ Secrets presentes (projeto ssvx)"
 
       - name: Build database connection URL
         env:
