@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isUsableGrade, scaleGradeToTotal } from './scaleGrade';
+import { gradeForStockCheck, isUsableGrade, scaleGradeToTotal } from './scaleGrade';
 
 describe('scaleGradeToTotal — espelho de public.scale_grade_to_total', () => {
   it('devolve intacta quando a soma já é o total (grade absoluta)', () => {
@@ -33,6 +33,26 @@ describe('scaleGradeToTotal — espelho de public.scale_grade_to_total', () => {
     const sum = Object.values(scaled).reduce((a, b) => a + b, 0);
     expect(sum).toBe(10);
     expect(Math.max(...Object.values(scaled)) - Math.min(...Object.values(scaled))).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('gradeForStockCheck', () => {
+  it('escala a grade-base do PV (12 pares × 60 fichas) até a quantidade', () => {
+    const base = { '35': 2, '36': 4, '37': 4, '38': 2 };
+    const scaled = gradeForStockCheck(base, 720);
+    expect(Object.values(scaled || {}).reduce((sum, n) => sum + n, 0)).toBe(720);
+    expect(scaled).toEqual({ '35': 120, '36': 240, '37': 240, '38': 120 });
+  });
+
+  it('não mexa em grade já absoluta (Σ = quantity)', () => {
+    const real = { '35': 120, '36': 240, '37': 240, '38': 120 };
+    expect(gradeForStockCheck(real, 720)).toEqual(real);
+  });
+
+  it('devolve null/intacta quando não há grade utilizável', () => {
+    expect(gradeForStockCheck(null, 720)).toBeNull();
+    expect(gradeForStockCheck({}, 720)).toEqual({});
+    expect(gradeForStockCheck({ '37': 12 }, 0)).toEqual({ '37': 12 });
   });
 });
 

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { searchNormOrFilter } from '@/lib/searchUtils';
 import { warnPackagingDebit } from '@/lib/packagingDebitWarnings';
+import { gradeForStockCheck } from '@/lib/scaleGrade';
 
 /**
  * Teto do recorte de `useOrders`. Exportado de propósito: quem renderiza a
@@ -125,7 +126,9 @@ export function useCheckStockAvailability() {
       p_reference_id: referenceId,
       p_order_quantity: quantity,
       p_color: color || '',
-      p_order_grade: grade ?? null,
+      // Grade-base (Σ < quantity) vira pares absolutos — senão o by_grade da
+      // RPC trata 12 pares como o pedido inteiro (PV-00145 / fichas > 1).
+      p_order_grade: gradeForStockCheck(grade, quantity),
       p_strap_colors: strapColors ?? null,
       p_packaging_mode: packagingMode ?? null,
       p_material_variant_id: materialVariantId ?? null,
