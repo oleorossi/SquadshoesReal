@@ -1376,9 +1376,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     };
     manualPriceEdited.current = false;
     if (Math.abs(current - automaticPriceResolution.price) >= 0.005) {
-      // #region agent log
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fec31c'},body:JSON.stringify({sessionId:'fec31c',runId:'pre-fix',hypothesisId:'E',location:'SaleOrderItemForm.tsx:autoPrice',message:'auto reprice applied',data:{itemId:item.id||null,from:current,to:automaticPriceResolution.price,refId:selectedRef.id},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const { index: idx, onUpdate: update } = latestRef.current;
       update(idx, 'unit_price', automaticPriceResolution.price);
     }
