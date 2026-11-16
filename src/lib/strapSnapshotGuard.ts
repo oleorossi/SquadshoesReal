@@ -98,21 +98,27 @@ export function recoverEmptyStrapSnapshotsForSubmit<T extends StrapSnapshotItemL
       changed = true;
     }
 
+    // Sourcing operacional vence divergência com o default do catálogo
+    // (Prestador/fabrica): Comprar pronto congelado em strap_sourcing sem
+    // pv_origem=sku_acabado cai no ramo interno do alinhamento e o PV inteiro
+    // aborta com "Tira interna deve usar… origem internal…".
     const withOrigem = lines.map((line) => {
-      if (line.pv_origem === 'fabrica' || line.pv_origem === 'prestador' || line.pv_origem === 'sku_acabado') {
-        return line;
-      }
       const lineId = technicalStrapLineId(line as any);
       const mode = lineId ? getStrapSourcingOverride(sourcing, lineId) : null;
-      if (mode === 'buy_ready') {
+      if (mode === 'buy_ready' && line.pv_origem !== 'sku_acabado') {
         hydratedOrigem += 1;
         changed = true;
         return { ...line, pv_origem: 'sku_acabado' };
       }
-      if (mode === 'internal') {
+      if (mode === 'internal'
+        && line.pv_origem !== 'fabrica'
+        && line.pv_origem !== 'prestador') {
         hydratedOrigem += 1;
         changed = true;
         return { ...line, pv_origem: 'fabrica' };
+      }
+      if (line.pv_origem === 'fabrica' || line.pv_origem === 'prestador' || line.pv_origem === 'sku_acabado') {
+        return line;
       }
       return line;
     });

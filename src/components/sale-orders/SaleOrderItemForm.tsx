@@ -1343,11 +1343,6 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     }
     if (linesChanged) update(idx, 'strap_colors', nextLines);
     if (sourcingChanged) update(idx, 'strap_sourcing', nextSourcing);
-    // #region agent log
-    if (linesChanged || sourcingChanged) {
-      fetch('http://127.0.0.1:7492/ingest/95b24859-9dac-4898-80f4-140cf86ddf60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fec31c'},body:JSON.stringify({sessionId:'fec31c',runId:'pre-fix',hypothesisId:'A',location:'SaleOrderItemForm.tsx:strapReconcile',message:'strap hydrate mutated production fields',data:{itemId:item.id||null,preserveCommitted:preserveCommittedStrapSnapshot,linesChanged,sourcingChanged,refId:item.reference_id},timestamp:Date.now()})}).catch(()=>{});
-    }
-    // #endregion
   }, [
     item.reference_id,
     item.strap_colors,

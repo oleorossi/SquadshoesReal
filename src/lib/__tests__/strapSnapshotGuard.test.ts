@@ -110,4 +110,25 @@ describe('recoverEmptyStrapSnapshotsForSubmit', () => {
     expect(hydratedOrigem).toBe(1);
     expect((items[0].strap_colors as any[])[0].pv_origem).toBe('fabrica');
   });
+
+  it('buy_ready operacional vence pv_origem=fabrica do default Prestador', () => {
+    const { items, hydratedOrigem } = recoverEmptyStrapSnapshotsForSubmit(
+      [{
+        reference_id: 'ds20',
+        color: 'CHAMPAGNE',
+        strap_colors: [{
+          technical_strap_line_id: lineId,
+          label: 'TIRA 1',
+          measure_id: '0166b326-2023-4427-a165-aada45ee5611',
+          pv_origem: 'fabrica',
+        }],
+        strap_sourcing: {
+          [lineId]: { source_mode: 'buy_ready', color_id: 'color-1' },
+        },
+      }],
+      [ds20Ref],
+    );
+    expect(hydratedOrigem).toBe(1);
+    expect((items[0].strap_colors as any[])[0].pv_origem).toBe('sku_acabado');
+  });
 });
