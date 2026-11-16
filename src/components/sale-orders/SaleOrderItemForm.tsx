@@ -870,13 +870,16 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     normalizeStrapColorKey(item.color),
   );
   // Comprar pronto (spec tira-comprar-pronto-so-registra): napa · cor da própria
-  // tira + metros. Só a tira que segue a Cor Principal usa a cor do item.
+  // tira + metros. Em follow_main a cor canônica do cabedal vence; se ela ainda
+  // não resolveu no catálogo, usa o color_id já congelado na linha / preview —
+  // senão o sourcing nasce buy_ready sem UUID e o precheck do banco recusa com
+  // "Tira sem cor/variante canonica congelada no PV".
   const buyReadyStrapSourcing = (
     strap: ReconcileStrapLineLike & { color_id?: string | null; base_group_name?: string | null },
     preview: StrapStockLine | undefined,
   ) => {
     const colorId = strapColorMode(strap) === 'follow_main'
-      ? canonicalMainStrapColor?.id || preview?.colorId || null
+      ? canonicalMainStrapColor?.id || strap.color_id || preview?.colorId || null
       : strap.color_id || preview?.colorId || null;
     return buyReadyStrapSourcingFromPreview(preview, colorId, {
       baseGroupId: materialBaseForStrap(strap, preview?.baseGroupId),
@@ -2771,16 +2774,25 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                         return { ...strap, pv_origem: 'sku_acabado' as const };
                       });
                       let nextSourcing = strapSourcingMap;
+                      let skippedWithoutColor = 0;
                       updated.forEach((strap) => {
                         const lineId = technicalStrapLineId(strap);
                         if (!lineId || isPurchasedReadyStrap(strap)) return;
                         if (strap.pv_origem !== 'sku_acabado') return;
-                        nextSourcing = setStrapSourcing(
-                          nextSourcing,
-                          lineId,
-                          buyReadyStrapSourcing(strap, strapLineByKey.get(lineId)),
-                        );
+                        const candidate = buyReadyStrapSourcing(strap, strapLineByKey.get(lineId));
+                        if (!candidate.color_id) {
+                          skippedWithoutColor += 1;
+                          return;
+                        }
+                        nextSourcing = setStrapSourcing(nextSourcing, lineId, candidate);
                       });
+                      if (skippedWithoutColor > 0) {
+                        toast.error(
+                          skippedWithoutColor === 1
+                            ? 'Uma tira ficou sem cor canônica — defina a cor antes de Comprar pronto.'
+                            : `${skippedWithoutColor} tiras ficaram sem cor canônica — defina a cor antes de Comprar pronto.`,
+                        );
+                      }
                       if (onUpdateFields) onUpdateFields(index, { strap_colors: updated, strap_sourcing: nextSourcing });
                       else {
                         onUpdate(index, 'strap_colors', updated);
@@ -3376,10 +3388,27 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                 if (lineKey && next === 'sku_acabado' && !isPurchasedReadyStrap(strap)) {
                                   // Comprar pronto só registra napa · cor + metros;
                                   // o save recalcula os metros e não cria SKU.
+                                  // Sem color_id UUID o precheck do banco recusa —
+                                  // não congela sourcing incompleto.
+                                  const candidate = buyReadyStrapSourcing(
+                                    strap,
+                                    strapLineByKey.get(lineKey),
+                                  );
+                                  if (!candidate.color_id) {
+                                    if (onUpdateFields) {
+                                      onUpdateFields(index, { strap_colors: updated });
+                                    } else {
+                                      onUpdate(index, 'strap_colors', updated);
+                                    }
+                                    toast.error(
+                                      'Defina a cor canônica da tira antes de escolher Comprar pronto.',
+                                    );
+                                    return;
+                                  }
                                   const nextSourcing = setStrapSourcing(
                                     strapSourcingMap,
                                     lineKey,
-                                    buyReadyStrapSourcing(strap, strapLineByKey.get(lineKey)),
+                                    candidate,
                                   );
                                   if (onUpdateFields) {
                                     onUpdateFields(index, {

@@ -192,7 +192,9 @@ describe('SaleOrderItemForm — caminho de cadastro Hub permanece montável', ()
     expect(form).toContain('strapLineWantsBuyReady');
     expect(form).toContain("next === 'sku_acabado'");
     expect(form).toContain('Comprar pronto');
-    expect(form).toContain('buyReadyStrapSourcing(strap, strapLineByKey.get(lineKey))');
+    expect(form).toContain('buyReadyStrapSourcing(');
+    expect(form).toContain('strapLineByKey.get(lineKey)');
+    expect(form).toContain("Defina a cor canônica da tira antes de escolher Comprar pronto.");
     const lib = readFileSync(resolve(__dirname, '../strapSourcing.ts'), 'utf8');
     const body = lib.slice(lib.indexOf('export function buyReadyStrapSourcingFromPreview'));
     expect(body).toContain('strap_variant_id: null');
