@@ -12,15 +12,15 @@ name: Supabase — Apply Migrations
 #                                Rodar sem migration pendente é um no-op seguro.
 #
 # Pré-requisitos (settings repo > Secrets and variables > Actions > Secrets):
-#   SUPABASE_DB_PASSWORD    → senha do Postgres do projeto VIVO ssvxfoybzmjlypnipqzn
+#   SUPABASE_DB_PASSWORD    → senha do Postgres do projeto VIVO cknbzfqvqwqdhajspazn
 #                             (Database > Settings > Reset database password)
 #
-# Project ref e pooler são FIXOS neste workflow (ssvx / aws-1-us-west-2).
-# O secret SUPABASE_PROJECT_ID foi IGNORADO de propósito: em 15/11/2026 ele
-# apontava para outro projeto e o migrate abortava (run 43771271660) ou
-# aplicava no banco errado (sa-east-1, run 43770073904).
-# Pooler aws-0-us-west-2 devolve ENOTFOUND para ssvx; aws-1 reconhece o
-# tenant (medido 15/11/2026 — auth fail com senha errada, não ENOTFOUND).
+# Project ref e pooler são FIXOS neste workflow (cknb / aws-1-sa-east-1).
+# Em 16/11/2026 a produção (VITE_SUPABASE_URL) foi trocada do ssvx
+# (us-west-2, conta Supabase antiga) para o cknb (sa-east-1, org gerenciada
+# pelo Vercel), com recópia dos dados. O ssvx fica só como cópia de reserva e
+# NÃO deve mais receber migrations. A guarda abaixo aborta se o ref/pooler
+# não forem os do cknb.
 #
 # Conexão: direto no Postgres via pooler Supavisor em modo sessão (porta 5432,
 # usuário postgres.<project_ref>, sslmode=require), com `--db-url`/psql.
@@ -59,9 +59,9 @@ jobs:
     timeout-minutes: 15
     env:
       SUPABASE_MIGRATION_CUTOFF: '20270101009300'
-      # Fixos no banco vivo do app (VITE_SUPABASE_URL = ssvx).
-      SUPABASE_PROJECT_ID: 'ssvxfoybzmjlypnipqzn'
-      SUPABASE_DB_POOLER_HOST: 'aws-1-us-west-2.pooler.supabase.com'
+      # Fixos no banco vivo do app (VITE_SUPABASE_URL = cknb desde 16/11/2026).
+      SUPABASE_PROJECT_ID: 'cknbzfqvqwqdhajspazn'
+      SUPABASE_DB_POOLER_HOST: 'aws-1-sa-east-1.pooler.supabase.com'
 
     steps:
       - name: Checkout
@@ -84,6 +84,12 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           : "${SUPABASE_DB_PASSWORD:?SUPABASE_DB_PASSWORD não configurado em Secrets}"
+          # Guarda: só o banco vivo cknb (sa-east-1). Nunca o ssvx (reserva).
+          if [ "${SUPABASE_PROJECT_ID}" != "cknbzfqvqwqdhajspazn" ] \
+             || [ "${SUPABASE_DB_POOLER_HOST}" != "aws-1-sa-east-1.pooler.supabase.com" ]; then
+            echo "❌ Projeto/pooler inesperado (${SUPABASE_PROJECT_ID} @ ${SUPABASE_DB_POOLER_HOST}); abortando." >&2
+            exit 1
+          fi
           echo "✓ Senha presente (projeto fixo ${SUPABASE_PROJECT_ID} @ ${SUPABASE_DB_POOLER_HOST})"
 
       - name: Build database connection URL
@@ -101,6 +107,11 @@ jobs:
         run: |
           psql "${SUPABASE_DB_URL}" -v ON_ERROR_STOP=1 -tAc \
             "SELECT 'conectado: ' || current_user || ' @ ' || current_database() || ' (' || split_part(version(), ' ', 2) || ')'"
+          # O usuário do pooler carrega o ref do projeto: confirma que é o cknb.
+          case "${SUPABASE_DB_URL}" in
+            *"postgres.cknbzfqvqwqdhajspazn:"*) echo "✓ Conectado ao cknb" ;;
+            *) echo "❌ URL não aponta para o cknb; abortando." >&2; exit 1 ;;
+          esac
 
       - name: Validate local migration cutover
         run: |
