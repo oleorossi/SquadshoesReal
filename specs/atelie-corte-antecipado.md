@@ -134,6 +134,21 @@ qualquer aberto ──► cancelled
     `trg_atelier_unlock_on_order_stage` são **removidos** (o corte não depende
     mais da OP).
 
+#### Status do PV × nascimento da OP (dono, 16/11/2026)
+
+A aprovação e a entrada em produção deixaram de ser o mesmo gesto.
+
+| Passo | O que acontece |
+|---|---|
+| **Aprovar** (`confirm` → `Aprovado`) | Continua permitido com cabedal complexo ainda no Ateliê (PR #657 / `20270101047100`). O item é pulado: **não nasce OP**. O outbox materializa o job (`materialize_cabedal_prep_demands`). |
+| **Enquanto o job não liberou** | O PV **não** muda para `Em Produção`. O gatilho `trg_zz_block_em_producao_sem_retorno_atelie` (`20270101047200`) recusa a transição e nomeia item, cor, motivo e job. Atalho Rascunho → Em Produção cai na mesma recusa. |
+| **Retorno** | Prestador: `atelier_mark_job_received` grava `received_at_factory`. Interno: `atelier_mark_job_internal_done` grava `done`. Esse clique **não** cria a OP — só zera `atelier_item_block_reason`. |
+| **Em Produção, depois do retorno** | `promote_sale_order_atomic_internal(..., 'Em Produção')` deixa de pular o item. `promote_sale_order_item` cria a OP. `trg_zz_atelier_stage_born_done` marca as etapas já feitas no Ateliê como `concluido`. A completeza volta a exigir o item, então um skip não vira "Em Produção com zero OPs". |
+
+O predicado é o mesmo da aprovação adiada: `factory_gate_is_atelier_pipeline_deferral` = `atelier_item_block_reason IS NOT NULL`. Item fora do catálogo, ou com `production_excluded_at`, não segura o PV. PV que **já** está em Em Produção não é reescrito.
+
+`release_corte_lookahead_items` também grava o status `Em Produção` e portanto espera o mesmo retorno — não libera a OP de um item se outro cabedal do PV ainda está fora.
+
 ### R7 — Desligar duplicados (P7)
 22. `PostApprovalCabedalDistributeScreen` deixa de abrir na aprovação.
 23. `UpperCutOutsourcingSection` não oferece OS de corte para item de ref do Ateliê (D5).

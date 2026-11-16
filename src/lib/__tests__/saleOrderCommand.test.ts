@@ -270,6 +270,19 @@ describe('saleOrderCommand', () => {
       .not.toMatch(/canceling statement/);
   });
 
+  it('PostgREST plain object com a recusa do Ateliê mostra os itens, não a frase genérica', () => {
+    const postgrest = {
+      code: 'P0001',
+      message: 'Não é possível colocar o pedido em Em Produção: o cabedal complexo ainda não voltou para a fábrica.\nI701 / PRETO — Ateliê — costura (status: sent_to_contractor). Jobs pendentes: abc · costura · sent_to_contractor.',
+      details: null,
+      hint: null,
+    };
+    const formatted = formatSaleOrderStatusError(postgrest);
+    expect(formatted).toContain('I701 / PRETO');
+    expect(formatted).toContain('Jobs pendentes:');
+    expect(formatted).not.toMatch(/Não foi possível atualizar o status/);
+  });
+
   it('PostgREST plain object com statement timeout também vira retry (não [object Object])', () => {
     const postgrest = {
       code: '57014',

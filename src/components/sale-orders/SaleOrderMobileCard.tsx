@@ -15,6 +15,8 @@ import {
 import { SaleOrderFloorProgressSummary } from '@/components/sale-orders/SaleOrderFloorProgressSummary';
 import type { SaleOrderFloorProgress } from '@/hooks/useSaleOrdersFloorProgress';
 import { SaleOrderMaterialShortageBadge } from '@/components/sale-orders/SaleOrderMaterialShortageBadge';
+import { SaleOrderAtelierProductionHoldBadge } from '@/components/sale-orders/SaleOrderAtelierProductionHoldBadge';
+import type { AtelierProductionHoldLine } from '@/lib/atelierProductionHold';
 import {
   materialShortageStatus,
   saleOrderShowsMaterialShortage,
@@ -28,6 +30,8 @@ interface SaleOrderMobileCardProps {
   floorProgress?: SaleOrderFloorProgress;
   /** Falta de material do PV (`list_sale_order_material_shortages`). */
   materialShortage?: SaleOrderMaterialShortageInfo;
+  /** Cabedal complexo ainda no Ateliê — bloqueia Em Produção, não a aprovação. */
+  atelierHolds?: AtelierProductionHoldLine[];
   selected: boolean;
   isInfantil?: boolean;
   canSeeFinancialValues: boolean;
@@ -46,6 +50,7 @@ export function SaleOrderMobileCard({
   minBilling,
   floorProgress,
   materialShortage,
+  atelierHolds,
   selected,
   isInfantil = false,
   canSeeFinancialValues,
@@ -132,9 +137,12 @@ export function SaleOrderMobileCard({
       </div>
       {/* Fora do <button> do card: o selo de falta abre um Popover próprio
           (botão dentro de botão é HTML inválido e quebra o toque). */}
-      {showMaterialBadge && (
-        <div className="mt-2 pl-7">
-          <SaleOrderMaterialShortageBadge status={order.status} info={materialShortage} />
+      {(showMaterialBadge || (atelierHolds && atelierHolds.length > 0)) && (
+        <div className="mt-2 flex flex-wrap gap-1.5 pl-7">
+          {showMaterialBadge && (
+            <SaleOrderMaterialShortageBadge status={order.status} info={materialShortage} />
+          )}
+          <SaleOrderAtelierProductionHoldBadge status={order.status} holds={atelierHolds} />
         </div>
       )}
       <div className="mt-3 flex gap-2 border-t pt-3">

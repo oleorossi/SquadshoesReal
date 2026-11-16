@@ -32,6 +32,12 @@ import {
   useSaleOrderGateBlocks,
 } from '@/hooks/useSaleOrderGateBlocks';
 import { SaleOrderGateBlockBadge } from '@/components/sale-orders/SaleOrderGateBlockBadge';
+import { SaleOrderAtelierProductionHoldBadge } from '@/components/sale-orders/SaleOrderAtelierProductionHoldBadge';
+import {
+  EMPTY_ATELIER_PRODUCTION_HOLDS,
+  saleOrderShowsAtelierProductionHold,
+  useSaleOrderAtelierProductionHolds,
+} from '@/hooks/useSaleOrderAtelierProductionHolds';
 import {
   useMinBillingMap,
   useRefreshMinBillingInBackground,
@@ -766,6 +772,23 @@ export default function SaleOrders() {
   );
   const { data: gateBlocksById = EMPTY_GATE_BLOCKS } =
     useSaleOrderGateBlocks(gateBlockIds);
+
+  // Cabedal complexo ainda no Ateliê: aprovação segue; Em Produção não.
+  const atelierHoldIds = useMemo(() => {
+    const ids = visibleOrders
+      .filter((o) => saleOrderShowsAtelierProductionHold(o.status))
+      .map((o) => o.id);
+    if (
+      selectedOrder
+      && saleOrderShowsAtelierProductionHold(selectedOrder.status)
+      && !ids.includes(selectedOrder.id)
+    ) {
+      ids.push(selectedOrder.id);
+    }
+    return ids;
+  }, [visibleOrders, selectedOrder]);
+  const { data: atelierHoldsById = EMPTY_ATELIER_PRODUCTION_HOLDS } =
+    useSaleOrderAtelierProductionHolds(atelierHoldIds);
 
   // ⚠ A seleção é alimentada pelas linhas VISÍVEIS (página atual). Shift+clique
   // seleciona intervalo na tela; selectedIds persiste entre páginas.
@@ -2229,6 +2252,7 @@ export default function SaleOrders() {
                 minBilling={minBillingMap.get(order.id) || null}
                 floorProgress={floorProgressById.get(order.id)}
                 materialShortage={materialShortageById.get(order.id)}
+                atelierHolds={atelierHoldsById.get(order.id)}
                 selected={sel.isSelected(order.id)}
                 isInfantil={!!segmentsBySaleOrder[order.id]?.has('Infantil')}
                 canSeeFinancialValues={canSeeFinancialValues}
@@ -2507,6 +2531,10 @@ export default function SaleOrders() {
                         <SaleOrderGateBlockBadge
                           status={order.status}
                           blocks={gateBlocksById.get(order.id)}
+                        />
+                        <SaleOrderAtelierProductionHoldBadge
+                          status={order.status}
+                          holds={atelierHoldsById.get(order.id)}
                         />
                         </div>
                       </TableCell>
@@ -2888,6 +2916,12 @@ export default function SaleOrders() {
                 <div className="flex items-center gap-2 flex-wrap mt-0.5">
                   <DialogTitle className="display text-xl sm:text-2xl m-0 leading-none">{selectedOrder?.order_number || ''}</DialogTitle>
                   {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
+                  {selectedOrder && (
+                    <SaleOrderAtelierProductionHoldBadge
+                      status={selectedOrder.status}
+                      holds={atelierHoldsById.get(selectedOrder.id)}
+                    />
+                  )}
                   <PvOutdatedBadge saleOrderId={selectedOrder?.id || null} />
                   {/* Badge "Picking individual realizado" — exclui o PV do Picking Semanal. */}
                   {(selectedOrder as any)?.picking_individually_done_at && (

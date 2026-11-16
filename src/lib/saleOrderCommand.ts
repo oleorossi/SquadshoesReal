@@ -382,9 +382,10 @@ export function formatSaleOrderStatusError(error: unknown): string {
   if (isPostgresBusyError(error)) {
     return SALE_ORDER_BUSY_RETRY_MESSAGE;
   }
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
-  }
+  // PostgREST devolve plain object { message, code } — não é Error. Sem isto
+  // o RAISE de Em Produção (cabedal ainda no Ateliê) virava a frase genérica.
+  const described = describePostgrestError(error, '').trim();
+  if (described) return described;
   return 'Não foi possível atualizar o status do pedido.';
 }
 
