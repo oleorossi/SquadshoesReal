@@ -16,6 +16,9 @@ import { supabase } from '@/integrations/supabase/client';
  * (empenho parcial + compra automática cobrem a falta de estoque). Falta de
  * material é o outro selo, o `SaleOrderMaterialShortageBadge`.
  *
+ * Ateliê incompleto também NÃO acende (mig `20270101047100`): é adiamento de
+ * OP, não recusa de aprovação — o job só existe depois do Aprovado.
+ *
  * ⚠ Aviso, não trava: quem barra é o servidor. Por isso a falha da RPC
  * (inclusive "função não existe" antes da migration chegar ao banco, ou 42501 de
  * usuário não aprovado) degrada em SILÊNCIO — devolve mapa vazio, sem toast e

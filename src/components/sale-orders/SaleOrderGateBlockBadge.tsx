@@ -21,6 +21,9 @@ interface Props {
  * aviso de falta de material (esse é o `SaleOrderMaterialShortageBadge`, âmbar,
  * e aprovar com falta é permitido). Aqui a aprovação falha de verdade.
  *
+ * Ateliê incompleto ("sem job" / pipeline) NÃO aparece: a OP é adiada e o PV
+ * aprova; jobs nascem depois do Aprovado (mig `20270101047100`).
+ *
  * Sem bloqueio → não renderiza nada. Status fora de Rascunho/Pendente também
  * não: depois de aprovado o item já tem OP e o gate não roda mais para ele.
  */
