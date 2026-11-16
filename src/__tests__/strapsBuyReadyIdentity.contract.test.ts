@@ -374,12 +374,14 @@ describe('Tiras compradas prontas — identidade de catálogo e PV', () => {
     expect(STRAP_EDITOR).toContain('const exactBuyReadyProductPrefill = mode === \'create\'');
     expect(STRAP_EDITOR).toContain('product.id === finishedProductId && product.group_id === baseGroupId');
     expect(STRAP_EDITOR).toContain('product.active !== false || product.id === form.finishedProductId');
+    expect(STRAP_EDITOR).toContain('const allActiveCanonicalColors = catalog.colors');
+    expect(STRAP_EDITOR).toContain('.filter((item) => item.active)');
     expect(STRAP_EDITOR).toMatch(
-      /availableIdentityColors = form\.identityBasis === 'finished_product_group'[\s\S]*exactBuyReadyProductPrefill[\s\S]*catalog\.colors[\s\S]*\.filter\(\(item\) => item\.active\)/,
+      /availableIdentityColors = form\.identityBasis === 'finished_product_group'[\s\S]*exactBuyReadyProductPrefill[\s\S]*!form\.finishedProductId[\s\S]*!finishedProductDerivedColor[\s\S]*allActiveCanonicalColors/,
     );
-    expect(STRAP_EDITOR).toContain('&& !exactBuyReadyProductPrefill\n      && canonicalStrapColorForProduct');
+    expect(STRAP_EDITOR).toContain('&& !exactBuyReadyProductPrefill\n    && !!finishedProductDerivedColor');
     expect(STRAP_EDITOR).toContain('Selecione explicitamente a família, a medida e a cor canônica');
-    expect(STRAP_EDITOR).toContain("form.identityBasis === 'finished_product_group' && !exactBuyReadyProductPrefill");
+    expect(STRAP_EDITOR).toContain("form.identityBasis === 'finished_product_group'\n    && !exactBuyReadyProductPrefill");
     // Review (atalho de Grupos sem variantId) também ativa — rótulo "Salvar e ativar".
     expect(STRAP_EDITOR).toMatch(
       /status: mode === 'review' \|\| exactBuyReadyProductPrefill[\s\S]*\? 'active'/,

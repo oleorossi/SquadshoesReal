@@ -124,10 +124,10 @@ const buyReadyCatalog: ArtisanalStrapCatalog = {
 };
 
 /**
- * A cor canônica da tira comprada pronta é DERIVADA do produto acabado e o
- * campo fica bloqueado. Pedir "Selecione a cor canônica." no save era um beco
- * sem saída: o operador não tinha como atender. O bloqueio precisa apontar o
- * passo executável.
+ * Cor canônica da tira comprada pronta: DERIVADA só quando o produto acabado
+ * já resolve para uma cor canônica. Sem produto (ou sem mapeamento) o campo
+ * libera — name/SKU também — para o Hub criar o SKU junto com a variante
+ * (atalho de Grupos). Com produto mapeável, o campo continua bloqueado.
  */
 describe('ArtisanalStrapEditor — tira comprada pronta com cor derivada', () => {
   const renderBuyReady = (extra: Record<string, unknown> = {}) => renderWithQueryClient(
@@ -145,27 +145,31 @@ describe('ArtisanalStrapEditor — tira comprada pronta com cor derivada', () =>
     />,
   );
 
-  it('anuncia que a cor não se escolhe ali e mantém o campo bloqueado', () => {
+  it('sem produto, libera a cor e orienta criar o acabado', () => {
     renderBuyReady();
-    expect(screen.getByText('Derivada do produto comprado pronto')).toBeInTheDocument();
-    expect(screen.getByText(/vem do produto escolhido em/i)).toBeInTheDocument();
+    expect(screen.queryByText('Derivada do produto comprado pronto')).not.toBeInTheDocument();
+    expect(screen.getByText(/Sem produto selecionado: escolha a cor aqui/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/TIRA CHATA/i)).not.toBeDisabled();
+    expect(screen.getByPlaceholderText(/TCH-/i)).not.toBeDisabled();
   });
 
-  it('sem produto acabado, manda escolher o produto — não a cor', async () => {
+  it('sem produto nem cor, pede a cor canônica (campo liberado) — não trava em produto', async () => {
     const user = userEvent.setup();
     renderBuyReady();
 
     await user.click(screen.getByRole('button', { name: /Salvar tudo/i }));
 
-    expect(await screen.findByText(/Selecione o produto comprado pronto/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Selecione a cor canônica — ela será gravada no produto acabado novo/i))
+      .toBeInTheDocument();
     expect(screen.queryByText('Selecione a cor canônica.')).not.toBeInTheDocument();
   });
 
-  it('com produto cuja cor não é canônica, nomeia a cor que falta cadastrar', async () => {
+  it('com produto cuja cor não é canônica, libera a escolha e nomeia o texto do estoque', async () => {
     const user = userEvent.setup();
     renderBuyReady({ finishedProductId: PRODUCT_ID });
 
     expect(screen.getByText('Cor do produto sem identidade canônica')).toBeInTheDocument();
+    expect(screen.queryByText('Derivada do produto comprado pronto')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Salvar tudo/i }));
 
@@ -199,6 +203,33 @@ const matchingProductCatalog: ArtisanalStrapCatalog = {
     status: 'active',
   }],
 };
+
+describe('ArtisanalStrapEditor — produto com cor canônica mapeada', () => {
+  it('bloqueia o campo de cor como derivada do produto', () => {
+    renderWithQueryClient(
+      <ArtisanalStrapEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={matchingProductCatalog}
+        capabilities={capabilities}
+        mode="create"
+        origin="hub"
+        identityBasis="finished_product_group"
+        measureId={MEASURE_ID}
+        baseGroupId={GROUP_ID}
+        finishedProductId={PRODUCT_ID}
+      />,
+    );
+    // Com colorId preenchido o SelectValue mostra o nome (PRETO), não o
+    // placeholder — a trava aparece no texto de ajuda + select disabled.
+    expect(screen.getByText(/vem do produto escolhido em/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Sem produto selecionado: escolha a cor aqui/i)).not.toBeInTheDocument();
+    const colorTrigger = screen.getAllByRole('combobox').find((node) =>
+      /PRETO/i.test(node.textContent || ''));
+    expect(colorTrigger).toBeTruthy();
+    expect(colorTrigger).toBeDisabled();
+  });
+});
 
 const FINISHED_STRAP_GROUP_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const NAPA_GROUP_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -235,7 +266,7 @@ const gruposUrlCatalog: ArtisanalStrapCatalog = {
 };
 
 describe('ArtisanalStrapEditor — URL de Grupos com tira acabada como baseGroupId', () => {
-  it('promove is_artisanal_strap a Comprar pronto e libera cor do produto', async () => {
+  it('promove is_artisanal_strap a Comprar pronto e libera cor para cadastro novo', async () => {
     const user = userEvent.setup();
     mutateAsync.mockResolvedValue({ variant_id: 'new-variant', measure_id: MEASURE_ID });
 
@@ -255,10 +286,12 @@ describe('ArtisanalStrapEditor — URL de Grupos com tira acabada como baseGroup
     expect(screen.getByText('Grupo do produto comprado pronto *')).toBeInTheDocument();
     expect(screen.queryByText('Material-base que será debitado *')).not.toBeInTheDocument();
     expect(screen.queryByText(/Nenhum produto ativo desta napa-base/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Sem produto selecionado: escolha a cor aqui/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Salvar e ativar/i }));
 
-    expect(await screen.findByText(/Selecione o produto comprado pronto/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Selecione a cor canônica — ela será gravada no produto acabado novo/i))
+      .toBeInTheDocument();
     expect(screen.queryByText('Selecione a cor canônica.')).not.toBeInTheDocument();
   });
 
@@ -289,6 +322,39 @@ describe('ArtisanalStrapEditor — URL de Grupos com tira acabada como baseGroup
     expect(payload.variant.base_group_id).toBe(FINISHED_STRAP_GROUP_ID);
     expect(payload.variant.color_id).toBe(COLOR_ID);
     expect(payload.variant.status).toBe('active');
+  });
+
+  it('grupo sem produtos libera name/SKU e pede cor — não exige produto existente', async () => {
+    const user = userEvent.setup();
+    const emptyGroupCatalog: ArtisanalStrapCatalog = {
+      ...gruposUrlCatalog,
+      products: [],
+    };
+
+    renderWithQueryClient(
+      <ArtisanalStrapEditor
+        open
+        onOpenChange={vi.fn()}
+        catalog={emptyGroupCatalog}
+        capabilities={capabilities}
+        mode="review"
+        origin="grupos"
+        identityBasis="finished_product_group"
+        measureId={MEASURE_ID}
+        baseGroupId={FINISHED_STRAP_GROUP_ID}
+      />,
+    );
+
+    expect(screen.getByText(/O Hub cria o SKU acabado junto com a variante/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/TIRA CHATA/i)).not.toBeDisabled();
+    expect(screen.getByPlaceholderText(/TCH-/i)).not.toBeDisabled();
+    expect(screen.queryByText(/vem do produto escolhido em/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Salvar e ativar/i }));
+
+    expect(await screen.findByText(/Selecione a cor canônica — ela será gravada no produto acabado novo/i))
+      .toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
   });
 });
 

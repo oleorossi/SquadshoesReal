@@ -385,11 +385,20 @@ export function ArtisanalStrapEditor({
     form.baseGroupId,
   );
   const availablePurchasedColors = purchasedReadyStrapColorsForGroup(catalog, form.identityGroupId);
+  const allActiveCanonicalColors = catalog.colors
+    .filter((item) => item.active)
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  // Cor do produto acabado (quando já escolhido). Sem mapeamento canônico o
+  // operador precisa escolher a cor à mão — o bundle grava o nome no produto.
+  const finishedProductDerivedColor = form.identityBasis === 'finished_product_group'
+    && form.finishedProductId
+    ? canonicalStrapColorForProduct(catalog, form.finishedProductId)
+    : null;
   const availableIdentityColors = form.identityBasis === 'finished_product_group'
     ? exactBuyReadyProductPrefill
-      ? catalog.colors
-        .filter((item) => item.active)
-        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+      || !form.finishedProductId
+      || !finishedProductDerivedColor
+      ? allActiveCanonicalColors
       : availablePurchasedColors
     : availableRegisteredBaseColors;
   // Napa-base elegível: RPC canônica + nunca família de tira acabada.
@@ -412,18 +421,22 @@ export function ArtisanalStrapEditor({
   const displayedColors = selectedColor && !selectedColorIsAvailable
     ? [selectedColor, ...availableIdentityColors]
     : availableIdentityColors;
-  // A cor canônica da tira comprada pronta NÃO é escolhida à mão: ela sai do
-  // produto acabado (mesma regra do servidor, em `validate_artisanal_strap_variant`).
-  // O campo fica bloqueado — então o save jamais pode responder "Selecione a cor
-  // canônica" aqui, que é um beco sem saída. A revisão nominal
-  // (`exactBuyReadyProductPrefill`) é a única exceção que libera a escolha.
-  const purchasedColorIsDerived = form.identityBasis === 'finished_product_group' && !exactBuyReadyProductPrefill;
+  // Cor canônica da tira comprada pronta: DERIVADA só quando o produto acabado
+  // já resolve para uma cor canônica (mesma regra do servidor). Sem produto, ou
+  // com produto sem cor mapeada, o campo LIBERA — senão "Derivada do produto"
+  // + name/SKU bloqueados vira beco sem saída (atalho de Grupos sem SKU no
+  // estoque). O bundle grava `products.color = nome canônico` no save.
+  const purchasedColorIsDerived = form.identityBasis === 'finished_product_group'
+    && !exactBuyReadyProductPrefill
+    && !!finishedProductDerivedColor;
   const selectedFinishedProduct = catalog.products.find((item) => item.id === form.finishedProductId);
   const finishedProductColorLabel = (selectedFinishedProduct?.color || '').trim();
   const identityGroupProducts = catalog.products
     .filter((product) => product.group_id === form.identityGroupId
       && (product.active !== false || product.id === form.finishedProductId))
     .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
+  const creatingFinishedProduct = form.identityBasis === 'finished_product_group'
+    && !form.finishedProductId;
   const finishedIdentityGroups = catalog.groups
     .filter((group) => group.id === form.identityGroupId || catalog.products.some((product) => (
       product.group_id === group.id && product.active !== false && product.unit === 'm'
@@ -491,27 +504,30 @@ export function ArtisanalStrapEditor({
     if (form.identityBasis === 'finished_product_group' && !form.identityGroupId) {
       return 'Selecione o grupo próprio da tira comprada pronta.';
     }
-    // Cor derivada: aponte o passo que o operador consegue executar, nunca o
-    // campo bloqueado. Foi assim que o cadastro do hub travava sem saída.
+    // Cor derivada (produto com mapeamento): o campo está bloqueado — nunca
+    // peça "Selecione a cor canônica" nesse estado. Sem produto / sem mapeamento
+    // a cor está liberada e a mensagem abaixo vale.
     if (purchasedColorIsDerived && !form.colorId) {
-      if (!form.finishedProductId) {
-        return 'Selecione o produto comprado pronto em "Produto e estoque": a cor canônica vem dele.';
-      }
       return finishedProductColorLabel
         ? `A cor "${finishedProductColorLabel}" cadastrada no produto acabado não corresponde a nenhuma cor canônica nem a um alias aprovado. Cadastre essa identidade de cor antes de salvar.`
         : 'O produto acabado selecionado não tem cor cadastrada, então a cor canônica não pode ser derivada. Informe a cor do produto no Estoque antes de salvar.';
     }
-    if (!form.colorId) return 'Selecione a cor canônica.';
+    if (!form.colorId) {
+      return creatingFinishedProduct
+        ? 'Selecione a cor canônica — ela será gravada no produto acabado novo.'
+        : form.identityBasis === 'finished_product_group' && form.finishedProductId
+          ? 'Selecione a cor canônica do produto acabado (ainda sem cor mapeada no estoque).'
+          : 'Selecione a cor canônica.';
+    }
     if (!selectedColorIsAvailable) {
       return form.identityBasis === 'finished_product_group'
-        ? 'A cor selecionada não possui produto ativo no grupo acabado.'
+        ? creatingFinishedProduct || !finishedProductDerivedColor
+          ? 'A cor selecionada precisa estar ativa no catálogo canônico.'
+          : 'A cor selecionada não possui produto ativo no grupo acabado.'
         : 'A cor selecionada não está cadastrada em um produto ativo desta napa-base.';
     }
     if (purchasedReady && form.internalProductionEnabled) {
       return 'Tira identificada pelo grupo acabado não pode ter origem Prestador.';
-    }
-    if (form.identityBasis === 'finished_product_group' && !form.finishedProductId) {
-      return 'Selecione o produto acabado comprado dentro do grupo de identidade.';
     }
     if (exactBuyReadyProductPrefill && (
       form.finishedProductId !== finishedProductId
@@ -520,15 +536,19 @@ export function ArtisanalStrapEditor({
       return 'A revisão nominal exige exatamente o produto e o grupo informados no diagnóstico.';
     }
     if (!form.finishedProductId && (!form.productName.trim() || !form.sku.trim())) {
-      return 'Informe nome e SKU inequívocos para o produto acabado.';
+      return form.identityBasis === 'finished_product_group'
+        ? 'Selecione um produto do grupo ou informe nome e SKU para criar o acabado.'
+        : 'Informe nome e SKU inequívocos para o produto acabado.';
     }
     if (form.identityBasis === 'finished_product_group'
+      && form.finishedProductId
       && selectedFinishedProduct?.group_id !== form.identityGroupId) {
       return 'O produto acabado deve pertencer ao grupo próprio selecionado.';
     }
     if (form.identityBasis === 'finished_product_group'
       && !exactBuyReadyProductPrefill
-      && canonicalStrapColorForProduct(catalog, form.finishedProductId)?.id !== form.colorId) {
+      && finishedProductDerivedColor
+      && finishedProductDerivedColor.id !== form.colorId) {
       return 'A cor canônica deve ser a cor exata do produto acabado selecionado.';
     }
     if (purchasedReady && (!form.purchaseEnabled || form.includeRecipe)) {
@@ -938,14 +958,21 @@ export function ArtisanalStrapEditor({
                       A cor da tira comprada pronta vem do produto escolhido em <strong>Produto e estoque</strong>; ela não é selecionada aqui.
                     </p>
                   )}
-                  {purchasedColorIsDerived && !!form.finishedProductId && !form.colorId && (
+                  {creatingFinishedProduct && (
+                    <p className="text-xs text-muted-foreground">
+                      Sem produto selecionado: escolha a cor aqui — o save cria o SKU acabado com essa cor no grupo.
+                    </p>
+                  )}
+                  {form.identityBasis === 'finished_product_group'
+                    && !!form.finishedProductId
+                    && !finishedProductDerivedColor && (
                     <Alert variant="destructive">
                       <Warning className="h-4 w-4" />
                       <AlertTitle>Cor do produto sem identidade canônica</AlertTitle>
                       <AlertDescription>
                         {finishedProductColorLabel
-                          ? `A cor "${finishedProductColorLabel}" cadastrada no produto acabado não corresponde a nenhuma cor canônica nem a um alias aprovado. Cadastre essa identidade de cor antes de salvar.`
-                          : 'O produto acabado selecionado não tem cor cadastrada, então a cor canônica não pode ser derivada.'}
+                          ? `A cor "${finishedProductColorLabel}" do produto não casa com nenhuma cor canônica nem alias. Selecione a cor canônica correta — o save sincroniza o cadastro do produto.`
+                          : 'Este produto ainda não tem cor no estoque. Selecione a cor canônica — o save grava o nome no produto.'}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -954,10 +981,19 @@ export function ArtisanalStrapEditor({
                     : form.baseGroupId) && availableIdentityColors.length === 0 && (
                     <p className="text-xs text-amber-700 dark:text-amber-400">
                       {form.identityBasis === 'finished_product_group'
-                        ? 'Nenhum produto ativo deste grupo possui cor canônica mapeada.'
+                        ? 'Nenhuma cor canônica ativa no catálogo. Cadastre a cor em Tiras antes de salvar.'
                         : form.baseGroupId && selectedBase?.is_artisanal_strap
                           ? 'Este grupo é uma tira acabada, não uma napa-base. Escolha uma napa (ex.: NAPA SOFT) ou mude a origem para Comprar pronto.'
                           : 'Nenhum produto ativo desta napa-base possui uma cor cadastrada.'}
+                    </p>
+                  )}
+                  {form.identityBasis === 'finished_product_group'
+                    && form.identityGroupId
+                    && availablePurchasedColors.length === 0
+                    && identityGroupProducts.length > 0
+                    && !form.finishedProductId && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Os produtos deste grupo ainda não têm cor canônica mapeada. Selecione um produto e a cor, ou cadastre nome/SKU novos abaixo.
                     </p>
                   )}
                   {form.colorId && !selectedColorIsAvailable && (
@@ -985,10 +1021,27 @@ export function ArtisanalStrapEditor({
               <div className="grid gap-3 sm:grid-cols-2">
                 {form.identityBasis === 'finished_product_group' && (
                   <div className="space-y-1.5 sm:col-span-2">
-                    <Label>Produto comprado pronto *</Label>
+                    <Label>
+                      {identityGroupProducts.length > 0
+                        ? 'Produto comprado pronto'
+                        : 'Produto comprado pronto (opcional)'}
+                    </Label>
                     <Select
-                      value={form.finishedProductId}
+                      value={form.finishedProductId || '__new__'}
                       onValueChange={(productId) => {
+                        if (productId === '__new__') {
+                          setForm((current) => ({
+                            ...current,
+                            finishedProductId: '',
+                            productName: '',
+                            sku: '',
+                            // Mantém cor já escolhida ao voltar para "produto novo".
+                            supplierId: '',
+                            supplierColorCode: '',
+                          }));
+                          setValidationError(null);
+                          return;
+                        }
                         const product = catalog.products.find((item) => item.id === productId);
                         if (!product) return;
                         const canonicalColor = canonicalStrapColorForProduct(catalog, product.id);
@@ -997,7 +1050,7 @@ export function ArtisanalStrapEditor({
                           finishedProductId: product.id,
                           productName: product.name,
                           sku: product.sku || '',
-                          colorId: canonicalColor?.id || '',
+                          colorId: canonicalColor?.id || current.colorId || '',
                           supplierId: product.supplier_id || '',
                           supplierColorCode: product.supplier_color_code || '',
                           purchaseUnit: product.purchase_unit || 'm',
@@ -1013,17 +1066,25 @@ export function ArtisanalStrapEditor({
                       }}
                       disabled={readOnly || identityLocked || exactBuyReadyProductPrefill || !form.identityGroupId}
                     >
-                      <SelectTrigger><SelectValue placeholder="Selecione um produto ativo do grupo" /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder={identityGroupProducts.length > 0
+                          ? 'Selecione um produto ativo do grupo ou cadastre novo abaixo'
+                          : 'Nenhum produto no grupo — cadastre nome e SKU abaixo'}
+                        />
+                      </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="__new__">Cadastrar produto novo…</SelectItem>
                         {identityGroupProducts.map((product) => (
                           <SelectItem key={product.id} value={product.id}>
-                            {product.name}{product.color ? ` · ${product.color}` : ''}{product.sku ? ` · ${product.sku}` : ''}
+                            {product.name}{product.color ? ` · ${product.color}` : ' · sem cor'}{product.sku ? ` · ${product.sku}` : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      O produto permanece comprado (<strong>não artesanal</strong>) e deve estar no mesmo grupo da identidade.
+                      {identityGroupProducts.length > 0
+                        ? 'Produto existente preenche nome/SKU. Sem produto, informe nome e SKU para criar o acabado no mesmo grupo.'
+                        : 'O Hub cria o SKU acabado junto com a variante — informe nome e SKU abaixo.'}
                     </p>
                   </div>
                 )}
@@ -1032,8 +1093,8 @@ export function ArtisanalStrapEditor({
                   <Input
                     value={form.productName}
                     onChange={(event) => setField('productName', event.target.value)}
-                    placeholder="TIRA CHATA · 8 mm · NAPA SOFT · OFF WHITE"
-                    disabled={readOnly || Boolean(form.finishedProductId) || form.identityBasis === 'finished_product_group'}
+                    placeholder="TIRA CHATA · 20 mm · OFF WHITE"
+                    disabled={readOnly || Boolean(form.finishedProductId)}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1041,8 +1102,8 @@ export function ArtisanalStrapEditor({
                   <Input
                     value={form.sku}
                     onChange={(event) => setField('sku', event.target.value)}
-                    placeholder="TCH-08-SOFT-OW"
-                    disabled={readOnly || Boolean(form.finishedProductId) || form.identityBasis === 'finished_product_group'}
+                    placeholder="TCH-20-OW"
+                    disabled={readOnly || Boolean(form.finishedProductId)}
                   />
                 </div>
               </div>
