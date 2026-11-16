@@ -40,13 +40,13 @@ describe('pv sku_acabado buy_ready sem variante — contrato 31900', () => {
     expect(sql).toContain('resolve_committed_strap_identity');
     expect(sql).toContain('enqueue_sale_order_strap_demands');
     expect(FILE).toContain('20270101031900');
-    // 45300 continua a autoridade do writer; 46900 só cita o marcador
-    // para exigir o ramo vivo antes de afrouxar a pré-checagem.
+    // 45300 continua a autoridade do writer; 47000 é o último patch do
+    // alinhamento que cita o marcador (honra buy_ready no roteamento).
     const soFile = '20270101045300_tira-comprar-pronto-so-registra.sql';
     expect(readFileSync(resolve(MIGRATIONS, soFile), 'utf8'))
       .toContain('strap_comprar_pronto_so_registra_20270101045300');
     expect(latestPatchMigration('strap_comprar_pronto_so_registra_20270101045300').file)
-      .toBe('20270101046900_alinhamento-comprar-pronto-so-registra-precheck.sql');
+      .toBe('20270101047000_alinhamento-comprar-pronto-honra-buy-ready.sql');
   });
 
   it('prepare histórico 31900 congelava finished_product_id; 45300 zera SKU na napa', () => {

@@ -34,16 +34,16 @@ function latestMigrationMentioning(needle: string): string {
 }
 
 describe('Alinhamento da tira — buy_ready do PV identifica por SKU acabado', () => {
-  it('arquivo 40200 patcha o corpo VIVO (histórico; pré-checagem viva = 46900)', () => {
+  it('arquivo 40200 patcha o corpo VIVO (histórico; pré-checagem = 46900; roteamento = 47000)', () => {
     expect(migration).toContain(MARKER);
     expect(migration).toContain('pg_get_functiondef');
     expect(migration).toContain(
       "'public.tg_validate_sale_order_item_strap_color_alignment()'",
     );
-    // A 46900 cita o marcador 40200 no v_old que substitui — autoridade viva
-    // da pré-checagem é a 46900.
+    // 46900 cita o marcador 40200 no v_old; 47000 cita o marcador 46900.
     expect(latestMigrationMentioning(MARKER)).toBe(SO_PRECHECK);
-    expect(latestMigrationMentioning(SO_PRECHECK_MARKER)).toBe(SO_PRECHECK);
+    expect(latestMigrationMentioning(SO_PRECHECK_MARKER))
+      .toBe('20270101047000_alinhamento-comprar-pronto-honra-buy-ready.sql');
   });
 
   it('casa com o texto exato da pré-checagem antes de substituir', () => {

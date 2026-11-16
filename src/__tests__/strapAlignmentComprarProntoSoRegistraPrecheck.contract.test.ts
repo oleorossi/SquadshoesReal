@@ -39,9 +39,13 @@ const COLOR = '11111111-1111-4111-8111-111111111111';
 const VARIANT = '22222222-2222-4222-8222-222222222222';
 const SKU = '33333333-3333-4333-8333-333333333333';
 
+const ROUTE_FILE = '20270101047000_alinhamento-comprar-pronto-honra-buy-ready.sql';
+
 describe('Alinhamento — Comprar pronto so-registra na pré-checagem (46900)', () => {
-  it('é a migration canônica do marcador e patcha o corpo VIVO', () => {
-    expect(latestMigrationMentioning(MARKER)).toBe(FILE);
+  it('define a pré-checagem; 47000 é o último arquivo que cita o marcador', () => {
+    // 47000 exige o marcador 46900 vivo antes de roteiar buy_ready.
+    expect(latestMigrationMentioning(MARKER)).toBe(ROUTE_FILE);
+    expect(migration).toContain(MARKER);
     expect(migration).toContain('pg_get_functiondef');
     expect(migration).toContain(
       "'public.tg_validate_sale_order_item_strap_color_alignment()'",
