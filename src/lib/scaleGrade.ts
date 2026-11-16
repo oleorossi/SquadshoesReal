@@ -65,6 +65,23 @@ export function isUsableGrade(grade: unknown): grade is Record<string, number> {
   });
 }
 
+/**
+ * Grade que `check_stock_availability` deve receber.
+ *
+ * `sale_order_items.grade` é a grade BASE da ficha (Σ ≈ 12) e `quantity` é o
+ * total de pares (grade × fichas). O by_grade trata os números como pares
+ * absolutos — sem esta escala, cabedal/palmilha da aprovação saem
+ * subcontados (PV-00145: 12 vs 1104). Idempotente se a grade já for absoluta
+ * (Σ >= quantity), como em `orders.grade`.
+ */
+export function gradeForStockCheck(
+  grade: Record<string, number> | null | undefined,
+  quantity: number,
+): Record<string, number> | null {
+  if (!isUsableGrade(grade) || !(quantity > 0)) return grade ?? null;
+  return scaleGradeToTotal(grade, quantity);
+}
+
 export function scaleGradeWithLargestRemainder(
   grade: Record<string, number> | null | undefined,
   multiplier: number,
