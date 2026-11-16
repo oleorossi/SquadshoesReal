@@ -160,8 +160,28 @@ jobs:
         if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
+      # Tip sem supabase/migrations/** = só frontend. O migrate continua
+      # quebrado por senha (password authentication failed) e o wait de 25min
+      # bloqueava publicação urgente (ex.: fix de tiras 15/11/2026). Schema
+      # muda → gate permanece obrigatório.
+      - name: Detect migration files in tip commit
+        id: tip_migrations
+        if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
+        env:
+          TIP_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if git diff-tree --no-commit-id --name-only -r "$TIP_SHA" \
+            | grep -q '^supabase/migrations/'; then
+            echo "has_migrations=true" >> "$GITHUB_OUTPUT"
+            echo "Tip $TIP_SHA altera supabase/migrations — gate obrigatório."
+          else
+            echo "has_migrations=false" >> "$GITHUB_OUTPUT"
+            echo "Tip $TIP_SHA sem migrations — gate de wait pulado (frontend-only)."
+          fi
+
       - name: Wait for database migrations from this commit
-        if: ${{ (github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true') && !(github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate) }}
+        if: ${{ (github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true') && !(github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate) && steps.tip_migrations.outputs.has_migrations == 'true' }}
         timeout-minutes: 25
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -177,6 +197,14 @@ jobs:
           echo "Só use para publicar frontend quando o banco está bloqueado por migration alheia."
           echo "## Bypass" >> "$GITHUB_STEP_SUMMARY"
           echo "- Gate de migrations: **pulado** (pedido manual)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Migration gate skipped (frontend-only tip)
+        if: ${{ (github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true') && !(github.event_name == 'workflow_dispatch' && inputs.skip_migration_gate) && steps.tip_migrations.outputs.has_migrations == 'false' }}
+        run: |
+          echo "⚠ Gate de migrations pulado: tip commit não toca supabase/migrations/**."
+          echo "O banco pode estar atrás se o workflow de migrate estiver vermelho — corrija a senha/DB."
+          echo "## Bypass" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Gate de migrations: **pulado** (tip sem arquivos em supabase/migrations/)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Deploy to production
         if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
