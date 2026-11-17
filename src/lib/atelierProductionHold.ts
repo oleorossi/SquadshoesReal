@@ -8,6 +8,8 @@
  * `trg_zz_block_em_producao_sem_retorno_atelie` (mig 20270101047200).
  */
 
+import { humanizeAtelierBlockReason, humanizeAtelierPendingJobs } from '@/lib/atelierBoard';
+
 export const ATELIER_PRODUCTION_HOLD_TITLE =
   'Não é possível colocar o pedido em Em Produção: o cabedal complexo ainda não voltou para a fábrica.';
 
@@ -37,13 +39,13 @@ export function atelierProductionHoldBlocksStatus(
   return targetStatus === 'Em Produção' && pending;
 }
 
-/** Mesma linha que `sale_order_atelier_production_block_message` agrega. */
+/** Mesma linha que `sale_order_atelier_production_block_message` agrega, em português e sem UUID. */
 export function formatAtelierProductionHoldLine(
   line: Pick<AtelierProductionHoldLine, 'referenceCode' | 'color' | 'reason' | 'pendingJobs'>,
 ): string {
-  const jobs = line.pendingJobs.trim();
+  const jobs = humanizeAtelierPendingJobs(line.pendingJobs);
   const jobsSuffix = jobs ? ` Jobs pendentes: ${jobs}.` : '';
-  return `${line.referenceCode} / ${line.color} — ${line.reason}${jobsSuffix}`;
+  return `${line.referenceCode} / ${line.color} — ${humanizeAtelierBlockReason(line.reason)}${jobsSuffix}`;
 }
 
 export function formatAtelierProductionHoldMessage(lines: AtelierProductionHoldLine[]): string | null {

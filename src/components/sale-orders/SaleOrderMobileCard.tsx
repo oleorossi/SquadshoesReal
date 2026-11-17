@@ -142,7 +142,11 @@ export function SaleOrderMobileCard({
           {showMaterialBadge && (
             <SaleOrderMaterialShortageBadge status={order.status} info={materialShortage} />
           )}
-          <SaleOrderAtelierProductionHoldBadge status={order.status} holds={atelierHolds} />
+          <SaleOrderAtelierProductionHoldBadge
+            status={order.status}
+            holds={atelierHolds}
+            orderNumber={order.order_number}
+          />
         </div>
       )}
       <div className="mt-3 flex gap-2 border-t pt-3">

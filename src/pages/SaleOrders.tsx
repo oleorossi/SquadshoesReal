@@ -2535,6 +2535,7 @@ export default function SaleOrders() {
                         <SaleOrderAtelierProductionHoldBadge
                           status={order.status}
                           holds={atelierHoldsById.get(order.id)}
+                          orderNumber={order.order_number}
                         />
                         </div>
                       </TableCell>
@@ -2920,6 +2921,7 @@ export default function SaleOrders() {
                     <SaleOrderAtelierProductionHoldBadge
                       status={selectedOrder.status}
                       holds={atelierHoldsById.get(selectedOrder.id)}
+                      orderNumber={selectedOrder.order_number}
                     />
                   )}
                   <PvOutdatedBadge saleOrderId={selectedOrder?.id || null} />

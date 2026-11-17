@@ -350,7 +350,9 @@ function ContractorJobOk({
       )}
 
       {job.pipeline_status === 'received_at_factory' && (
-        <p className="text-[10px] font-medium text-foreground">Conferido — libera a OP deste setor.</p>
+        <p className="text-[10px] font-medium text-foreground">
+          Conferido. Este setor libera. A OP nasce quando o pedido for para Em Produção.
+        </p>
       )}
     </div>
   );
@@ -414,7 +416,9 @@ function InternalJobOk({
       )}
 
       {job.pipeline_status === 'done' && (
-        <p className="text-[10px] font-medium text-foreground">Concluído — libera a OP deste setor.</p>
+        <p className="text-[10px] font-medium text-foreground">
+          Concluído. Este setor libera. A OP nasce quando o pedido for para Em Produção.
+        </p>
       )}
     </div>
   );

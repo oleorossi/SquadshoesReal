@@ -1,6 +1,8 @@
 import { Factory } from '@phosphor-icons/react';
+import { Link } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { atelierFilaHref, humanizeAtelierBlockReason, humanizeAtelierPendingJobs } from '@/lib/atelierBoard';
 import {
   ATELIER_PRODUCTION_HOLD_TITLE,
   saleOrderShowsAtelierProductionHold,
@@ -10,6 +12,8 @@ import {
 interface Props {
   status: string | null | undefined;
   holds: AtelierProductionHoldLine[] | undefined;
+  /** Número do PV, para abrir a fila já filtrada. */
+  orderNumber?: string | null;
   className?: string;
 }
 
@@ -19,7 +23,7 @@ interface Props {
  * A aprovação continua. Em Produção é recusado enquanto estes itens não
  * tiverem o cabedal de volta. A mesma lista sai no RAISE do banco.
  */
-export function SaleOrderAtelierProductionHoldBadge({ status, holds, className }: Props) {
+export function SaleOrderAtelierProductionHoldBadge({ status, holds, orderNumber, className }: Props) {
   if (!saleOrderShowsAtelierProductionHold(status)) return null;
   if (!holds || holds.length === 0) return null;
 
@@ -61,16 +65,26 @@ export function SaleOrderAtelierProductionHoldBadge({ status, holds, className }
                 {line.referenceCode} · {line.color}
               </div>
               <p className="mt-0.5 leading-snug text-amber-700 dark:text-amber-400">
-                {line.reason}
+                {humanizeAtelierBlockReason(line.reason)}
               </p>
               {line.pendingJobs ? (
-                <p className="mt-0.5 font-mono text-[10px] leading-snug text-muted-foreground">
-                  Jobs pendentes: {line.pendingJobs}
+                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                  {humanizeAtelierPendingJobs(line.pendingJobs)}
                 </p>
               ) : null}
             </li>
           ))}
         </ul>
+        {orderNumber ? (
+          <div className="border-t border-border px-3 py-2">
+            <Link
+              to={atelierFilaHref(orderNumber)}
+              className="text-xs font-medium text-foreground underline underline-offset-2 hover:text-primary"
+            >
+              Abrir na fila
+            </Link>
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

@@ -377,23 +377,89 @@ export function useRemoveAtelierReference() {
   });
 }
 
+export interface AtelierLotCutResult {
+  lot_number?: string;
+  items?: number;
+  pending_lines?: number;
+  kit_gate?: string;
+  skipped?: boolean;
+}
+
+/** Confirma o corte do LOTE: debita só Cabedal (napa). COMPONENTES na liberação. */
+export async function confirmAtelierLotCut(lotId: string): Promise<AtelierLotCutResult | null> {
+  const { data, error } = await supabase.rpc(
+    'atelier_confirm_lot_cut' as never,
+    { p_lot_id: lotId } as never,
+  );
+  if (error) throw error;
+  return data as AtelierLotCutResult | null;
+}
+
+export async function confirmAtelierLotRelease(lotId: string) {
+  const { data, error } = await supabase.rpc(
+    'atelier_confirm_lot_release' as never,
+    { p_lot_id: lotId } as never,
+  );
+  if (error) throw error;
+  return data as { lot_number?: string; lines?: number; kit_gate?: string } | null;
+}
+
+export async function markAtelierJobSent(input: { jobId: string; contractorId?: string | null }) {
+  const { data, error } = await supabase.rpc(
+    'atelier_mark_job_sent' as never,
+    {
+      p_job_id: input.jobId,
+      p_contractor_id: input.contractorId ?? null,
+    } as never,
+  );
+  if (error) throw error;
+  return data as {
+    atelier_service_number?: string;
+    kit_lines?: AtelierSentKitLine[];
+  } | null;
+}
+
+export async function markAtelierJobRealized(jobId: string) {
+  const { data, error } = await supabase.rpc(
+    'atelier_mark_job_realized' as never,
+    { p_job_id: jobId } as never,
+  );
+  if (error) throw error;
+  return data;
+}
+
+export async function markAtelierJobReceived(jobId: string) {
+  const { data, error } = await supabase.rpc(
+    'atelier_mark_job_received' as never,
+    { p_job_id: jobId } as never,
+  );
+  if (error) throw error;
+  return data;
+}
+
+export async function markAtelierJobInternalStart(jobId: string) {
+  const { data, error } = await supabase.rpc(
+    'atelier_mark_job_internal_start' as never,
+    { p_job_id: jobId } as never,
+  );
+  if (error) throw error;
+  return data;
+}
+
+export async function markAtelierJobInternalDone(jobId: string) {
+  const { data, error } = await supabase.rpc(
+    'atelier_mark_job_internal_done' as never,
+    { p_job_id: jobId } as never,
+  );
+  if (error) throw error;
+  return data;
+}
+
 /** Confirma o corte do LOTE: debita só Cabedal (napa). COMPONENTES na liberação. */
 export function useConfirmAtelierLotCut() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (lotId: string) => {
-      const { data, error } = await supabase.rpc(
-        'atelier_confirm_lot_cut' as never,
-        { p_lot_id: lotId } as never,
-      );
-      if (error) throw error;
-      return data as {
-        lot_number?: string;
-        items?: number;
-        pending_lines?: number;
-        kit_gate?: string;
-      } | null;
-    },
+    mutationFn: confirmAtelierLotCut,
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
       const pend = data?.pending_lines ?? 0;
@@ -418,14 +484,7 @@ export function useConfirmAtelierLotCut() {
 export function useConfirmAtelierLotRelease() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (lotId: string) => {
-      const { data, error } = await supabase.rpc(
-        'atelier_confirm_lot_release' as never,
-        { p_lot_id: lotId } as never,
-      );
-      if (error) throw error;
-      return data as { lot_number?: string; lines?: number; kit_gate?: string } | null;
-    },
+    mutationFn: confirmAtelierLotRelease,
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
       toast.success(`${data?.lot_number ?? 'Lote'} · kit liberado para envio`);
@@ -478,20 +537,7 @@ export function useAtelierLotReleasePreview(lotId: string | null) {
 export function useMarkAtelierSent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { jobId: string; contractorId?: string | null }) => {
-      const { data, error } = await supabase.rpc(
-        'atelier_mark_job_sent' as never,
-        {
-          p_job_id: input.jobId,
-          p_contractor_id: input.contractorId ?? null,
-        } as never,
-      );
-      if (error) throw error;
-      return data as {
-        atelier_service_number?: string;
-        kit_lines?: AtelierSentKitLine[];
-      } | null;
-    },
+    mutationFn: markAtelierJobSent,
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
       const lines = data?.kit_lines ?? [];
@@ -514,14 +560,7 @@ export function useMarkAtelierSent() {
 export function useMarkAtelierRealized() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (jobId: string) => {
-      const { data, error } = await supabase.rpc(
-        'atelier_mark_job_realized' as never,
-        { p_job_id: jobId } as never,
-      );
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: markAtelierJobRealized,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
       toast.success('Marcado como realizado pelo prestador');
@@ -533,14 +572,7 @@ export function useMarkAtelierRealized() {
 export function useMarkAtelierReceived() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (jobId: string) => {
-      const { data, error } = await supabase.rpc(
-        'atelier_mark_job_received' as never,
-        { p_job_id: jobId } as never,
-      );
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: markAtelierJobReceived,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
       toast.success('Recebido e conferido na fábrica');
@@ -581,14 +613,7 @@ export function useSetAtelierJobExecutionMode() {
 export function useMarkAtelierInternalStart() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (jobId: string) => {
-      const { data, error } = await supabase.rpc(
-        'atelier_mark_job_internal_start' as never,
-        { p_job_id: jobId } as never,
-      );
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: markAtelierJobInternalStart,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
       toast.success('Em realização na fábrica');
@@ -600,14 +625,7 @@ export function useMarkAtelierInternalStart() {
 export function useMarkAtelierInternalDone() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (jobId: string) => {
-      const { data, error } = await supabase.rpc(
-        'atelier_mark_job_internal_done' as never,
-        { p_job_id: jobId } as never,
-      );
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: markAtelierJobInternalDone,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
       toast.success('Concluído — libera a OP deste setor');

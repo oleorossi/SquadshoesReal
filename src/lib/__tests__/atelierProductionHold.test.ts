@@ -36,7 +36,9 @@ describe('portão Em Produção × cabedal no Ateliê', () => {
     const message = formatAtelierProductionHoldMessage([pendente]);
     expect(message?.startsWith(ATELIER_PRODUCTION_HOLD_TITLE)).toBe(true);
     expect(message).toContain('I701 / PRETO — Ateliê — costura só libera após recebido e conferido');
-    expect(message).toContain('Jobs pendentes: 11111111-1111-1111-1111-111111111111 · costura · sent_to_contractor.');
+    expect(message).toContain('status: Enviado ao prestador');
+    expect(message).toContain('Jobs pendentes: Costura · Enviado ao prestador.');
+    expect(message).not.toContain('11111111-1111-1111-1111-111111111111');
   });
 
   it('o selo aparece antes de Em Produção e some depois', () => {
