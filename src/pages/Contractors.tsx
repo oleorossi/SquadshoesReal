@@ -1,5 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { AtelierOsDetailDialog, isAtelierRemessa } from '@/components/contractors/AtelierOsDetailDialog';
+import { osListValue } from '@/lib/osListValue';
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
@@ -576,6 +577,29 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   }, [contractors, orders]);
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  const renderOsAmount = (order: ServiceOrder, prominent = false) => {
+    const overview = osOverview?.get(order.id);
+    const value = osListValue({
+      contracted: Number(order.total_value) || 0,
+      hasPayable: !!overview?.has_payable,
+      payableAmount: overview?.payable_amount,
+    });
+    if (value.primary == null) {
+      return <span className="text-sm font-medium text-muted-foreground">A definir</span>;
+    }
+    return (
+      <span className="block text-right">
+        <span className={prominent ? 'font-mono text-base font-bold leading-none tabular-nums' : 'font-mono font-bold tabular-nums'}>
+          {formatCurrency(value.primary)}
+        </span>
+        {value.forecast != null && (
+          <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
+            previsto {formatCurrency(value.forecast)}
+          </span>
+        )}
+      </span>
+    );
+  };
 
   // ── Filtered data ──
   const filteredContractors = useMemo(() => {
@@ -870,7 +894,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
     const isContainer = isGenericConsolidatedServiceOrder(o);
     const linkedPvId = linkedSaleOrderIdsOf(o)[0] || null;
     const so = linkedPvId ? (saleOrders as SaleOrderLookup[]).find(s => s.id === linkedPvId) : null;
-    const noValue = Number(o.total_value) === 0 && isOsActive(o.status);
     const checkboxId = `mobile-os-${o.id}`;
 
     return (
@@ -900,7 +923,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
               {so && <span className="font-mono font-semibold text-primary">PV {so.order_number}</span>}
               <span>{renderDeadlineInline(o)}</span>
               <span className="ml-auto font-mono font-bold tabular-nums">
-                {noValue ? 'A definir' : formatCurrency(Number(o.total_value))}
+                {renderOsAmount(o)}
               </span>
             </span>
           </button>
@@ -1652,11 +1675,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
-                            <p className="font-mono text-base font-bold leading-none tabular-nums">
-                              {Number(o.total_value) === 0 && o.status !== 'Concluído' && o.status !== 'Cancelado' && o.status !== 'cancelled'
-                                ? <span className="text-sm font-medium text-muted-foreground">A definir</span>
-                                : formatCurrency(Number(o.total_value))}
-                            </p>
+                            {renderOsAmount(o, true)}
                             <div className="mt-1 flex justify-end">
                               <Badge variant="outline" className={cn('gap-1 text-[11px]', osStatusColor(o.status))}><span className={cn('h-1.5 w-1.5 rounded-full', osStatusDot(o.status))} />{statusLabel(o.status)}</Badge>
                             </div>
@@ -1765,7 +1784,6 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                         const isAuto = !!o.source_sale_order_id;
                         const selected = selectedOsIds.has(o.id);
                         const doneCount = mats.filter(m => m.completed).length;
-                        const noValue = Number(o.total_value) === 0 && o.status !== 'Concluído' && o.status !== 'Cancelado' && o.status !== 'cancelled';
                         return (
                           <TableRow
                             key={o.id}
@@ -1793,7 +1811,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             </TableCell>
                             <TableCell className="hidden lg:table-cell">{renderDeadlineInline(o)}</TableCell>
                             <TableCell className="whitespace-nowrap text-right font-mono text-sm font-bold tabular-nums">
-                              {noValue ? <span className="text-xs font-medium text-muted-foreground">A definir</span> : formatCurrency(Number(o.total_value))}
+                              {renderOsAmount(o)}
                             </TableCell>
                             <TableCell><Badge variant="outline" className={cn('gap-1 whitespace-nowrap text-[11px]', osStatusColor(o.status))}><span className={cn('h-1.5 w-1.5 rounded-full', osStatusDot(o.status))} />{statusLabel(o.status)}</Badge></TableCell>
                             {/* A tabela é a visão PADRÃO da tela e não tinha coluna de

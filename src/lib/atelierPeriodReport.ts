@@ -17,6 +17,7 @@ export interface AtelierPeriodRow {
   done_pairs: number;
   defect_pairs: number;
   loss_pairs: number;
+  defect_resolved_pairs: number;
 }
 
 function num(value: unknown): number {
@@ -39,6 +40,7 @@ export function normalizePeriodRow(raw: Record<string, unknown>): AtelierPeriodR
     done_pairs: num(raw.done_pairs),
     defect_pairs: num(raw.defect_pairs),
     loss_pairs: num(raw.loss_pairs),
+    defect_resolved_pairs: num(raw.defect_resolved_pairs),
   };
 }
 
@@ -54,7 +56,8 @@ export function atelierPeriodCsv(rows: readonly AtelierPeriodRow[]): string {
     'prestador',
     'pares enviados',
     'pares bons',
-    'defeito',
+    'defeito pendente',
+    'defeito retrabalhado',
     'perda',
     'pares a receber',
     'jobs atrasados',
@@ -69,6 +72,7 @@ export function atelierPeriodCsv(rows: readonly AtelierPeriodRow[]): string {
     row.sent_pairs,
     row.received_pairs,
     row.defect_pairs,
+    row.defect_resolved_pairs,
     row.loss_pairs,
     row.pending_pairs,
     row.late_jobs,

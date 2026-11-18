@@ -393,19 +393,21 @@ function JobActions({
         </div>
       )}
 
-      {(sentPairs > 0 || (tallyQuery.data?.good ?? 0) > 0) && (
+      {!tallyQuery.data && !tallyQuery.isError ? (
+        <div className="h-4 w-56 animate-pulse rounded bg-muted" aria-hidden />
+      ) : (sentPairs > 0 || (tallyQuery.data?.good ?? 0) > 0) && tallyQuery.data ? (
         <p className="text-[10px] text-foreground">
             {atelierReceiptDetail({
               sent: sentPairs || Number(job.pairs) || 0,
-              good: tallyQuery.data?.good ?? 0,
-              defect: tallyQuery.data?.defect ?? 0,
-              loss: tallyQuery.data?.loss ?? 0,
-              pendingDefect: tallyQuery.data?.pendingDefect,
-              inRework: tallyQuery.data?.inRework,
-              stillOut: tallyQuery.data?.stillOut,
+              good: tallyQuery.data.good,
+              defect: tallyQuery.data.defect,
+              loss: tallyQuery.data.loss,
+              pendingDefect: tallyQuery.data.pendingDefect,
+              inRework: tallyQuery.data.inRework,
+              stillOut: tallyQuery.data.stillOut,
             })}
         </p>
-      )}
+      ) : null}
       {parts.length > 0 && (
         <ul className="space-y-0.5 text-[10px] text-muted-foreground">
           <li>{sentPairs} de {Number(job.pairs) || 0} enviados</li>

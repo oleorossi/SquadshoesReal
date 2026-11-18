@@ -96,6 +96,7 @@ export function AtelierPeriodPanel() {
                 <th className="py-1 pr-3 text-right font-medium">Enviados</th>
                 <th className="py-1 pr-3 text-right font-medium">Bons</th>
                 <th className="py-1 pr-3 text-right font-medium">Defeito</th>
+                <th className="py-1 pr-3 text-right font-medium">Retrabalhado</th>
                 <th className="py-1 pr-3 text-right font-medium">Perda</th>
                 <th className="py-1 pr-3 text-right font-medium">A receber</th>
                 <th className="py-1 pr-3 text-right font-medium">Atrasados</th>
@@ -125,6 +126,7 @@ function PeriodLine({ row }: { row: AtelierPeriodRow }) {
       <td className="py-2 pr-3 text-right tabular-nums">{qty(row.sent_pairs)}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{qty(row.received_pairs)}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{qty(row.defect_pairs)}</td>
+      <td className="py-2 pr-3 text-right tabular-nums">{qty(row.defect_resolved_pairs)}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{qty(row.loss_pairs)}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{qty(row.pending_pairs)}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{row.late_jobs}</td>

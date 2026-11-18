@@ -32,7 +32,7 @@ function living(name: string): { file: string; body: string } {
 describe('entrada e liberação do Ateliê não gravam atelier_lots.id em stock_movements.lot_id', () => {
   it('a função viva da entrada quita o corte sem usar lot_tracking', () => {
     const inbound = living('apply_atelier_inbound');
-    expect(inbound.file).toContain('20270101048500');
+    expect(inbound.file).toContain('20270101049400');
     expect(inbound.body).toContain('NULL, NULL, v_need.lot_id');
     expect(inbound.body).toContain('atelier_lot_id');
     expect(inbound.body).toContain('Ateliê · corte completado pela entrada');
@@ -47,7 +47,7 @@ describe('entrada e liberação do Ateliê não gravam atelier_lots.id em stock_
 
   it('a liberação com débito de kit grava atelier_lot_id e continua idempotente', () => {
     const release = living('atelier_confirm_lot_release');
-    expect(release.file).toContain('20270101048500');
+    expect(release.file).toContain('20270101049400');
     expect(release.body).toContain('NULL, NULL, p_lot_id');
     expect(release.body).toContain('Ateliê · liberação');
     const guard = release.body.indexOf("s.sector = 'liberacao_atelier'");
