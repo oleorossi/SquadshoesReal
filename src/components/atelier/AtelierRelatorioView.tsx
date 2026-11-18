@@ -66,6 +66,7 @@ import {
   type AtelierLotRow,
 } from '@/hooks/useAtelier';
 import { useContractors } from '@/hooks/useContractors';
+import { AtelierPeriodPanel } from '@/components/atelier/AtelierPeriodPanel';
 
 type ReportTab = AtelierExecutionMode;
 
@@ -727,6 +728,7 @@ export function AtelierRelatorioView() {
 
   return (
     <div className="w-full space-y-3">
+      <AtelierPeriodPanel />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="min-w-0 flex-1 text-[12px] leading-snug text-muted-foreground">
           Fluxo: <span className="font-medium text-foreground">1. Corte</span> na fábrica →{' '}
