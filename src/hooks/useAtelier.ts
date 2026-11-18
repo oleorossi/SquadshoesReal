@@ -495,6 +495,24 @@ export async function markAtelierJobSent(input: { jobId: string; contractorId?: 
   } | null;
 }
 
+export async function sendAtelierSplit(input: {
+  jobId: string;
+  parts: Array<{
+    mode: 'contractor' | 'internal';
+    contractor_id: string | null;
+    grade: Record<string, number>;
+    unit_price: number | null;
+    save_reference_rate: boolean;
+  }>;
+}) {
+  const { data, error } = await supabase.rpc(
+    'atelier_send_split' as never,
+    { p_job_id: input.jobId, p_parts: input.parts } as never,
+  );
+  if (error) throw error;
+  return data as { service_order_ids?: string[]; remaining_pairs?: number } | null;
+}
+
 export async function sendAtelierShipment(input: { jobIds: string[]; contractorId: string }) {
   const { data, error } = await supabase.rpc(
     'atelier_send_shipment' as never,
@@ -539,6 +557,7 @@ export async function registerAtelierJobReceipt(input: {
   defect?: number;
   loss?: number;
   note?: string | null;
+  partId?: string | null;
 }) {
   const { data, error } = await supabase.rpc(
     'register_atelier_job_receipt' as never,
@@ -548,6 +567,7 @@ export async function registerAtelierJobReceipt(input: {
       p_note: input.note ?? null,
       p_defect: input.defect ?? 0,
       p_loss: input.loss ?? 0,
+      p_part_id: input.partId ?? null,
     } as never,
   );
   if (error) throw error;

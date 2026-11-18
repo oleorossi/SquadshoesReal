@@ -4,7 +4,7 @@
  * Grava só pelas RPCs já existentes.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   CheckCircle,
@@ -34,6 +34,7 @@ import {
   atelierTodayISO,
 } from '@/lib/atelierAdmin';
 import { printAtelierShipment } from '@/lib/printAtelierShipment';
+import { AtelierSplitDialog } from '@/components/atelier/AtelierSplitDialog';
 import {
   ATELIER_BOARD_COLUMNS,
   ATELIER_RAIL_LABEL,
@@ -74,6 +75,7 @@ import { kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
 import { deadlineChipLabel, deadlineTone } from '@/lib/reportOrderGrouping';
 import { daysUntilDeadline } from '@/lib/production/productionSequence';
 import { cn, formatCurrency } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 import {
   atelierKeys,
   confirmAtelierLotCut,
@@ -213,6 +215,28 @@ function JobActions({
   const startMut = useMarkAtelierInternalStart();
   const splitMut = useSplitAtelierJobToOwnLot();
   const [contractorId, setContractorId] = useState(job.contractor_id ?? '');
+  const [splitOpen, setSplitOpen] = useState(false);
+  const partsQuery = useQuery({
+    queryKey: ['atelier-job-parts', job.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('atelier_job_parts' as never)
+        .select('id, execution_mode, contractor_id, pairs, received_pairs, service_order_id, unit_price')
+        .eq('job_id', job.id);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        execution_mode: string;
+        contractor_id: string | null;
+        pairs: number;
+        received_pairs: number;
+        service_order_id: string | null;
+        unit_price: number | null;
+      }>;
+    },
+  });
+  const parts = partsQuery.data ?? [];
+  const sentPairs = parts.reduce((sum, part) => sum + Number(part.pairs || 0), 0);
   const quote = atelierOpenRatePrice(rates.data ?? [], contractorId, job.sector, atelierTodayISO());
   const quoteTotal = quote == null ? null : atelierShipmentTotal(Number(job.pairs) || 0, quote);
   const action = atelierSingleAction(job);
@@ -298,8 +322,8 @@ function JobActions({
             <Button
               size="sm"
               className="h-7 px-2 text-[11px]"
-              disabled={busy || rates.isLoading || quote == null || !contractorId || contractors.every((c) => c.id !== contractorId)}
-              onClick={() => sendMut.mutate({ jobIds: [job.id], contractorId })}
+              disabled={busy}
+              onClick={() => setSplitOpen(true)}
             >
               <Truck className="h-3 w-3" />
               Enviar
@@ -307,7 +331,7 @@ function JobActions({
           </div>
           {contractorId && !rates.isLoading && quote == null && (
             <p className="text-[10px] text-amber-700 dark:text-amber-400">
-              Sem tarifa vigente de {atelierRateLabel(job.sector)}. Cadastre em Terceirizados antes de enviar.
+              Sem tarifa vigente de {atelierRateLabel(job.sector)}. No envio, informe o R$/par ou use a tarifa da referência.
             </p>
           )}
           {quote != null && quoteTotal != null && (
@@ -321,6 +345,23 @@ function JobActions({
             </p>
           )}
         </div>
+      )}
+
+      {parts.length > 0 && (
+        <ul className="space-y-0.5 text-[10px] text-muted-foreground">
+          <li>{sentPairs} de {Number(job.pairs) || 0} enviados</li>
+          {parts.map((part) => {
+            const name = part.execution_mode === 'internal'
+              ? 'Interno'
+              : (contractors.find((c) => c.id === part.contractor_id)?.name ?? 'Prestador');
+            return (
+              <li key={part.id}>
+                {name} {part.pairs} · {Number(part.received_pairs) || 0}/{part.pairs} recebidos
+                {part.unit_price != null ? ` · ${formatCurrency(Number(part.unit_price))}/par` : ''}
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       {job.service_order_id && (
@@ -382,6 +423,12 @@ function JobActions({
           Setor liberado. A OP nasce quando o pedido for para Em Produção.
         </p>
       )}
+      <AtelierSplitDialog
+        job={splitOpen ? job : null}
+        lot={splitOpen ? lot : null}
+        contractors={contractors}
+        onClose={() => setSplitOpen(false)}
+      />
     </div>
   );
 }

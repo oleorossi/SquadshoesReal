@@ -29,6 +29,7 @@ export type AtelierExecutionMode = 'internal' | 'contractor';
 export type AtelierPipelineStatus =
   | 'awaiting_cut'
   | 'cut'
+  | 'partially_sent'
   | 'sent_to_contractor'
   | 'realized'
   | 'partially_received'
@@ -47,6 +48,7 @@ export type AtelierPipelineStatus =
 export const ATELIER_PIPELINE_LABEL: Record<AtelierPipelineStatus, string> = {
   awaiting_cut: 'Aguardando corte',
   cut: 'Cortado',
+  partially_sent: 'Envio parcial',
   sent_to_contractor: 'Enviado ao prestador',
   realized: 'Realizado',
   partially_received: 'Recebido parcial',
@@ -91,6 +93,7 @@ export const ATELIER_INTERNAL_OK_STEPS: AtelierPipelineStatus[] = [
 const PIPELINE_ORDER: Record<AtelierPipelineStatus, number> = {
   awaiting_cut: 0,
   cut: 1,
+  partially_sent: 1,
   sent_to_contractor: 2,
   realized: 3,
   partially_received: 4,
@@ -130,6 +133,8 @@ export function atelierKanbanBadgeLabel(status: string | null | undefined): stri
       return 'Ateliê · aguardando corte';
     case 'cut':
       return 'Ateliê · cortado';
+    case 'partially_sent':
+      return 'Ateliê · envio parcial';
     case 'sent_to_contractor':
       return 'Ateliê · enviado ao prestador';
     case 'realized':
@@ -183,7 +188,7 @@ export function atelierJobBlocksProduction(
 export function atelierNextStreetOk(
   status: AtelierPipelineStatus | string | null | undefined,
 ): AtelierPipelineStatus | null {
-  if (status === 'cut') return 'sent_to_contractor';
+  if (status === 'cut' || status === 'partially_sent') return 'sent_to_contractor';
   if (status === 'sent_to_contractor') return 'realized';
   if (status === 'realized' || status === 'partially_received') return 'received_at_factory';
   return null;

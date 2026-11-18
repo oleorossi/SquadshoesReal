@@ -4,7 +4,7 @@
  * consumiu esses pares — quem recusa é a RPC.
  */
 import { useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
 import {
   ATELIER_SECTOR_LABEL,
   type AtelierSector,
@@ -54,10 +56,28 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
   const [loss, setLoss] = useState('');
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
+  const [partId, setPartId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { roles } = useAccessControl();
   const canReverse = roles.includes('admin') || roles.includes('gerente');
   const { data: history = [], isLoading } = useAtelierJobReceipts(open ? job!.id : null);
+  const partsQuery = useQuery({
+    queryKey: ['atelier-job-parts', job?.id ?? '', 'receipt'],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('atelier_job_parts' as never)
+        .select('id, pairs, received_pairs, execution_mode, contractor_id, pipeline_status')
+        .eq('job_id', job!.id);
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; pairs: number; received_pairs: number; execution_mode: string }>;
+    },
+  });
+  const parts = partsQuery.data ?? [];
+  const activePart = parts.find((part) => part.id === partId) ?? (parts.length === 1 ? parts[0] : null);
+  const partRemaining = activePart
+    ? atelierReceiptRemaining(Number(activePart.pairs) || 0, Number(activePart.received_pairs) || 0)
+    : remaining;
   const sector = job ? (ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector) : '';
   const good = atelierWholePairs(qty);
   const defectPairs = defect.trim() === '' ? 0 : atelierWholePairs(defect, true);
@@ -71,7 +91,11 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
     setLoss('');
     setNote('');
     setReason('');
+    setPartId(null);
   }, [job]);
+  useEffect(() => {
+    if (parts.length === 1) setPartId(parts[0].id);
+  }, [parts]);
 
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: atelierKeys.all });
@@ -91,6 +115,7 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
         defect: defectPairs,
         loss: lossPairs,
         note,
+        partId: activePart?.id ?? null,
       });
       toast.success(`${sector}: ${good} pares bons conferidos`);
       await refresh();
@@ -143,7 +168,21 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
             label={sector}
           />
         )}
-        {job && remaining > 0 && (
+        {parts.length > 1 && (
+          <Select value={activePart?.id} onValueChange={setPartId}>
+            <SelectTrigger className="h-9 text-xs" aria-label="Parte do envio">
+              <SelectValue placeholder="Escolha a parte" />
+            </SelectTrigger>
+            <SelectContent>
+              {parts.map((part) => (
+                <SelectItem key={part.id} value={part.id}>
+                  {part.execution_mode === 'internal' ? 'Interno' : 'Prestador'} · {part.received_pairs}/{part.pairs}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {job && partRemaining > 0 && (
           <div className="space-y-2">
             <label className="block space-y-1 text-xs">
               <span className="font-medium text-foreground">Pares bons</span>
@@ -182,9 +221,9 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
             <p className="text-[11px] text-muted-foreground">
               A conta a pagar usa só os pares bons. Defeito e perda entram no saldo do job.
             </p>
-            {preview > remaining && (
+            {preview > partRemaining && (
               <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                Passa do saldo. O máximo desta entrada é {remaining}.
+                Passa do saldo. O máximo desta entrada é {partRemaining}.
               </p>
             )}
             <label className="block space-y-1 text-xs">
@@ -248,7 +287,7 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" size="sm" onClick={onClose}>Fechar</Button>
-          {job && remaining > 0 && (
+          {job && partRemaining > 0 && (
             <Button type="button" size="sm" disabled={busy} onClick={() => void conferir()}>
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Conferir recebimento

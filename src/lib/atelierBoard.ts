@@ -62,6 +62,7 @@ export function atelierJobBoardColumn(
   status: AtelierPipelineStatus | string | null | undefined,
 ): AtelierPipelineStatus | null {
   if (!status || status === 'cancelled') return null;
+  if (status === 'partially_sent') return 'cut';
   return ATELIER_BOARD_COLUMNS.some((c) => c.id === status) ? (status as AtelierPipelineStatus) : null;
 }
 

@@ -84,5 +84,6 @@ export function atelierCanRecordReceipt(job: {
   }
   return job.pipeline_status === 'sent_to_contractor'
     || job.pipeline_status === 'realized'
-    || job.pipeline_status === 'partially_received';
+    || job.pipeline_status === 'partially_received'
+    || job.pipeline_status === 'partially_sent';
 }

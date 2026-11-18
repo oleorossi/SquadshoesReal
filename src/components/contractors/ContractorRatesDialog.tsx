@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -63,6 +64,31 @@ export function ContractorRatesDialog({ open, onOpenChange, contractor }: Props)
   const [newPrice, setNewPrice] = useState(0);
   const [newFrom, setNewFrom] = useState(() => new Date().toLocaleDateString('sv-SE'));
   const [saving, setSaving] = useState(false);
+  const { roles } = useAccessControl();
+  const canEditReference = roles.includes('admin') || roles.includes('gerente');
+  const [refCode, setRefCode] = useState('');
+  const [refSector, setRefSector] = useState('costura');
+  const [refPrice, setRefPrice] = useState(0);
+  const referenceRates = useQuery({
+    queryKey: ['contractor_reference_rates', contractorId],
+    enabled: open && !!contractorId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('contractor_reference_rates' as never)
+        .select('id, sector, price_per_pair, valid_from, valid_to, technical_sheets(code, model)')
+        .eq('contractor_id', contractorId)
+        .order('valid_from', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        sector: string;
+        price_per_pair: number;
+        valid_from: string;
+        valid_to: string | null;
+        technical_sheets?: { code?: string | null; model?: string | null } | null;
+      }>;
+    },
+  });
 
   const handleAdd = async () => {
     if (!contractorId || saving) return;
@@ -133,6 +159,100 @@ export function ContractorRatesDialog({ open, onOpenChange, contractor }: Props)
           <Button className="h-9" onClick={handleAdd} disabled={saving || newPrice <= 0}>
             Adicionar
           </Button>
+        </div>
+
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-xs font-medium text-foreground">Tarifa por referência</p>
+          <p className="text-[11px] text-muted-foreground">
+            Vale antes da tarifa do setor. Só admin ou gerência grava.
+          </p>
+          {canEditReference && (
+            <div className="grid grid-cols-[1fr_1fr_110px_auto] gap-2 items-end">
+              <div>
+                <Label className="text-xs">Código da ficha</Label>
+                <Input value={refCode} onChange={(e) => setRefCode(e.target.value)} className="h-9" placeholder="SP120" />
+              </div>
+              <div>
+                <Label className="text-xs">Serviço</Label>
+                <Select value={refSector} onValueChange={setRefSector}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {SECTOR_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">R$/par</Label>
+                <NumberInput value={refPrice} onChange={(v) => setRefPrice(Number(v ?? 0))} step="0.01" min={0} className="h-9" />
+              </div>
+              <Button
+                className="h-9"
+                disabled={saving || refPrice <= 0 || !refCode.trim()}
+                onClick={() => {
+                  void (async () => {
+                    setSaving(true);
+                    try {
+                      const { data: sheet, error: sheetError } = await supabase
+                        .from('technical_sheets')
+                        .select('id')
+                        .ilike('code', refCode.trim())
+                        .limit(1)
+                        .maybeSingle();
+                      if (sheetError) throw sheetError;
+                      if (!sheet?.id || !contractorId) throw new Error('Ficha não encontrada');
+                      const { error } = await supabase.rpc('atelier_save_reference_rate' as never, {
+                        p_contractor_id: contractorId,
+                        p_sheet_id: sheet.id,
+                        p_sector: refSector,
+                        p_price: refPrice,
+                      } as never);
+                      if (error) throw error;
+                      toast.success('Tarifa da referência gravada.');
+                      setRefPrice(0);
+                      void referenceRates.refetch();
+                    } catch (e: unknown) {
+                      const message = e && typeof e === 'object' && 'message' in e
+                        ? String((e as { message?: string }).message)
+                        : 'Falha ao gravar a tarifa da referência';
+                      toast.error(message);
+                    } finally {
+                      setSaving(false);
+                    }
+                  })();
+                }}
+              >
+                Gravar
+              </Button>
+            </div>
+          )}
+          {(referenceRates.data ?? []).length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Referência</TableHead>
+                  <TableHead className="text-xs">Serviço</TableHead>
+                  <TableHead className="text-xs text-right">R$/par</TableHead>
+                  <TableHead className="text-xs">Vigência</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(referenceRates.data ?? []).map((row) => (
+                  <TableRow key={row.id} className={row.valid_to ? 'opacity-60' : ''}>
+                    <TableCell className="text-xs">{row.technical_sheets?.code || row.technical_sheets?.model || 'Ficha'}</TableCell>
+                    <TableCell className="text-xs">{sectorLabel(row.sector)}</TableCell>
+                    <TableCell className="text-xs text-right font-mono">
+                      {Number(row.price_per_pair).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {formatDateBR(row.valid_from)}{row.valid_to ? ` — ${formatDateBR(row.valid_to)}` : ' — atual'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </div>
 
         {isLoading ? null : rates.length === 0 ? (

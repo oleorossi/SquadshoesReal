@@ -259,6 +259,8 @@ export interface PrintReceiptOptions {
   stubOnly?: boolean;
   /** Pares já devolvidos por numeração — só usado quando `stubOnly`. */
   alreadyReturned?: Record<string, number> | null;
+  /** Ficha do operador anexada à remessa do Ateliê. HTML já escapado. */
+  appendixHtml?: string | null;
 }
 
 const DEFAULT_COMPANY: ReceiptCompany = { name: 'Squad Shoes' };
@@ -617,6 +619,8 @@ export function printServiceOrderReceipt(
     ${materialSections.sentHtml}
 
     ${order.notes ? `<div class="notes"><b>Obs.:</b> ${esc(order.notes)}</div>` : ''}
+
+    ${opts?.appendixHtml || ''}
 
     <div class="cut"><span>&#9986; Cortar aqui · canhoto volta com o lote</span></div>`;
 
