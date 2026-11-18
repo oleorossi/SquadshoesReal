@@ -191,6 +191,8 @@ export interface AtelierLotRow {
   status: 'open' | 'cut' | 'cancelled';
   /** Após corte: aguardando componentes ou pronto para envio. */
   kit_gate?: AtelierKitGate;
+  /** Kit debitado e pronto para o clique de envio. Não envia sozinho. */
+  dispatch_signal?: string | null;
   reference_id: string;
   reference_code: string | null;
   reference_name: string | null;

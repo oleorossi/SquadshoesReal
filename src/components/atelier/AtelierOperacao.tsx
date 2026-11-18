@@ -195,10 +195,14 @@ function JobActions({
   const action = atelierSingleAction(job);
   const canChangeMode = job.pipeline_status === 'awaiting_cut' || job.pipeline_status === 'cut';
   const kitWaiting = lot.kit_gate === 'awaiting_components';
+  const dispatchSignal = !kitWaiting && lot.dispatch_signal ? lot.dispatch_signal : null;
   const busy = setMode.isPending || sendMut.isPending || realizedMut.isPending || startMut.isPending;
 
   return (
     <div className="space-y-1.5">
+      {dispatchSignal && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-400">{dispatchSignal}</p>
+      )}
       {canChangeMode && (
         <div className="inline-flex rounded-md border border-border p-0.5">
           {(['internal', 'contractor'] as AtelierExecutionMode[]).map((m) => (
