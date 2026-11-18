@@ -1,15 +1,28 @@
 /**
  * Quinzena de faturamento: dia 1–15 ou 16–fim do mês da semana de faturamento.
  * Lote de Ateliê parado não fura uma quinzena anterior.
- * Dentro da quinzena, o lote parado vem antes da ordem atual (semana, prazo, criação).
+ * Dentro da quinzena: corte já confirmado com pendência, depois demanda Ateliê,
+ * depois o resto. Semana, prazo e criação só desempatam dentro do mesmo tier.
  */
+
+/** 0 corte confirmado com pendência, 1 demanda Ateliê, 2 resto. */
+export type AtelierCoverTier = 0 | 1 | 2;
 
 export interface AllocationClaim {
   id: string;
   fortnightStart: string;
   atelierStuck: boolean;
-  /** Menor = atende primeiro, depois do desempate do Ateliê. Semana, prazo, criação. */
+  /** Explícito. Sem isso, atelierStuck vira 1 e o resto vira 2. */
+  coverTier?: AtelierCoverTier;
+  /** Menor = atende primeiro, depois da quinzena e do tier. Semana, prazo, criação. */
   priorityScore: number;
+}
+
+export function coverTierOf(claim: AllocationClaim): AtelierCoverTier {
+  if (claim.coverTier === 0 || claim.coverTier === 1 || claim.coverTier === 2) {
+    return claim.coverTier;
+  }
+  return claim.atelierStuck ? 1 : 2;
 }
 
 export function billingFortnightStart(day: string | null | undefined): string | null {
@@ -24,14 +37,15 @@ export function compareAllocation(a: AllocationClaim, b: AllocationClaim): numbe
   if (a.fortnightStart !== b.fortnightStart) {
     return a.fortnightStart < b.fortnightStart ? -1 : 1;
   }
-  if (a.atelierStuck !== b.atelierStuck) return a.atelierStuck ? -1 : 1;
+  const tier = coverTierOf(a) - coverTierOf(b);
+  if (tier !== 0) return tier;
   if (a.priorityScore !== b.priorityScore) return a.priorityScore - b.priorityScore;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-/** Pode tirar empenho de um PV com prazo pior para cobrir lote parado. Não fura quinzena. */
+/** Pode tirar empenho para cobrir corte ou demanda do Ateliê. Não fura quinzena. */
 export function canStealReservation(donor: AllocationClaim, recipient: AllocationClaim): boolean {
-  if (!recipient.atelierStuck || donor.id === recipient.id) return false;
+  if (donor.id === recipient.id || coverTierOf(recipient) >= 2) return false;
   if (donor.fortnightStart < recipient.fortnightStart) return false;
   return compareAllocation(recipient, donor) < 0;
 }

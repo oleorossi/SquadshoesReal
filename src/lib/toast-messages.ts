@@ -16,12 +16,16 @@ import { toast } from 'sonner';
  * Adopção é orgânica — migre quando tocar no arquivo.
  */
 
-/** Extrai mensagem de qualquer error-like value de forma segura. */
+/** Extrai mensagem de Error, PostgrestError ou string. Details entram quando a message não os traz. */
 function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === 'string') return err;
-  if (err && typeof err === 'object' && 'message' in err) {
-    return String((err as { message: unknown }).message);
+  if (typeof err === 'string' && err.trim()) return err;
+  if (err && typeof err === 'object') {
+    const extra = err as { message?: unknown; details?: unknown; hint?: unknown };
+    const message = typeof extra.message === 'string' ? extra.message : '';
+    const details = typeof extra.details === 'string' && !message.includes(extra.details) ? extra.details : '';
+    const hint = typeof extra.hint === 'string' && !message.includes(extra.hint) ? extra.hint : '';
+    const text = [message, details, hint].filter(Boolean).join(' ');
+    if (text) return text;
   }
   return 'Erro desconhecido';
 }

@@ -74,7 +74,7 @@ describe('entrada da OC', () => {
 
 describe('Ateliê na entrada', () => {
   it('1. a liberação ignora débito já feito antes de mexer no estoque', () => {
-    const body = fnBody('20270101047800_liberacao_atelie_idempotente.sql', 'atelier_confirm_lot_release');
+    const body = fnBody('20270101048500_entrada_atelie_lote_e_prioridade.sql', 'atelier_confirm_lot_release');
     const guard = body.indexOf("s.sector = 'liberacao_atelier'");
     const stock = body.indexOf('UPDATE public.products');
     expect(guard).toBeGreaterThan(0);
@@ -99,12 +99,16 @@ describe('Ateliê na entrada', () => {
   it('4. quitar a napa do corte gera movimento e não zera a falta sem saldo', () => {
     expect(cutPendingFill(10, 4)).toEqual({ movementQty: 4, pendingAfter: 6 });
     expect(cutPendingFill(10, 0)).toEqual({ movementQty: 0, pendingAfter: 10 });
-    const body = fnBody('20270101047900_entrada_libera_atelie.sql', 'apply_atelier_inbound');
+    const body = fnBody('20270101048500_entrada_atelie_lote_e_prioridade.sql', 'apply_atelier_inbound');
     const movement = body.indexOf('INSERT INTO public.stock_movements');
     const pending = body.indexOf('pending_qty = pending_qty - v_qty');
     expect(movement).toBeGreaterThan(0);
     expect(movement).toBeLessThan(pending);
-    expect(body).toContain('lot_id');
+    expect(body).toContain('NULL, NULL, v_need.lot_id');
+    expect(body).toContain('atelier_lot_id');
+    expect(body).toContain('Reserva aberta zero não bloqueia');
+    expect(body).toContain('COALESCE(v_prev, 0) - COALESCE(v_held, 0)');
+    expect(body).not.toMatch(/v_qty\s*:=\s*LEAST\(\s*v_qty,\s*COALESCE\(v_open/);
     expect(body).toContain('Não zera pending_qty');
     expect(body).toContain("'consumo_op'");
   });
@@ -119,5 +123,32 @@ describe('Ateliê na entrada', () => {
     expect(compareAllocation(earlier, later)).toBeLessThan(0);
     expect(canStealReservation(later, stuck)).toBe(true);
     expect(canStealReservation(earlier, later)).toBe(false);
+  });
+
+  it('na mesma quinzena o corte confirmado vence a falta comum, sem furar a quinzena', () => {
+    const cut = {
+      id: 'pv-251', fortnightStart: '2026-11-16', atelierStuck: true,
+      coverTier: 0 as const, priorityScore: 9,
+    };
+    const demand = {
+      id: 'pv-dem', fortnightStart: '2026-11-16', atelierStuck: true,
+      coverTier: 1 as const, priorityScore: 1,
+    };
+    const plain = {
+      id: 'pv-250', fortnightStart: '2026-11-16', atelierStuck: false,
+      coverTier: 2 as const, priorityScore: 1,
+    };
+    const earlier = {
+      id: 'antes', fortnightStart: '2026-11-01', atelierStuck: false,
+      coverTier: 2 as const, priorityScore: 0,
+    };
+    expect(compareAllocation(cut, plain)).toBeLessThan(0);
+    expect(compareAllocation(cut, demand)).toBeLessThan(0);
+    expect(compareAllocation(demand, plain)).toBeLessThan(0);
+    expect(compareAllocation(earlier, cut)).toBeLessThan(0);
+    expect(canStealReservation(plain, cut)).toBe(true);
+    expect(canStealReservation(demand, cut)).toBe(true);
+    expect(canStealReservation(earlier, cut)).toBe(false);
+    expect(canStealReservation(cut, plain)).toBe(false);
   });
 });

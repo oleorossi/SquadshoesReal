@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { describePostgrestError } from '@/lib/postgrestErrors';
 
 export type StockGrade = Record<string, unknown>;
 
@@ -91,6 +92,16 @@ export type ReadyStockOperation =
       reason?: string;
     };
 
+/** PostgrestError não é Error. A mensagem e o detail precisam sobreviver ao catch. */
+export function stockCommandFailure(error: unknown): Error {
+  const wrapped = new Error(describePostgrestError(error, 'Falha ao executar comando de estoque'));
+  if (error && typeof error === 'object') {
+    const extra = error as { code?: string; details?: string; hint?: string };
+    Object.assign(wrapped, { code: extra.code, details: extra.details, hint: extra.hint });
+  }
+  return wrapped;
+}
+
 function commandRequestId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
@@ -113,7 +124,7 @@ export async function executeStockCommand(
     p_request_id: requestId,
     p_expected_snapshot: expectedSnapshot,
   } as never);
-  if (error) throw error;
+  if (error) throw stockCommandFailure(error);
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('Resposta inválida do comando de estoque.');
   }

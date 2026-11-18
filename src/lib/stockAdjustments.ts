@@ -1,3 +1,4 @@
+import { describePostgrestError } from '@/lib/postgrestErrors';
 import { adjustProductsStock } from '@/lib/stockCommand';
 
 export interface AdjustStockParams {
@@ -47,7 +48,7 @@ export async function adjustStockSafe(params: AdjustStockParams): Promise<Adjust
     return {
       success: false,
       currentQty: params.expectedPrevious,
-      errorMessage: error instanceof Error ? error.message : 'Falha ao executar comando de estoque',
+      errorMessage: describePostgrestError(error, 'Falha ao executar comando de estoque'),
     };
   }
   if (result.success === false) {
