@@ -54,7 +54,10 @@ describe('Ateliê — OS da remessa leva o PV', () => {
 
   it('a volta prevista soma o offset à âncora de corte', () => {
     expect(fn(SQL, 'atelier_job_return_date')).toContain('add_business_days(p_anchor, v_offset)');
-    expect(SQL).toContain('j.target_end < CURRENT_DATE');
+    const report = fn(SQL, 'atelier_period_report');
+    expect(report).toContain('j.sector,');
+    expect(report).toContain('atelier_job_return_date(j.target_end, j.sector)');
+    expect(report).not.toContain('j.target_end < CURRENT_DATE');
     expect(REPORT).toContain('j.target_end,\n      j.contractor_id,');
     expect(UI).toContain('atelierReturnDate');
     expect(UI).toContain('Sem tarifa vigente de');
