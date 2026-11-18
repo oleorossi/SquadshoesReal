@@ -127,19 +127,34 @@ export function pointingRemainingWithAtelierCap(input: {
   return Math.min(remaining, room);
 }
 
-export function atelierCanRecordReceipt(job: {
-  execution_mode?: AtelierExecutionMode | string | null;
-  pipeline_status: string;
-  pairs?: number | null;
-  received_pairs?: number | null;
-}): boolean {
+export function atelierCanRecordReceipt(
+  job: {
+    execution_mode?: AtelierExecutionMode | string | null;
+    pipeline_status: string;
+    pairs?: number | null;
+    received_pairs?: number | null;
+  },
+  extras?: { pendingDefect?: number; inRework?: number },
+): boolean {
   const remaining = atelierReceiptRemaining(Number(job.pairs) || 0, Number(job.received_pairs) || 0);
-  if (remaining <= 0) return false;
+  const openWork = Math.max(0, Math.trunc(Number(extras?.pendingDefect) || 0))
+    + Math.max(0, Math.trunc(Number(extras?.inRework) || 0));
+  // Conferência cheia com defeito zera o saldo, mas o job fica parcial até
+  // retrabalho/descarte. Sem isso o diálogo some e o defeito não tem destino.
+  const waitingOnDefect = job.pipeline_status === 'partially_received'
+    || job.pipeline_status === 'partially_done';
+  if (remaining <= 0 && openWork <= 0 && !waitingOnDefect) return false;
   if (atelierEffectiveMode(job.execution_mode) === 'internal') {
-    return job.pipeline_status === 'in_progress' || job.pipeline_status === 'partially_done';
+    if (job.pipeline_status === 'in_progress' || job.pipeline_status === 'partially_done') return true;
+    return openWork > 0 && (job.pipeline_status === 'done' || job.pipeline_status === 'partially_received');
   }
-  return job.pipeline_status === 'sent_to_contractor'
+  if (
+    job.pipeline_status === 'sent_to_contractor'
     || job.pipeline_status === 'realized'
     || job.pipeline_status === 'partially_received'
-    || job.pipeline_status === 'partially_sent';
+    || job.pipeline_status === 'partially_sent'
+  ) {
+    return true;
+  }
+  return openWork > 0 && job.pipeline_status === 'received_at_factory';
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  atelierCanRecordReceipt,
   atelierReceiptDetail,
   atelierReceiptProgressLabel,
   atelierReceiptRemaining,
@@ -70,6 +71,31 @@ describe('recebimento parcial do Ateliê', () => {
       alreadyProcessed: 0,
       cap: null,
     })).toBe(40);
+  });
+
+  it('reabre a conferência quando o saldo encheu mas há defeito ou retrabalho', () => {
+    const full = {
+      execution_mode: 'contractor',
+      pipeline_status: 'partially_received',
+      pairs: 12,
+      received_pairs: 12,
+    };
+    expect(atelierCanRecordReceipt(full)).toBe(true);
+    expect(atelierCanRecordReceipt(full, { pendingDefect: 1 })).toBe(true);
+    expect(atelierCanRecordReceipt({
+      ...full,
+      pipeline_status: 'received_at_factory',
+    }, { inRework: 1 })).toBe(true);
+    expect(atelierCanRecordReceipt({
+      ...full,
+      pipeline_status: 'received_at_factory',
+    })).toBe(false);
+    expect(atelierCanRecordReceipt({
+      execution_mode: 'contractor',
+      pipeline_status: 'sent_to_contractor',
+      pairs: 12,
+      received_pairs: 0,
+    })).toBe(true);
   });
 
   it('separa bons, defeito, perda e o que ainda está fora', () => {

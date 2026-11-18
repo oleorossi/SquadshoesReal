@@ -28,6 +28,7 @@ import { useAccessControl } from '@/hooks/useAccessControl';
 import { AtelierReceiptMeter } from '@/components/atelier/AtelierReceiptMeter';
 import {
   atelierKeys,
+  receiveAtelierRework,
   registerAtelierJobReceipt,
   reverseAtelierJobReceipt,
   useAtelierJobReceipts,
@@ -48,10 +49,11 @@ function formatWhen(iso: string) {
 export function AtelierReceiptDialog({ job, onClose }: Props) {
   const qc = useQueryClient();
   const open = !!job;
-  const received = Number(job?.received_pairs) || 0;
+  const snapshotReceived = Number(job?.received_pairs) || 0;
   const pairs = Number(job?.pairs) || 0;
-  const remaining = atelierReceiptRemaining(pairs, received);
-  const [qty, setQty] = useState(String(remaining || ''));
+  const [qty, setQty] = useState(
+    String(atelierReceiptRemaining(pairs, snapshotReceived) || ''),
+  );
   const [defect, setDefect] = useState('');
   const [loss, setLoss] = useState('');
   const [note, setNote] = useState('');
@@ -69,15 +71,31 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('atelier_defect_resolutions' as never)
-        .select('receipt_id, kind, pairs')
+        .select('id, receipt_id, kind, pairs')
         .in('receipt_id', receiptIds);
       if (error) throw error;
-      return (data ?? []) as Array<{ receipt_id: string; kind: string; pairs: number }>;
+      return (data ?? []) as Array<{ id: string; receipt_id: string; kind: string; pairs: number }>;
     },
   });
   const resolvedFor = (receiptId: string) => (resolutionsQuery.data ?? [])
     .filter((row) => row.receipt_id === receiptId)
     .reduce((sum, row) => sum + Number(row.pairs || 0), 0);
+  const closedReworkIds = new Set(
+    history
+      .filter((row) => row.rework_resolution_id && !row.reversed_at)
+      .map((row) => row.rework_resolution_id as string),
+  );
+  const unmatchedRework = (resolutionsQuery.data ?? []).filter(
+    (row) => row.kind === 'rework' && !closedReworkIds.has(row.id),
+  );
+  const physicalFromHistory = history
+    .filter((row) => !row.reversed_at && !row.rework_resolution_id)
+    .reduce(
+      (sum, row) => sum + Number(row.pairs || 0) + Number(row.qty_defect || 0) + Number(row.qty_loss || 0),
+      0,
+    );
+  const received = isLoading ? snapshotReceived : physicalFromHistory;
+  const remaining = atelierReceiptRemaining(pairs, received);
   const partsQuery = useQuery({
     queryKey: ['atelier-job-parts', job?.id ?? '', 'receipt'],
     enabled: open,
@@ -141,11 +159,27 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
       });
       toast.success(`${sector}: ${good} pares bons conferidos`);
       await refresh();
-      onClose();
+      if ((defectPairs ?? 0) <= 0) onClose();
     } catch (error) {
       const message = error && typeof error === 'object' && 'message' in error
         ? String((error as { message?: string }).message)
         : 'Falha ao conferir';
+      toast.error(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const receberRetrabalho = async (resolutionId: string, reworkPairs: number) => {
+    setBusy(true);
+    try {
+      await receiveAtelierRework({ resolutionId, pairs: reworkPairs });
+      toast.success(`${reworkPairs} par(es) do retrabalho conferidos`);
+      await refresh();
+    } catch (error) {
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: string }).message)
+        : 'Falha ao receber o retrabalho';
       toast.error(message);
     } finally {
       setBusy(false);
@@ -231,6 +265,28 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
               ))}
             </SelectContent>
           </Select>
+        )}
+        {unmatchedRework.length > 0 && (
+          <div className="space-y-1 rounded border border-border/60 px-2 py-1.5">
+            <p className="text-[11px] font-medium text-foreground">Retrabalho a receber</p>
+            <p className="text-[11px] text-muted-foreground">
+              Estes pares já voltaram do prestador. Conferir pelo retrabalho não usa o saldo da parte.
+            </p>
+            {unmatchedRework.map((row) => (
+              <div key={row.id} className="flex items-center justify-between gap-2">
+                <span className="text-xs font-mono font-semibold">{row.pairs} pares</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  disabled={busy}
+                  onClick={() => void receberRetrabalho(row.id, Number(row.pairs) || 0)}
+                >
+                  Receber retrabalho
+                </Button>
+              </div>
+            ))}
+          </div>
         )}
         {job && partRemaining > 0 && (
           <div className="space-y-2">

@@ -449,7 +449,10 @@ function JobActions({
         </div>
       )}
 
-      {atelierCanRecordReceipt(job) && job.execution_mode !== 'internal' && (
+      {atelierCanRecordReceipt(job, {
+        pendingDefect: tallyQuery.data?.pendingDefect,
+        inRework: tallyQuery.data?.inRework,
+      }) && job.execution_mode !== 'internal' && (
         <div className="flex justify-end">
           <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onReceipt}>
             <Warehouse className="h-3 w-3" />
@@ -467,7 +470,10 @@ function JobActions({
         </div>
       )}
 
-      {atelierCanRecordReceipt(job) && job.execution_mode === 'internal' && (
+      {atelierCanRecordReceipt(job, {
+        pendingDefect: tallyQuery.data?.pendingDefect,
+        inRework: tallyQuery.data?.inRework,
+      }) && job.execution_mode === 'internal' && (
         <div className="flex justify-end">
           <Button size="sm" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onReceipt}>
             <CheckCircle className="h-3 w-3" />
