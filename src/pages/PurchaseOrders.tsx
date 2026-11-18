@@ -3,6 +3,7 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { LancamentoAvulsoDialog } from "@/components/avulso/LancamentoAvulsoDialog";
 import { Plus, Receipt } from '@phosphor-icons/react';
 import { receiptConversionFactor } from '@/lib/purchaseConversion';
+import { PurchaseOrderReceiveDialog, type ReceiveLineDraft } from '@/components/purchase/PurchaseOrderReceiveDialog';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -1030,6 +1031,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   const [gradeEditorItemId, setGradeEditorItemId] = useState<string | null>(null);
   // Recebimento parcial por item (Fase C)
   const [partialItem, setPartialItem] = useState<PurchaseOrderItem | null>(null);
+  const [receiveAllOpen, setReceiveAllOpen] = useState(false);
   const [partialQtyInput, setPartialQtyInput] = useState('');
   const [partialBusy, setPartialBusy] = useState(false);
 
@@ -1077,7 +1079,10 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   // perigoso é só o de OC que já virou contas a pagar.
   const isEditable = !isArtisanal && (order.status === 'pending' || order.status === 'approved') && !hasLaunchedAP;
   // OC em estado em que dá pra receber (inclui 'parcial' p/ continuar de onde parou).
-  const isReceivable = !isArtisanal && (order.status === 'sent' || order.status === 'approved' || order.status === 'parcial');
+  const isReceivable = !isArtisanal && (
+    order.status === 'sent' || order.status === 'approved' || order.status === 'parcial'
+    || order.status === 'draft' || order.status === 'suggested'
+  );
 
   const handleItemChange = (itemId: string, field: 'quantity' | 'unit_price', value: number) => {
     setEditingItems(prev => ({
@@ -1230,6 +1235,49 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['box_types'] });
       qc.invalidateQueries({ queryKey: ['box_types_stock'] });
+      toast.error(err.message);
+    } finally {
+      setReceiving(false);
+    }
+  };
+
+  const handleReceiveAll = async ({ receipts, invoiceId }: { receipts: ReceiveLineDraft[]; invoiceId: string | null }) => {
+    if (receiving) return;
+    setReceiving(true);
+    const inboundSince = inboundEntrySince();
+    try {
+      await preflightReceive(items);
+      await executePurchaseOrderCommand({
+        command: 'receive',
+        purchaseOrderId: orderId,
+        expectedUpdatedAt: order.updated_at,
+        payload: {
+          receipts: receipts.map((line) => ({
+            item_id: line.itemId,
+            quantity: line.quantity,
+            expected_received_quantity: line.expectedReceived,
+            ...(line.grade ? { grade: line.grade } : {}),
+          })),
+          received_date: new Date().toISOString().slice(0, 10),
+          reason: `Entrada OC ${order.order_number} — ${order.supplier_name}`,
+          ...(invoiceId ? { invoice_id: invoiceId } : {}),
+        },
+        logicalKey: purchaseOrderLogicalKey('receive-all', orderId, invoiceId ?? 'sem-nf'),
+      });
+      qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
+      qc.invalidateQueries({ queryKey: ['mrp-needs'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['stock_movements'] });
+      toast.success(invoiceId
+        ? 'Entrada feita e nota ligada à ordem.'
+        : 'Entrada feita. A nota pode ser ligada depois.');
+      setReceiveAllOpen(false);
+      void openInboundAllocationReview({
+        productIds: items.map((it) => it.product_id).filter((id): id is string => !!id),
+        since: inboundSince,
+      });
+    } catch (err: any) {
       toast.error(err.message);
     } finally {
       setReceiving(false);
@@ -1655,10 +1703,10 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           )}
           {isReceivable && (
             <>
-              <Button variant="outline" className="gap-1" onClick={handleMarkReceived} disabled={receiving}>
+              <Button variant="outline" className="gap-1" onClick={() => setReceiveAllOpen(true)} disabled={receiving}>
                 {receiving
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> Processando...</>
-                  : <><CheckCircle2 className="h-4 w-4" /> {order.status === 'parcial' ? 'Receber restante (só estoque)' : 'Receber (só estoque)'}</>}
+                  : <><CheckCircle2 className="h-4 w-4" /> Dar entrada em tudo</>}
               </Button>
               <Button variant="default" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleFinalize} disabled={receiving}>
                 {receiving
@@ -1695,6 +1743,15 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
             />
           );
         })()}
+
+        <PurchaseOrderReceiveDialog
+          open={receiveAllOpen}
+          onOpenChange={setReceiveAllOpen}
+          orderNumber={order.order_number}
+          items={items}
+          busy={receiving}
+          onConfirm={handleReceiveAll}
+        />
 
         {/* Recebimento parcial de um item (Fase C) */}
         {partialItem && (() => {

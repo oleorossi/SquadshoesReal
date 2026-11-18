@@ -57,6 +57,8 @@ export type PurchaseOrderItem = {
   /** Quantidade já recebida (acumulada), na mesma unidade de `quantity`. Suporta
    *  recebimento parcial ("receber 8 de 10"). Fase C. */
   received_quantity?: number | null;
+  /** Grade já creditada, para o recebimento parcial por numeração. */
+  received_grade?: Record<string, number> | null;
   product?: { name: string; sku: string; category: string; color?: string | null; stock_grade?: Record<string, any> | null };
 };
 
