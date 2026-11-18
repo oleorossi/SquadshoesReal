@@ -6,6 +6,8 @@ import {
   atelierJobBlocksProduction,
   atelierJobBoardColumn,
   atelierJobIsLate,
+  atelierReturnDate,
+  atelierSectorOffsetDays,
   atelierTimeline,
   errorReason,
   groupAtelierJobsByOrder,
@@ -60,6 +62,16 @@ describe('quadro do Ateliê por job', () => {
     expect(atelierJobBlocksProduction('internal', 'in_progress')).toBe(true);
     expect(atelierJobBlocksProduction('internal', 'done')).toBe(false);
     expect(atelierJobBlocksProduction(null, 'received_at_factory')).toBe(false);
+  });
+
+  it('voltar é a âncora de corte mais o offset, não o próprio dia do corte', () => {
+    expect(atelierSectorOffsetDays('costura_cabedal', null)).toBe(5);
+    expect(atelierSectorOffsetDays('aviamento', { aviamento_offset_days: 3 })).toBe(3);
+    expect(atelierReturnDate('2026-11-16', 5)).toBe('2026-11-23');
+    expect(atelierReturnDate('2026-11-16', 0)).toBe('2026-11-16');
+    const cutToday = new Date(2026, 10, 18, 12);
+    expect(atelierJobIsLate('2026-11-16', 'cut', 'contractor', cutToday)).toBe(true);
+    expect(atelierJobIsLate(atelierReturnDate('2026-11-16', 5), 'cut', 'contractor', cutToday)).toBe(false);
   });
 
   it('atraso é contra target_end e some depois que o setor liberou', () => {

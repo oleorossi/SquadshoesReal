@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import type { AtelierOpenRate } from '@/lib/atelierAdmin';
+import { describePostgrestError } from '@/lib/postgrestErrors';
 import type { AtelierOrderJobHit } from '@/lib/atelierOrderSupplement';
 import { printAtelierShipment } from '@/lib/printAtelierShipment';
 import type {
@@ -722,7 +724,7 @@ export function useSendAtelierShipment() {
         },
       } : undefined);
     },
-    onError: (e: Error) => toast.error(e.message || 'Falha ao enviar a remessa'),
+    onError: (error: unknown) => toast.error(describePostgrestError(error, 'Falha ao enviar a remessa')),
   });
 }
 
@@ -824,6 +826,21 @@ export function useMarkAtelierInternalDone() {
       toast.success('Concluído — libera a OP deste setor');
     },
     onError: (e: Error) => toast.error(e.message || 'Falha ao concluir'),
+  });
+}
+
+export function useAtelierOpenRates() {
+  return useQuery({
+    queryKey: [...atelierKeys.all, 'open-rates'] as const,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('contractor_service_rates')
+        .select('contractor_id, sector, price_per_pair, valid_from, valid_to')
+        .is('valid_to', null);
+      if (error) throw error;
+      return (data ?? []) as AtelierOpenRate[];
+    },
+    staleTime: 30_000,
   });
 }
 

@@ -25,7 +25,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { atelierCanRecordReceipt } from '@/lib/atelierReceipt';
-import { atelierCanReassign, atelierContractorCanTake } from '@/lib/atelierAdmin';
+import {
+  atelierCanReassign,
+  atelierContractorCanTake,
+  atelierOpenRatePrice,
+  atelierRateLabel,
+  atelierShipmentTotal,
+  atelierTodayISO,
+} from '@/lib/atelierAdmin';
 import { printAtelierShipment } from '@/lib/printAtelierShipment';
 import {
   ATELIER_BOARD_COLUMNS,
@@ -35,6 +42,8 @@ import {
   atelierJobBlocksProduction,
   atelierJobBoardColumn,
   atelierJobIsLate,
+  atelierReturnDate,
+  atelierSectorOffsetDays,
   atelierSingleAction,
   atelierTimeline,
   groupAtelierJobsByOrder,
@@ -64,7 +73,7 @@ import { atelierJobCanSplit, atelierSplitConfirmMessage } from '@/lib/atelierSpl
 import { kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
 import { deadlineChipLabel, deadlineTone } from '@/lib/reportOrderGrouping';
 import { daysUntilDeadline } from '@/lib/production/productionSequence';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import {
   atelierKeys,
   confirmAtelierLotCut,
@@ -82,6 +91,8 @@ import {
   sendAtelierShipment,
   setAtelierJobExecutionMode,
   useAtelierContractorSectors,
+  useAtelierOpenRates,
+  useAtelierSettings,
   useSetAtelierJobExecutionMode,
   type AtelierLotJob,
   type AtelierLotRow,
@@ -197,10 +208,13 @@ function JobActions({
   const mode = atelierEffectiveMode(job.execution_mode);
   const setMode = useSetAtelierJobExecutionMode();
   const sendMut = useSendAtelierShipment();
+  const rates = useAtelierOpenRates();
   const realizedMut = useMarkAtelierRealized();
   const startMut = useMarkAtelierInternalStart();
   const splitMut = useSplitAtelierJobToOwnLot();
   const [contractorId, setContractorId] = useState(job.contractor_id ?? '');
+  const quote = atelierOpenRatePrice(rates.data ?? [], contractorId, job.sector, atelierTodayISO());
+  const quoteTotal = quote == null ? null : atelierShipmentTotal(Number(job.pairs) || 0, quote);
   const action = atelierSingleAction(job);
   const canChangeMode = job.pipeline_status === 'awaiting_cut' || job.pipeline_status === 'cut';
   const canSplit = atelierJobCanSplit(job, lot);
@@ -284,13 +298,23 @@ function JobActions({
             <Button
               size="sm"
               className="h-7 px-2 text-[11px]"
-              disabled={busy || !contractorId || contractors.every((c) => c.id !== contractorId)}
+              disabled={busy || rates.isLoading || quote == null || !contractorId || contractors.every((c) => c.id !== contractorId)}
               onClick={() => sendMut.mutate({ jobIds: [job.id], contractorId })}
             >
               <Truck className="h-3 w-3" />
               Enviar
             </Button>
           </div>
+          {contractorId && !rates.isLoading && quote == null && (
+            <p className="text-[10px] text-amber-700 dark:text-amber-400">
+              Sem tarifa vigente de {atelierRateLabel(job.sector)}. Cadastre em Terceirizados antes de enviar.
+            </p>
+          )}
+          {quote != null && quoteTotal != null && (
+            <p className="text-[10px] text-foreground">
+              {formatCurrency(quote)}/par · total {formatCurrency(quoteTotal)}
+            </p>
+          )}
           {job.contractor_id && contractors.every((c) => c.id !== job.contractor_id) && (
             <p className="text-[10px] text-amber-700 dark:text-amber-400">
               O prestador gravado não atende este setor.
@@ -563,6 +587,16 @@ const BATCH_RUN: Record<AtelierBatchAction, (jobId: string) => Promise<unknown>>
   internal_done: markAtelierJobInternalDone,
 };
 
+function withReturnDate(
+  job: AtelierLotJob,
+  settings: { costura_offset_days?: number | null; aviamento_offset_days?: number | null } | null | undefined,
+): AtelierLotJob {
+  return {
+    ...job,
+    target_end: atelierReturnDate(job.target_end, atelierSectorOffsetDays(job.sector, settings)),
+  };
+}
+
 export function AtelierOperacao({
   lots,
   isLoading,
@@ -574,6 +608,8 @@ export function AtelierOperacao({
   onModoChange,
 }: Props) {
   const qc = useQueryClient();
+  const { data: settings } = useAtelierSettings();
+  const { data: openRates = [], isLoading: ratesLoading } = useAtelierOpenRates();
   const { data: contractors = [] } = useContractors();
   const { data: contractorSectors = [] } = useAtelierContractorSectors();
   const contractorRecords = contractors as Contractor[];
@@ -624,8 +660,9 @@ export function AtelierOperacao({
   const visibleJobs = useMemo(() => {
     const rows: { lot: AtelierLotRow; job: AtelierLotJob }[] = [];
     for (const lot of lots) {
-      for (const job of lot.jobs ?? []) {
-        if (job.pipeline_status === 'cancelled') continue;
+      for (const raw of lot.jobs ?? []) {
+        if (raw.pipeline_status === 'cancelled') continue;
+        const job = withReturnDate(raw, settings);
         if (!matchesAtelierBoardJob(job, lot, filters)) continue;
         rows.push({ lot, job });
       }
@@ -636,7 +673,7 @@ export function AtelierOperacao({
       return da.localeCompare(db) || (a.job.order_number ?? '').localeCompare(b.job.order_number ?? '', 'pt-BR');
     });
     return rows;
-  }, [lots, filters]);
+  }, [lots, filters, settings]);
 
   const selectedRows = visibleJobs.filter(({ job }) => selected.has(job.id));
   const assignSectors = new Set(selectedRows.map(({ job }) => job.sector));
@@ -657,9 +694,9 @@ export function AtelierOperacao({
         if (needle && !normalizeFilaText(lot.color).includes(needle)) return false;
       }
       if (!jobFilterOn) return true;
-      return (lot.jobs ?? []).some((job) => matchesAtelierBoardJob(job, lot, filters));
+      return (lot.jobs ?? []).some((job) => matchesAtelierBoardJob(withReturnDate(job, settings), lot, filters));
     });
-  }, [lots, pedido, color, sector, executionMode, lateOnly, blocksOnly, filters]);
+  }, [lots, pedido, color, sector, executionMode, lateOnly, blocksOnly, filters, settings]);
 
   const blockingCount = visibleJobs.filter(({ job }) => atelierJobBlocksProduction(job.execution_mode, job.pipeline_status)).length;
 
@@ -706,12 +743,12 @@ export function AtelierOperacao({
       .filter((g) => !pedido || g.orderNumber.trim() === pedido.trim())
       .map((g) => ({
         ...g,
-        visible: g.entries.filter(({ job, lot }) => matchesAtelierBoardJob(job, lot, {
+        visible: g.entries.filter(({ job, lot }) => matchesAtelierBoardJob(withReturnDate(job, settings), lot, {
           ...filters,
           orderNumber: g.orderNumber,
-        })),
+        })).map(({ job, lot }) => ({ lot, job: withReturnDate(job, settings) })),
       }));
-  }, [lots, pedido, color, filters]);
+  }, [lots, pedido, color, filters, settings]);
 
   if (isError) return <p className="text-sm text-destructive">Não foi possível carregar a fila.</p>;
   if (isLoading) {
@@ -824,7 +861,7 @@ export function AtelierOperacao({
                 <Button
                   size="sm"
                   className="h-8 text-xs"
-                  disabled={batching || !optionsFor(assignSector).some((c) => c.id === assignContractorId)}
+                  disabled={batching || ratesLoading || selectedRows.some(({ job }) => atelierOpenRatePrice(openRates, assignContractorId, job.sector, atelierTodayISO()) == null) || !optionsFor(assignSector).some((c) => c.id === assignContractorId)}
                   onClick={() => {
                     void (async () => {
                       setBatching(true);
@@ -855,6 +892,11 @@ export function AtelierOperacao({
                 >
                   Enviar remessa
                 </Button>
+              )}
+              {assignContractorId && !ratesLoading && selectedRows.some(({ job }) => atelierOpenRatePrice(openRates, assignContractorId, job.sector, atelierTodayISO()) == null) && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Sem tarifa vigente para este prestador neste setor. Cadastre em Terceirizados antes de enviar.
+                </p>
               )}
               <Button
                 size="sm"

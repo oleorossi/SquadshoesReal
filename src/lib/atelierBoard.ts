@@ -16,7 +16,9 @@ import {
   type AtelierSector,
 } from '@/lib/atelier';
 import { normalizeFilaText } from '@/lib/atelierFilaFilters';
+import { parseDateOnly } from '@/lib/dateOnly';
 import { daysUntilDeadline } from '@/lib/production/productionSequence';
+import { addBusinessDays } from '@/lib/sectorCapacity';
 
 export type AtelierBoardRail = 'antes' | 'prestador' | 'interno';
 
@@ -100,7 +102,37 @@ export function humanizeAtelierBlockReason(reason: string): string {
 
 export { atelierJobBlocksProduction };
 
-/** Atraso contra a data em que o job deveria voltar (`target_end`), não contra a entrega do PV. */
+/**
+ * `target_end` gravado é a âncora de corte, não a volta.
+ * A volta prevista é essa data mais o offset do setor, em dias úteis
+ * (o mesmo papel de costura_offset_days / aviamento_offset_days).
+ */
+export function atelierReturnDate(
+  cutAnchor: string | null | undefined,
+  offsetBusinessDays: number,
+): string | null {
+  if (!cutAnchor) return null;
+  const day = cutAnchor.slice(0, 10);
+  const offset = Number.isFinite(offsetBusinessDays) ? Math.max(0, Math.trunc(offsetBusinessDays)) : 0;
+  if (offset === 0) return day;
+  const end = addBusinessDays(parseDateOnly(day), offset);
+  const month = String(end.getMonth() + 1).padStart(2, '0');
+  const date = String(end.getDate()).padStart(2, '0');
+  return `${end.getFullYear()}-${month}-${date}`;
+}
+
+export function atelierSectorOffsetDays(
+  sector: string,
+  settings?: { costura_offset_days?: number | null; aviamento_offset_days?: number | null } | null,
+): number {
+  const raw = sector === 'aviamento'
+    ? settings?.aviamento_offset_days
+    : settings?.costura_offset_days;
+  const offset = Number(raw);
+  return Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 5;
+}
+
+/** Atraso contra a data em que o job deveria voltar, não contra a entrega do PV. */
 export function atelierJobIsLate(
   targetEnd: string | null | undefined,
   status: AtelierPipelineStatus | string | null | undefined,
