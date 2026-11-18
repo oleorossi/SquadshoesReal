@@ -40,6 +40,7 @@ import {
   groupAtelierJobsByOrder,
   jobFailureLabel,
   lotCutConfirmMessage,
+  lotHasAtelierOrder,
   matchesAtelierBoardJob,
   runLabeledBatch,
   sharedBatchAction,
@@ -581,6 +582,11 @@ export function AtelierOperacao({
     for (const lot of lots) for (const o of lot.orders) if (o.order_number) set.add(o.order_number);
     return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [lots]);
+  const pedidoOptions = useMemo(() => {
+    const want = pedido.trim();
+    if (want && !orderNumbers.some((n) => n.trim() === want)) return [want, ...orderNumbers];
+    return orderNumbers;
+  }, [pedido, orderNumbers]);
 
   const colors = useMemo(() => {
     const set = new Set<string>();
@@ -594,7 +600,7 @@ export function AtelierOperacao({
   const visibleJobs = useMemo(() => {
     const rows: { lot: AtelierLotRow; job: AtelierLotJob }[] = [];
     for (const lot of lots) {
-      for (const job of lot.jobs) {
+      for (const job of lot.jobs ?? []) {
         if (job.pipeline_status === 'cancelled') continue;
         if (!matchesAtelierBoardJob(job, lot, filters)) continue;
         rows.push({ lot, job });
@@ -603,7 +609,7 @@ export function AtelierOperacao({
     rows.sort((a, b) => {
       const da = a.job.target_end || '9999';
       const db = b.job.target_end || '9999';
-      return da.localeCompare(db) || a.job.order_number.localeCompare(b.job.order_number, 'pt-BR');
+      return da.localeCompare(db) || (a.job.order_number ?? '').localeCompare(b.job.order_number ?? '', 'pt-BR');
     });
     return rows;
   }, [lots, filters]);
@@ -621,13 +627,13 @@ export function AtelierOperacao({
     return lots.filter((lot) => {
       const needsCut = lot.status === 'open' || (lot.status === 'cut' && lot.kit_gate === 'awaiting_components');
       if (!needsCut) return false;
-      if (pedido && !lot.orders.some((o) => o.order_number === pedido)) return false;
+      if (pedido && !lotHasAtelierOrder(lot, pedido)) return false;
       if (color) {
         const needle = normalizeFilaText(color);
         if (needle && !normalizeFilaText(lot.color).includes(needle)) return false;
       }
       if (!jobFilterOn) return true;
-      return lot.jobs.some((job) => matchesAtelierBoardJob(job, lot, filters));
+      return (lot.jobs ?? []).some((job) => matchesAtelierBoardJob(job, lot, filters));
     });
   }, [lots, pedido, color, sector, executionMode, lateOnly, blocksOnly, filters]);
 
@@ -665,7 +671,7 @@ export function AtelierOperacao({
 
   const orderGroups = useMemo(() => {
     const scoped = lots.filter((lot) => {
-      if (pedido && !lot.orders.some((o) => o.order_number === pedido)) return false;
+      if (pedido && !lotHasAtelierOrder(lot, pedido)) return false;
       if (color) {
         const needle = normalizeFilaText(color);
         if (needle && !normalizeFilaText(lot.color).includes(needle)) return false;
@@ -673,7 +679,7 @@ export function AtelierOperacao({
       return true;
     });
     return groupAtelierJobsByOrder(scoped)
-      .filter((g) => !pedido || g.orderNumber === pedido)
+      .filter((g) => !pedido || g.orderNumber.trim() === pedido.trim())
       .map((g) => ({
         ...g,
         visible: g.entries.filter(({ job, lot }) => matchesAtelierBoardJob(job, lot, {
@@ -697,7 +703,7 @@ export function AtelierOperacao({
       <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-wrap gap-2">
           <FilterSelect label="Pedido" value={pedido || '__all__'} onChange={(v) => onPedidoChange(v === '__all__' ? '' : v)} allLabel="Todos os PVs">
-            {orderNumbers.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+            {pedidoOptions.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
           </FilterSelect>
           <FilterSelect label="Cor" value={color || '__all__'} onChange={(v) => setColor(v === '__all__' ? '' : v)} allLabel="Todas as cores">
             {colors.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}

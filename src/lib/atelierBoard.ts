@@ -229,20 +229,70 @@ export function atelierBoardFiltersActive(filters: AtelierBoardFilters): boolean
   );
 }
 
+export interface AtelierOrderRef {
+  order_number?: string | null;
+  sale_order_id?: string | null;
+}
+
+/**
+ * O ?pedido= casa com o número do job. Número em branco cai no
+ * sale_order_id da demanda; lote de um PV só herda esse PV.
+ * Modo vazio e setor vazio não entram aqui — nulo continua prestador
+ * e costura_cabedal continua na fila.
+ */
+export function jobBelongsToAtelierOrder(
+  job: { order_number?: string | null; sale_order_id?: string | null },
+  lot: { orders?: readonly AtelierOrderRef[] },
+  orderNumber: string,
+): boolean {
+  const want = orderNumber.trim();
+  if (!want) return true;
+  const got = (job.order_number ?? '').trim();
+  if (got) return got === want;
+  if (job.sale_order_id) {
+    return (lot.orders ?? []).some((o) =>
+      o.sale_order_id === job.sale_order_id && (o.order_number ?? '').trim() === want);
+  }
+  const numbers = [...new Set(
+    (lot.orders ?? []).map((o) => (o.order_number ?? '').trim()).filter(Boolean),
+  )];
+  return numbers.length === 1 && numbers[0] === want;
+}
+
+/** Lote entra no filtro do PV se a demanda ou algum job dele é desse PV. */
+export function lotHasAtelierOrder(
+  lot: {
+    orders?: readonly AtelierOrderRef[];
+    jobs?: readonly {
+      order_number?: string | null;
+      sale_order_id?: string | null;
+      pipeline_status?: string;
+    }[];
+  },
+  orderNumber: string,
+): boolean {
+  const want = orderNumber.trim();
+  if (!want) return true;
+  if ((lot.orders ?? []).some((o) => (o.order_number ?? '').trim() === want)) return true;
+  return (lot.jobs ?? []).some((job) =>
+    job.pipeline_status !== 'cancelled' && jobBelongsToAtelierOrder(job, lot, want));
+}
+
 export function matchesAtelierBoardJob(
   job: {
-    order_number: string;
+    order_number?: string | null;
+    sale_order_id?: string | null;
     sector: string;
     execution_mode?: AtelierExecutionMode | string | null;
     pipeline_status: string;
     target_end?: string | null;
     received_pairs?: number | null;
   },
-  lot: { color?: string | null },
+  lot: { color?: string | null; orders?: readonly AtelierOrderRef[] },
   filters: AtelierBoardFilters,
   today = new Date(),
 ): boolean {
-  if (filters.orderNumber && job.order_number !== filters.orderNumber) return false;
+  if (filters.orderNumber && !jobBelongsToAtelierOrder(job, lot, filters.orderNumber)) return false;
   if (filters.color) {
     const needle = normalizeFilaText(filters.color);
     if (needle && !normalizeFilaText(lot.color).includes(needle)) return false;
@@ -266,7 +316,7 @@ export interface LotCutLine {
 }
 
 function uniqueOrderNumbers(orders: readonly { order_number: string }[]): string[] {
-  return [...new Set(orders.map((o) => o.order_number).filter(Boolean))];
+  return [...new Set(orders.map((o) => (o.order_number ?? '').trim()).filter(Boolean))];
 }
 
 /**
@@ -284,7 +334,8 @@ export function lotCutConfirmMessage(lots: readonly LotCutLine[], focusOrderNumb
     const who = [lot.reference_code, lot.color].filter(Boolean).join(' ');
     const label = who ? `${lot.lot_number} (${who})` : lot.lot_number;
     if (focusOrderNumber) {
-      const others = numbers.filter((n) => n !== focusOrderNumber);
+      const focus = focusOrderNumber.trim();
+      const others = numbers.filter((n) => n !== focus);
       if (others.length === 0) return [];
       return [`${label} também leva ${others.join(', ')}.`];
     }
@@ -310,11 +361,16 @@ export function groupAtelierJobsByOrder<
     status: string;
     orders: readonly {
       order_number: string;
+      sale_order_id?: string | null;
       client_name?: string | null;
       delivery_deadline?: string | null;
       pairs?: number;
     }[];
-    jobs: readonly { order_number: string; pipeline_status: string }[];
+    jobs: readonly {
+      order_number?: string | null;
+      sale_order_id?: string | null;
+      pipeline_status: string;
+    }[];
   },
 >(lots: readonly L[]): AtelierOrderGroup<L, L['jobs'][number]>[] {
   const byOrder = new Map<string, AtelierOrderGroup<L, L['jobs'][number]>>();
@@ -337,8 +393,9 @@ export function groupAtelierJobsByOrder<
 
   for (const lot of lots) {
     for (const order of lot.orders) {
-      if (!order.order_number) continue;
-      const group = bucket(order.order_number);
+      const number = (order.order_number ?? '').trim();
+      if (!number) continue;
+      const group = bucket(number);
       if (!group.clientName && order.client_name) group.clientName = order.client_name;
       if (
         order.delivery_deadline
@@ -352,9 +409,21 @@ export function groupAtelierJobsByOrder<
         group.openLots.push(lot);
       }
       for (const job of lot.jobs) {
-        if (job.order_number !== order.order_number) continue;
         if (job.pipeline_status === 'cancelled') continue;
+        if (!jobBelongsToAtelierOrder(job, lot, number)) continue;
+        if (group.entries.some((e) => e.lot === lot && e.job === job)) continue;
         group.entries.push({ lot, job });
+      }
+    }
+    for (const job of lot.jobs) {
+      if (job.pipeline_status === 'cancelled') continue;
+      const number = (job.order_number ?? '').trim();
+      if (!number) continue;
+      const group = bucket(number);
+      if (group.entries.some((e) => e.lot === lot && e.job === job)) continue;
+      group.entries.push({ lot, job });
+      if (lot.status === 'open' && !group.openLots.some((l) => l.id === lot.id)) {
+        group.openLots.push(lot);
       }
     }
   }

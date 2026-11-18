@@ -37,7 +37,7 @@ export function matchesAtelierFilaFilters(
 ): boolean {
   if (filters.orderNumber) {
     const want = filters.orderNumber.trim();
-    if (!lot.orders.some((o) => o.order_number === want)) return false;
+    if (!lot.orders.some((o) => (o.order_number ?? '').trim() === want)) return false;
   }
   if (filters.color) {
     const needle = normalizeFilaText(filters.color);

@@ -13,6 +13,8 @@ import {
   humanizeAtelierPendingJobs,
   jobFailureLabel,
   lotCutConfirmMessage,
+  jobBelongsToAtelierOrder,
+  lotHasAtelierOrder,
   matchesAtelierBoardJob,
   runLabeledBatch,
   sharedBatchAction,
@@ -87,12 +89,67 @@ describe('quadro do Ateliê por job', () => {
     expect(matchesAtelierBoardJob(job, lot, base, TODAY)).toBe(true);
     expect(matchesAtelierBoardJob(job, lot, { ...base, sector: 'aviamento' }, TODAY)).toBe(false);
     expect(matchesAtelierBoardJob(job, lot, { ...base, mode: 'internal' }, TODAY)).toBe(false);
+    expect(matchesAtelierBoardJob(
+      { ...job, order_number: 'PV-00251' },
+      lot,
+      { ...base, orderNumber: 'PV-00251' },
+      TODAY,
+    )).toBe(true);
+    expect(matchesAtelierBoardJob(
+      { ...job, order_number: ' PV-00251 ' },
+      lot,
+      { ...base, orderNumber: 'PV-00251' },
+      TODAY,
+    )).toBe(true);
     expect(matchesAtelierBoardJob(job, lot, { ...base, lateOnly: true }, TODAY)).toBe(true);
     expect(matchesAtelierBoardJob(
       { ...job, pipeline_status: 'received_at_factory' },
       lot,
       { ...base, blocksProductionOnly: true },
       TODAY,
+    )).toBe(false);
+  });
+
+  it('PV no lote compartilhado aparece pelo número da demanda, não some com modo nulo', () => {
+    const lot = {
+      color: 'CHAMPAGNE',
+      orders: [
+        { sale_order_id: 'so-250', order_number: 'PV-00250' },
+        { sale_order_id: 'so-251', order_number: 'PV-00251' },
+      ],
+    };
+    const filters = {
+      orderNumber: 'PV-00251',
+      color: '',
+      sector: '' as const,
+      mode: '' as const,
+      lateOnly: false,
+      blocksProductionOnly: false,
+    };
+    const job = {
+      order_number: '',
+      sale_order_id: 'so-251',
+      sector: 'costura_cabedal',
+      execution_mode: null as string | null,
+      pipeline_status: 'awaiting_cut',
+    };
+    expect(jobBelongsToAtelierOrder(job, lot, 'PV-00251')).toBe(true);
+    expect(jobBelongsToAtelierOrder(job, lot, 'PV-00250')).toBe(false);
+    expect(matchesAtelierBoardJob(job, lot, filters, TODAY)).toBe(true);
+    expect(matchesAtelierBoardJob(
+      { ...job, order_number: 'PV-00250', sale_order_id: 'so-250' },
+      lot,
+      filters,
+      TODAY,
+    )).toBe(false);
+    expect(lotHasAtelierOrder({
+      ...lot,
+      jobs: [job],
+    }, 'PV-00251')).toBe(true);
+    expect(jobBelongsToAtelierOrder(
+      { order_number: '', sale_order_id: null },
+      lot,
+      'PV-00251',
     )).toBe(false);
   });
 
@@ -192,6 +249,14 @@ describe('visão por pedido', () => {
     expect(pv250.openLots.map((l) => l.id)).toEqual(['lot-1']);
     expect(pv251.entries).toHaveLength(1);
     expect(pv251.openLots).toHaveLength(1);
+    const orphan = groupAtelierJobsByOrder([{
+      id: 'lot-2',
+      status: 'open',
+      orders: [{ order_number: 'PV-00250', pairs: 12 }],
+      jobs: [{ order_number: 'PV-00251', pipeline_status: 'awaiting_cut', sector: 'costura_cabedal' }],
+    }]);
+    expect(orphan.map((g) => g.orderNumber)).toEqual(['PV-00250', 'PV-00251']);
+    expect(orphan[1].entries).toHaveLength(1);
     expect(atelierTimeline('contractor').map((s) => s.id)).toEqual([
       'awaiting_cut', 'cut', 'sent_to_contractor', 'realized', 'partially_received', 'received_at_factory',
     ]);

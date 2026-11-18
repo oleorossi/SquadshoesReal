@@ -177,6 +177,8 @@ export interface AtelierLotJob {
   pipeline_status: AtelierPipelineStatus;
   pairs: number;
   sale_order_item_id: string | null;
+  /** Pedido da demanda. A fila casa o ?pedido= com este número. */
+  sale_order_id?: string | null;
   order_number: string;
   contractor_id: string | null;
   contractor_name: string | null;
