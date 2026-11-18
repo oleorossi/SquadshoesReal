@@ -366,6 +366,9 @@ UPDATE public.atelier_job_receipts rec
    AND rec.id = ret.atelier_job_receipt_id
    AND rec.rework_resolution_id IS NULL;
 
+-- O retorno já gravado é imutável. A reclassificação fica no recibo
+-- (rework_resolution_id), que é o que o card, o custo e o saldo do job leem.
+-- A conta pending de R$5 sai. Não se edita service_order_returns.
 DELETE FROM public.accounts_payable ap
  USING public.service_order_returns ret
  WHERE ret.service_order_id = 'bed7d9f9-50cb-45ca-802e-c35240457aa6'
@@ -375,12 +378,6 @@ DELETE FROM public.accounts_payable ap
    AND lower(btrim(ap.status)) = 'pending'
    AND ap.amount = 5
    AND COALESCE(ap.amount_paid, 0) = 0;
-
-UPDATE public.service_order_returns
-   SET adjustment_kind = 'rework_return'
- WHERE service_order_id = 'bed7d9f9-50cb-45ca-802e-c35240457aa6'
-   AND id::text LIKE 'b66baad8%'
-   AND COALESCE(adjustment_kind, '') IS DISTINCT FROM 'rework_return';
 
 SELECT public.atelier_apply_received_total(j.id)
   FROM public.cabedal_prep_jobs j
