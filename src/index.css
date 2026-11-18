@@ -799,6 +799,9 @@ a:focus-visible {
 .kb-drop-target    { animation: kb-drop-breathe 1.5s var(--ease-in-out) infinite; }
 .kb-sibling-pulse  { animation: kb-sibling-pulse 280ms var(--ease-out); }
 
+/* Barra do saldo conferido no Ateliê. A largura é o único movimento. */
+.atelier-meter-fill { transition: width 480ms var(--ease-out); }
+
 /* Par visual de colunas no mesmo parallel_group — trilho compartilhado. */
 .kb-parallel-pair {
   box-shadow: inset 0 3px 0 0 hsl(var(--primary) / 0.55);

@@ -3,7 +3,7 @@
  * Quadro (cada job na coluna da etapa) ou por pedido (linha do tempo + ações em lote).
  * Grava só pelas RPCs já existentes.
  */
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { atelierCanRecordReceipt, atelierReceiptProgressLabel } from '@/lib/atelierReceipt';
+import { atelierCanRecordReceipt } from '@/lib/atelierReceipt';
 import {
   ATELIER_BOARD_COLUMNS,
   ATELIER_RAIL_LABEL,
@@ -80,6 +80,7 @@ import {
 } from '@/hooks/useAtelier';
 import { useContractors } from '@/hooks/useContractors';
 import { AtelierReceiptDialog } from '@/components/atelier/AtelierReceiptDialog';
+import { AtelierReceiptMeter } from '@/components/atelier/AtelierReceiptMeter';
 
 type Modo = 'quadro' | 'pedido';
 
@@ -307,6 +308,19 @@ function JobActions({
   );
 }
 
+/** Já visto neste carregamento da tela. Troca de coluna remonta o cartão e aí entra. */
+const placedJobs = new Set<string>();
+
+function useColumnEnter(jobId: string, status: string) {
+  const token = `${jobId}\0${status}`;
+  const [enter] = useState(() => placedJobs.has(jobId) && !placedJobs.has(token));
+  useEffect(() => {
+    placedJobs.add(jobId);
+    placedJobs.add(token);
+  }, [jobId, token]);
+  return enter;
+}
+
 function JobCard({
   job,
   lot,
@@ -326,9 +340,11 @@ function JobCard({
   const sector = ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector;
   const late = atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode);
   const canSelect = !!onToggle && atelierBatchAction(job) != null;
+  const enter = useColumnEnter(job.id, job.pipeline_status);
 
   return (
     <article className={cn(
+      enter && 'kb-card-in',
       'space-y-1.5 rounded-md border p-2',
       lotHasKitShortage(lot.debits) ? 'border-red-500/50 bg-red-500/10' : 'border-border/70 bg-card',
     )}>
@@ -358,9 +374,11 @@ function JobCard({
           </span>
         )}
       </div>
-      <p className="text-[10px] font-medium text-foreground">
-        {atelierReceiptProgressLabel(sector, Number(job.received_pairs) || 0, Number(job.pairs) || 0)}
-      </p>
+      <AtelierReceiptMeter
+        received={Number(job.received_pairs) || 0}
+        pairs={Number(job.pairs) || 0}
+        label="recebidos"
+      />
       {blocks && (
         <p className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
           Trava Em Produção de {job.order_number}
@@ -810,6 +828,81 @@ function FilterSelect({
   );
 }
 
+function PedidoJob({
+  lot,
+  job,
+  orderNumber,
+  selected,
+  contractors,
+  onToggle,
+  onReceipt,
+}: {
+  lot: AtelierLotRow;
+  job: AtelierLotJob;
+  orderNumber: string;
+  selected: boolean;
+  contractors: { id: string; name: string }[];
+  onToggle: () => void;
+  onReceipt: () => void;
+}) {
+  const steps = atelierTimeline(job.execution_mode);
+  const current = steps.findIndex((s) => s.id === job.pipeline_status);
+  const enter = useColumnEnter(job.id, job.pipeline_status);
+  const sector = ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector;
+  return (
+    <li className={cn(enter && 'kb-card-in', 'space-y-1.5 rounded-md border border-border/70 p-2')}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[12px] font-semibold text-foreground">
+            {lot.reference_code ?? '—'} · {lot.color ?? 'Sem cor'}
+            <span className="ml-1 font-normal text-muted-foreground">{sector}</span>
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {formatQty(Number(job.pairs))}p · {ATELIER_PIPELINE_LABEL[job.pipeline_status as AtelierPipelineStatus] ?? job.pipeline_status}
+            {job.target_end ? ` · voltar ${formatDay(job.target_end)}` : ''}
+            {atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode) ? ' · atrasado' : ''}
+          </p>
+        </div>
+        {atelierBatchAction(job) && (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={onToggle}
+            aria-label={`Selecionar ${sector} ${orderNumber}`}
+          />
+        )}
+      </div>
+      <ol className="flex flex-wrap gap-1" aria-label="Etapas do job">
+        {steps.map((step, i) => (
+          <li
+            key={step.id}
+            className={cn(
+              'rounded border px-1.5 py-0.5 text-[10px] transition-colors duration-300',
+              i === current
+                ? 'border-foreground bg-foreground font-semibold text-background'
+                : i < current
+                  ? 'border-foreground/30 bg-muted text-foreground'
+                  : 'border-border text-muted-foreground',
+            )}
+          >
+            {step.label}
+          </li>
+        ))}
+      </ol>
+      {atelierJobBlocksProduction(job.execution_mode, job.pipeline_status) && (
+        <p className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+          Trava Em Produção de {orderNumber}
+        </p>
+      )}
+      <AtelierReceiptMeter
+        received={Number(job.received_pairs) || 0}
+        pairs={Number(job.pairs) || 0}
+        label="recebidos"
+      />
+      <JobActions job={job} lot={lot} contractors={contractors} onReceipt={onReceipt} />
+    </li>
+  );
+}
+
 function PedidoView({
   groups,
   contractors,
@@ -908,71 +1001,23 @@ function PedidoView({
               <p className="text-[11px] text-muted-foreground">Nenhum job deste pedido passa nos filtros.</p>
             ) : (
               <ul className="space-y-2">
-                {group.visible.map(({ lot, job }) => {
-                  const steps = atelierTimeline(job.execution_mode);
-                  const current = steps.findIndex((s) => s.id === job.pipeline_status);
-                  return (
-                    <li key={job.id} className="space-y-1.5 rounded-md border border-border/70 p-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-[12px] font-semibold text-foreground">
-                            {lot.reference_code ?? '—'} · {lot.color ?? 'Sem cor'}
-                            <span className="ml-1 font-normal text-muted-foreground">
-                              {ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector}
-                            </span>
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {formatQty(Number(job.pairs))}p · {ATELIER_PIPELINE_LABEL[job.pipeline_status as AtelierPipelineStatus] ?? job.pipeline_status}
-                            {job.target_end ? ` · voltar ${formatDay(job.target_end)}` : ''}
-                            {atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode) ? ' · atrasado' : ''}
-                          </p>
-                        </div>
-                        {atelierBatchAction(job) && (
-                          <Checkbox
-                            checked={selected.has(job.id)}
-                            onCheckedChange={() => {
-                              const next = new Set(selected);
-                              if (next.has(job.id)) next.delete(job.id);
-                              else next.add(job.id);
-                              setSelected(next);
-                            }}
-                            aria-label={`Selecionar ${ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector} ${group.orderNumber}`}
-                          />
-                        )}
-                      </div>
-                      <ol className="flex flex-wrap gap-1" aria-label="Etapas do job">
-                        {steps.map((step, i) => (
-                          <li
-                            key={step.id}
-                            className={cn(
-                              'rounded border px-1.5 py-0.5 text-[10px]',
-                              i === current
-                                ? 'border-foreground bg-foreground text-background font-semibold'
-                                : i < current
-                                  ? 'border-foreground/30 bg-muted text-foreground'
-                                  : 'border-border text-muted-foreground',
-                            )}
-                          >
-                            {step.label}
-                          </li>
-                        ))}
-                      </ol>
-                      {atelierJobBlocksProduction(job.execution_mode, job.pipeline_status) && (
-                        <p className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                          Trava Em Produção de {group.orderNumber}
-                        </p>
-                      )}
-                      <p className="text-[10px] font-medium text-foreground">
-                        {atelierReceiptProgressLabel(
-                          ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector,
-                          Number(job.received_pairs) || 0,
-                          Number(job.pairs) || 0,
-                        )}
-                      </p>
-                      <JobActions job={job} lot={lot} contractors={contractors} onReceipt={() => onReceipt(job)} />
-                    </li>
-                  );
-                })}
+                {group.visible.map(({ lot, job }) => (
+                  <PedidoJob
+                    key={`${job.id}-${job.pipeline_status}`}
+                    lot={lot}
+                    job={job}
+                    orderNumber={group.orderNumber}
+                    selected={selected.has(job.id)}
+                    contractors={contractors}
+                    onToggle={() => {
+                      const next = new Set(selected);
+                      if (next.has(job.id)) next.delete(job.id);
+                      else next.add(job.id);
+                      setSelected(next);
+                    }}
+                    onReceipt={() => onReceipt(job)}
+                  />
+                ))}
               </ul>
             )}
           </section>

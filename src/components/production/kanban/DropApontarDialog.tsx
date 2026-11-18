@@ -23,6 +23,7 @@ import { thumbUrl } from '@/lib/imageThumb';
 import { norm, fmtDate, KanbanCardData } from './kanbanDerive';
 import { buildPointingPlan, moveOptions, applyPointing, skipBlockedByPartial } from './pointingPlan';
 import { isStageSkipped } from '@/lib/production/stageFlow';
+import { ATELIER_DOWNSTREAM_STAGES } from '@/lib/atelierReceipt';
 
 /** Valor-sentinela do select de mover (shadcn Select não aceita value vazio). */
 const MOVE_ATUAL = '__atual';
@@ -400,6 +401,13 @@ export function DropApontarDialog({
                     : `saldo do setor: ${remaining} de ${pointedStage.quantity_total}`}
                 </span>
               </div>
+              {!isBackward
+                && atelierReceivedCap != null
+                && (ATELIER_DOWNSTREAM_STAGES as readonly string[]).includes(norm(pointedStage.stage_name)) && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  O Ateliê devolveu {atelierReceivedCap} pares. Este setor para nesse número.
+                </p>
+              )}
               {excess > 0 && (
                 <p className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] leading-snug text-amber-700 dark:text-amber-300">
                   <strong>{excess} {excess === 1 ? 'par acima' : 'pares acima'} do total da OP.</strong>{' '}

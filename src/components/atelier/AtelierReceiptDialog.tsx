@@ -21,7 +21,8 @@ import {
   ATELIER_SECTOR_LABEL,
   type AtelierSector,
 } from '@/lib/atelier';
-import { atelierReceiptProgressLabel, atelierReceiptRemaining } from '@/lib/atelierReceipt';
+import { atelierReceiptRemaining } from '@/lib/atelierReceipt';
+import { AtelierReceiptMeter } from '@/components/atelier/AtelierReceiptMeter';
 import {
   atelierKeys,
   registerAtelierJobReceipt,
@@ -53,6 +54,8 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const { data: history = [], isLoading } = useAtelierJobReceipts(open ? job!.id : null);
   const sector = job ? (ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector) : '';
+  const typed = Number(String(qty).replace(',', '.'));
+  const preview = Number.isFinite(typed) && typed > 0 ? typed : 0;
 
   useEffect(() => {
     if (!job) return;
@@ -115,11 +118,17 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
         <DialogHeader>
           <DialogTitle>Conferir recebimento</DialogTitle>
           <DialogDescription>
-            {job
-              ? `${atelierReceiptProgressLabel(sector, received, pairs)} · ${job.order_number}. O saldo restante já vem preenchido.`
-              : ''}
+            {job ? `${job.order_number}. O número sobe com o que você lançar agora.` : ''}
           </DialogDescription>
         </DialogHeader>
+        {job && (
+          <AtelierReceiptMeter
+            received={received}
+            pairs={pairs}
+            preview={remaining > 0 ? Math.min(preview, remaining) : 0}
+            label={sector}
+          />
+        )}
         {job && remaining > 0 && (
           <div className="space-y-2">
             <label className="block space-y-1 text-xs">
@@ -132,6 +141,11 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
                 aria-label="Quantidade recebida"
               />
             </label>
+            {preview > remaining && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                Passa do saldo. O máximo desta entrada é {remaining}.
+              </p>
+            )}
             <label className="block space-y-1 text-xs">
               <span className="font-medium text-foreground">Observação</span>
               <Input
@@ -144,7 +158,7 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
           </div>
         )}
         <div className="space-y-1">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Histórico</p>
+          <p className="text-[11px] font-medium text-muted-foreground">Histórico</p>
           {isLoading ? (
             <p className="text-xs text-muted-foreground">Carregando…</p>
           ) : history.length === 0 ? (
