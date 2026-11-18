@@ -79,5 +79,8 @@ describe('recebimento parcial do Ateliê', () => {
     expect(atelierReceiptDetail({
       sent: 12, good: 10, defect: 1, loss: 1, pendingDefect: 0,
     })).toBe('10 bons · 1 defeito · 1 perda · 0 a receber');
+    expect(atelierReceiptDetail({
+      sent: 12, good: 4, defect: 1, loss: 0, pendingDefect: 0, inRework: 1, stillOut: 7,
+    })).toBe('4 bons · 1 em retrabalho · 0 perda · 7 a receber');
   });
 });

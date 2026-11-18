@@ -242,17 +242,45 @@ function JobActions({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('atelier_job_receipts' as never)
-        .select('pairs, qty_defect, qty_loss, reversed_at')
+        .select('id, pairs, qty_defect, qty_loss, reversed_at, rework_resolution_id')
         .eq('job_id', job.id);
       if (error) throw error;
       const rows = (data ?? []) as Array<{
-        pairs: number; qty_defect: number | null; qty_loss: number | null; reversed_at: string | null;
+        id: string;
+        pairs: number;
+        qty_defect: number | null;
+        qty_loss: number | null;
+        reversed_at: string | null;
+        rework_resolution_id: string | null;
       }>;
-      return rows.filter((row) => !row.reversed_at).reduce((sum, row) => ({
-        good: sum.good + Number(row.pairs || 0),
-        defect: sum.defect + Number(row.qty_defect || 0),
-        loss: sum.loss + Number(row.qty_loss || 0),
-      }), { good: 0, defect: 0, loss: 0 });
+      const open = rows.filter((row) => !row.reversed_at && !row.rework_resolution_id);
+      const back = rows.filter((row) => row.rework_resolution_id && !row.reversed_at);
+      const ids = open.map((row) => row.id);
+      let reworkSent = 0;
+      let scrap = 0;
+      if (ids.length > 0) {
+        const resolutions = await supabase
+          .from('atelier_defect_resolutions' as never)
+          .select('kind, pairs')
+          .in('receipt_id', ids);
+        if (resolutions.error) throw resolutions.error;
+        for (const row of (resolutions.data ?? []) as Array<{ kind: string; pairs: number }>) {
+          if (row.kind === 'rework') reworkSent += Number(row.pairs) || 0;
+          if (row.kind === 'scrap') scrap += Number(row.pairs) || 0;
+        }
+      }
+      const baseGood = open.reduce((sum, row) => sum + Number(row.pairs || 0), 0);
+      const baseDefect = open.reduce((sum, row) => sum + Number(row.qty_defect || 0), 0);
+      const baseLoss = open.reduce((sum, row) => sum + Number(row.qty_loss || 0), 0);
+      const closed = back.reduce((sum, row) => sum + Number(row.pairs || 0), 0);
+      return {
+        good: baseGood + closed,
+        defect: baseDefect,
+        loss: baseLoss,
+        pendingDefect: Math.max(0, baseDefect - scrap - reworkSent),
+        inRework: Math.max(0, reworkSent - closed),
+        stillOut: Math.max(0, (Number(job.pairs) || 0) - baseGood - baseDefect - baseLoss),
+      };
     },
   });
   const quote = atelierOpenRatePrice(rates.data ?? [], contractorId, job.sector, atelierTodayISO());
@@ -367,12 +395,15 @@ function JobActions({
 
       {(sentPairs > 0 || (tallyQuery.data?.good ?? 0) > 0) && (
         <p className="text-[10px] text-foreground">
-          {atelierReceiptDetail({
-            sent: sentPairs || Number(job.pairs) || 0,
-            good: tallyQuery.data?.good ?? 0,
-            defect: tallyQuery.data?.defect ?? 0,
-            loss: tallyQuery.data?.loss ?? 0,
-          })}
+            {atelierReceiptDetail({
+              sent: sentPairs || Number(job.pairs) || 0,
+              good: tallyQuery.data?.good ?? 0,
+              defect: tallyQuery.data?.defect ?? 0,
+              loss: tallyQuery.data?.loss ?? 0,
+              pendingDefect: tallyQuery.data?.pendingDefect,
+              inRework: tallyQuery.data?.inRework,
+              stillOut: tallyQuery.data?.stillOut,
+            })}
         </p>
       )}
       {parts.length > 0 && (

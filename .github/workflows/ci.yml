@@ -101,7 +101,9 @@ jobs:
           PGPASSWORD: postgres
           PGDATABASE: migrations
           LINT_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: bun scripts/check-migration-syntax.mjs
+        run: |
+          bun scripts/check-migration-syntax.mjs
+          psql -v ON_ERROR_STOP=1 -f scripts/atelier-return-balance-test.sql
 
       - name: Branding Check
         id: branding_check

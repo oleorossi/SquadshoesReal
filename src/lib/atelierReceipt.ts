@@ -50,15 +50,23 @@ export function atelierReceiptDetail(input: {
   defect: number;
   loss: number;
   pendingDefect?: number;
+  inRework?: number;
+  stillOut?: number;
 }): string {
   const row = atelierReceiptBreakdown(input);
+  const inRework = Math.max(0, Math.trunc(Number(input.inRework) || 0));
+  const stillOut = input.stillOut == null ? row.stillOut : Math.max(0, Math.trunc(input.stillOut));
+  const defectLabel = inRework > 0 && row.pendingDefect === 0
+    ? `${inRework} em retrabalho`
+    : `${row.defect} defeito`;
   const parts = [
     `${row.good} bons`,
-    `${row.defect} defeito`,
+    defectLabel,
     `${row.loss} perda`,
-    `${row.stillOut} a receber`,
+    `${stillOut} a receber`,
   ];
   if (row.pendingDefect > 0) parts.push(`defeito pendente: ${row.pendingDefect}`);
+  if (inRework > 0 && row.pendingDefect > 0) parts.push(`${inRework} em retrabalho`);
   return parts.join(' · ');
 }
 

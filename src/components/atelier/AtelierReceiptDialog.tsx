@@ -62,6 +62,22 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
   const { roles } = useAccessControl();
   const canReverse = roles.includes('admin') || roles.includes('gerente');
   const { data: history = [], isLoading } = useAtelierJobReceipts(open ? job!.id : null);
+  const receiptIds = history.map((row) => row.id);
+  const resolutionsQuery = useQuery({
+    queryKey: ['atelier-defect-resolutions', job?.id ?? '', receiptIds.join(',')],
+    enabled: open && receiptIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('atelier_defect_resolutions' as never)
+        .select('receipt_id, kind, pairs')
+        .in('receipt_id', receiptIds);
+      if (error) throw error;
+      return (data ?? []) as Array<{ receipt_id: string; kind: string; pairs: number }>;
+    },
+  });
+  const resolvedFor = (receiptId: string) => (resolutionsQuery.data ?? [])
+    .filter((row) => row.receipt_id === receiptId)
+    .reduce((sum, row) => sum + Number(row.pairs || 0), 0);
   const partsQuery = useQuery({
     queryKey: ['atelier-job-parts', job?.id ?? '', 'receipt'],
     enabled: open,
@@ -86,20 +102,25 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
   const preview = (good ?? 0) + (defectPairs ?? 0) + (lossPairs ?? 0);
 
   useEffect(() => {
-    if (!job) return;
-    setQty(String(atelierReceiptRemaining(Number(job.pairs) || 0, Number(job.received_pairs) || 0) || ''));
+    if (!job?.id) return;
     setDefect('');
     setLoss('');
     setNote('');
     setReason('');
     setPartId(null);
-  }, [job]);
+  }, [job?.id]);
+  useEffect(() => {
+    setQty(String(partRemaining || ''));
+  }, [partRemaining, job?.id]);
   useEffect(() => {
     if (parts.length === 1) setPartId(parts[0].id);
   }, [parts]);
 
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: atelierKeys.all });
+    await qc.invalidateQueries({ queryKey: ['atelier-job-parts'] });
+    await qc.invalidateQueries({ queryKey: ['atelier-receipt-tally'] });
+    await qc.invalidateQueries({ queryKey: ['atelier-defect-resolutions'] });
   };
 
   const conferir = async () => {
@@ -286,14 +307,14 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
                     {row.note ? ` · ${row.note}` : ''}
                     {row.reversed_at ? ` · estornado (${row.reversal_reason})` : ''}
                   </span>
-                  {!row.reversed_at && Number(row.qty_defect) > 0 && (
+                  {!row.reversed_at && Number(row.qty_defect) > resolvedFor(row.id) && (
                     <span className="flex shrink-0 flex-col items-end gap-1">
                       <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" disabled={busy}
-                        onClick={() => void tratarDefeito(row.id, Number(row.qty_defect), 'rework')}>
+                        onClick={() => void tratarDefeito(row.id, Number(row.qty_defect) - resolvedFor(row.id), 'rework')}>
                         Devolver para retrabalho
                       </Button>
                       <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" disabled={busy}
-                        onClick={() => void tratarDefeito(row.id, Number(row.qty_defect), 'scrap')}>
+                        onClick={() => void tratarDefeito(row.id, Number(row.qty_defect) - resolvedFor(row.id), 'scrap')}>
                         Baixar como perda/descarte
                       </Button>
                       <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
