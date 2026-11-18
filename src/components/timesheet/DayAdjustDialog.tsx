@@ -34,10 +34,20 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import type { TimeRecord, WorkSchedule } from '@/hooks/useTimesheet';
-import { mapThreePunchesToNamedSlots } from '@/lib/ponto/interpretDayPunches';
 import { detectOvernightCarries } from '@/lib/ponto/overnightPunches';
 import { readStickyManualReason, writeStickyManualReason } from '@/lib/ponto/manualReasonSticky';
 import { OverrideHistoryButton } from '@/components/timesheet/OverrideHistoryButton';
+import { RegisteredDayPunches, type NeighborDayRef } from '@/components/timesheet/RegisteredDayPunches';
+import {
+  dayPunchContext,
+  emptySlotManual,
+  prefillDaySlots,
+  punchHhmm,
+  slotAlertKeys,
+  slotsToPunchPayload,
+  type SlotManual,
+} from '@/lib/ponto/registeredDayPunches';
+import { emptyPunchSlots, type PunchSlots } from '@/lib/ponto/punchSlots';
 import {
   useCreateAbsence,
   useDeleteAbsence,
@@ -56,8 +66,7 @@ const SLOT_DEFS = [
   { key: 'saida', label: 'Saída' },
 ] as const;
 type SlotKey = (typeof SLOT_DEFS)[number]['key'];
-type Slots = Record<SlotKey, string>;
-type SlotManual = Record<SlotKey, boolean>;
+type Slots = PunchSlots;
 
 export type DayAdjustMode = 'punches' | 'absence';
 
@@ -73,70 +82,15 @@ export interface DayAdjustDialogProps {
   schedule: WorkSchedule;
   /** Ausência que cobre este dia, se houver. */
   coveringAbsence: (EmployeeAbsence & { employees?: { name: string; department: string } | null }) | null;
+  /** Feriado que derruba a jornada, se este dia for um. */
+  holidayName?: string | null;
+  /** Dia útil anterior e seguinte, para o gestor comparar. */
+  previousDay?: NeighborDayRef | null;
+  nextBusinessDay?: NeighborDayRef | null;
 }
 
-function isManualPunch(p: string) {
-  return p.endsWith('*');
-}
 function cleanPunch(p: string) {
-  return p.replace(/\*$/, '');
-}
-function timeToMinutes(t: string): number {
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-}
-const emptySlots = (): Slots => ({ entrada: '', saidaAlmoco: '', voltaAlmoco: '', saida: '' });
-const emptyManual = (): SlotManual => ({
-  entrada: false,
-  saidaAlmoco: false,
-  voltaAlmoco: false,
-  saida: false,
-});
-
-function punchesToSlots(punches: string[]): { slots: Slots; slotManual: SlotManual; extras: string[] } {
-  const sorted = [...(punches || [])].sort(
-    (a, b) => timeToMinutes(cleanPunch(a)) - timeToMinutes(cleanPunch(b)),
-  );
-  const slots = emptySlots();
-  const slotManual = emptyManual();
-  const extras: string[] = [];
-  const set = (k: SlotKey, p: string) => {
-    slots[k] = cleanPunch(p);
-    slotManual[k] = isManualPunch(p);
-  };
-  if (sorted.length === 2) {
-    set('entrada', sorted[0]);
-    set('saida', sorted[1]);
-  } else if (sorted.length === 3) {
-    const named = mapThreePunchesToNamedSlots(sorted);
-    const keys: SlotKey[] = ['entrada', 'saidaAlmoco', 'voltaAlmoco', 'saida'];
-    if (named) {
-      keys.forEach(k => {
-        if (named[k]) set(k, named[k]);
-      });
-    } else {
-      sorted.forEach((p, i) => {
-        if (i < 4) set(keys[i], p);
-      });
-    }
-  } else {
-    const keys: SlotKey[] = ['entrada', 'saidaAlmoco', 'voltaAlmoco', 'saida'];
-    sorted.forEach((p, i) => {
-      if (i < 4) set(keys[i], p);
-      else extras.push(p);
-    });
-  }
-  return { slots, slotManual, extras };
-}
-
-function slotsToPunches(slots: Slots, slotManual: SlotManual, extras: string[]): string[] {
-  const out: string[] = [];
-  for (const { key } of SLOT_DEFS) {
-    const v = (slots[key] || '').trim();
-    if (v) out.push(v + (slotManual[key] ? '*' : ''));
-  }
-  out.push(...extras);
-  return out.sort((a, b) => timeToMinutes(cleanPunch(a)) - timeToMinutes(cleanPunch(b)));
+  return punchHhmm(p);
 }
 
 const manualClient = supabase as unknown as {
@@ -159,17 +113,25 @@ export default function DayAdjustDialog({
   nextDayRecord,
   schedule,
   coveringAbsence,
+  holidayName = null,
+  previousDay = null,
+  nextBusinessDay = null,
 }: DayAdjustDialogProps) {
   const queryClient = useQueryClient();
   const createAbsence = useCreateAbsence();
   const deleteAbsence = useDeleteAbsence();
 
-  const initial = useMemo(() => punchesToSlots(existingRecord ? (existingRecord.punches as string[]) : []), [existingRecord]);
+  const originalPunches = useMemo(
+    () => (existingRecord ? ((existingRecord.punches as string[]) || []) : []),
+    [existingRecord],
+  );
+  const initial = useMemo(() => prefillDaySlots(originalPunches), [originalPunches]);
 
   const [mode, setMode] = useState<DayAdjustMode>('punches');
   const [slots, setSlots] = useState<Slots>(initial.slots);
   const [slotManual, setSlotManual] = useState<SlotManual>(initial.slotManual);
   const [extras, setExtras] = useState<string[]>(initial.extras);
+  const [clearedPrefill, setClearedPrefill] = useState(false);
   const [newPunch, setNewPunch] = useState('');
   const [manualReason, setManualReason] = useState('');
   const [saving, setSaving] = useState(false);
@@ -194,10 +156,11 @@ export default function DayAdjustDialog({
 
   useEffect(() => {
     if (!open) return;
-    const mapped = punchesToSlots(existingRecord ? (existingRecord.punches as string[]) : []);
+    const mapped = prefillDaySlots(existingRecord ? ((existingRecord.punches as string[]) || []) : []);
     setSlots(mapped.slots);
     setSlotManual(mapped.slotManual);
     setExtras(mapped.extras);
+    setClearedPrefill(false);
     setNewPunch('');
     const sticky = readStickyManualReason(employeeId);
     setManualReason(overnightCarry ? 'Virada à noite' : sticky);
@@ -216,9 +179,25 @@ export default function DayAdjustDialog({
     SLOT_DEFS.filter(({ key }) => slots[key].trim()).length + extras.length;
   const hasPunches = punchCount > 0 || !!(existingRecord && (existingRecord.punches as string[])?.length);
 
+  const punchCtx = useMemo(
+    () => dayPunchContext(schedule, dateStr, holidayName),
+    [schedule, dateStr, holidayName],
+  );
+  const alertKeys = useMemo(
+    () => new Set(slotAlertKeys(slots, punchCtx, originalPunches, clearedPrefill)),
+    [slots, punchCtx, originalPunches, clearedPrefill],
+  );
+
   const setSlot = (key: SlotKey, value: string) => {
     setSlots(s => ({ ...s, [key]: value }));
     setSlotManual(m => ({ ...m, [key]: true }));
+  };
+
+  const clearPrefill = () => {
+    setSlots(emptyPunchSlots());
+    setSlotManual(emptySlotManual());
+    setExtras([]);
+    setClearedPrefill(true);
   };
 
   const addExtra = () => {
@@ -237,8 +216,8 @@ export default function DayAdjustDialog({
       toast.info('Domingo não tem expediente padrão. Adicione manualmente se houve trabalho.');
       return;
     }
-    const entry = (dow === 6 ? schedule.saturday_entry : schedule.entry_time) || '08:00';
-    const exit = (dow === 6 ? schedule.saturday_exit : schedule.exit_time) || '17:48';
+    const entry = punchHhmm(dow === 6 ? (schedule.saturday_entry || schedule.entry_time || '') : (schedule.entry_time || '')) || '08:00';
+    const exit = punchHhmm(dow === 6 ? (schedule.saturday_exit || schedule.exit_time || '') : (schedule.exit_time || '')) || '17:48';
     setSlots({ entrada: entry, saidaAlmoco: '', voltaAlmoco: '', saida: exit });
     setSlotManual({ entrada: true, saidaAlmoco: false, voltaAlmoco: false, saida: true });
     setExtras([]);
@@ -261,10 +240,17 @@ export default function DayAdjustDialog({
       toast.error('Informe uma justificativa com pelo menos 4 caracteres.');
       return;
     }
+    const punches = slotsToPunchPayload(slots, slotManual, extras);
+    if (punches.length === 0) {
+      toast.error(
+        existingRecord
+          ? 'Nenhum horário preenchido. Use Limpar dia para apagar as batidas do relógio.'
+          : 'Adicione pelo menos uma batida.',
+      );
+      return;
+    }
     setSaving(true);
     try {
-      const punches = slotsToPunches(slots, slotManual, extras);
-      if (!existingRecord && punches.length === 0) throw new Error('Adicione pelo menos uma batida.');
       const reason = manualReason.trim();
       const { error } = await manualClient.rpc('upsert_manual_time_record', {
         p_employee_id: employeeId,
@@ -427,7 +413,7 @@ export default function DayAdjustDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardEdit className="h-4 w-4" /> Corrigir o dia
@@ -481,6 +467,16 @@ export default function DayAdjustDialog({
               </div>
             </div>
           </div>
+
+          <RegisteredDayPunches
+            timeRecordId={existingRecord?.id}
+            punches={originalPunches}
+            schedule={schedule}
+            dateStr={dateStr}
+            holidayName={holidayName}
+            previous={previousDay}
+            next={nextBusinessDay}
+          />
 
           <div
             className="grid grid-cols-2 gap-1 rounded-md border border-border/60 bg-muted/40 p-1"
@@ -574,11 +570,8 @@ export default function DayAdjustDialog({
                             onChange={e => setSlot(key, e.target.value)}
                             className={cn(
                               'font-mono tabular-nums h-9',
-                              val
-                                ? manual
-                                  ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400'
-                                  : ''
-                                : 'border-amber-500/40',
+                              val && manual && 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400',
+                              !val && alertKeys.has(key) && 'border-amber-500/50 bg-amber-500/5',
                             )}
                           />
                           {val && (
@@ -623,9 +616,21 @@ export default function DayAdjustDialog({
                 )}
               </div>
 
-              <Button variant="outline" size="sm" onClick={fillStandardDay} className="w-full gap-1.5">
-                <Clock className="h-3.5 w-3.5" /> Preencher entrada/saída padrão
-              </Button>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Button variant="outline" size="sm" onClick={fillStandardDay} className="w-full gap-1.5">
+                  <Clock className="h-3.5 w-3.5" /> Preencher entrada/saída padrão
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-muted-foreground"
+                  onClick={clearPrefill}
+                  disabled={punchCount === 0}
+                >
+                  Limpar pré-preenchimento
+                </Button>
+              </div>
 
               <div className="space-y-1.5">
                 <Label className="text-xs">Adicionar batida extra</Label>

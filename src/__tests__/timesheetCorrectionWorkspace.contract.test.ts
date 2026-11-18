@@ -60,6 +60,12 @@ describe('workspace único de correção do ponto', () => {
     expect(DIALOG).toContain('set_time_record_reimport_protection');
     expect(DIALOG).toContain('Permitir reimport deste dia');
     expect(DIALOG).toContain('OverrideHistoryButton');
+    expect(DIALOG).toContain('RegisteredDayPunches');
+    expect(DIALOG).toContain('Limpar pré-preenchimento');
+    expect(DIALOG).toContain('slotsToPunchPayload');
+    expect(read('src/components/timesheet/RegisteredDayPunches.tsx')).toContain('Batidas registradas no dia');
+    expect(read('src/components/timesheet/RegisteredDayPunches.tsx')).toContain('Nenhuma batida registrada');
+    expect(WORKSPACE).toContain('dayCellPunchTooltip');
   });
 
   it('espelho esconde batidas brutas na impressão', () => {

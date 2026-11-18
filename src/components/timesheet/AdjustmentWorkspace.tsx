@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   useWorkSchedules,
   useTimeRecords,
+  useHolidays,
   type WorkSchedule,
   type TimeRecord,
 } from '@/hooks/useTimesheet';
@@ -17,6 +18,7 @@ import {
   type DayCellStatus,
 } from '@/lib/ponto/dayCellStatus';
 import DayAdjustDialog from '@/components/timesheet/DayAdjustDialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Panel } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +31,14 @@ import {
   Users as Users2,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { resolveHolidaysInRange } from '@/lib/ponto/periodDates';
+import {
+  adjacentBusinessDates,
+  dayCellPunchTooltip,
+  dayPunchContext,
+  holidayNameOn,
+  shiftIsoDate,
+} from '@/lib/ponto/registeredDayPunches';
 
 const DAYS_PT = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
@@ -153,9 +163,18 @@ export default function AdjustmentWorkspace() {
   const monthDates = useMemo(() => monthDateRange(year, monthIndex), [year, monthIndex]);
   const monthStart = monthDates[0];
   const monthEnd = monthDates[monthDates.length - 1];
+  // Margem para o dia útil anterior/seguinte quando o mês começa ou termina em feriado.
+  const rangeStart = shiftIsoDate(monthStart, -14);
+  const rangeEnd = shiftIsoDate(monthEnd, 14);
   const todayStr = toDateStr(new Date());
 
-  const { data: records = [], isLoading } = useTimeRecords(undefined, monthStart, monthEnd);
+  const { data: records = [], isLoading } = useTimeRecords(undefined, rangeStart, rangeEnd);
+  const { data: holidays = [] } = useHolidays();
+
+  const holidayDates = useMemo(
+    () => resolveHolidaysInRange(holidays, rangeStart, rangeEnd),
+    [holidays, rangeStart, rangeEnd],
+  );
 
   const defaultSchedule = useMemo<WorkSchedule>(
     () =>
@@ -334,6 +353,25 @@ export default function AdjustmentWorkspace() {
     ? absenceCovers(absenceList, cellTarget.employee.id, cellTarget.dateStr)
     : null;
 
+  const dialogHolidayName = cellTarget
+    ? holidayNameOn(cellTarget.dateStr, holidays)
+    : null;
+
+  const neighborDays = useMemo(() => {
+    if (!cellTarget) return { previous: null, next: null };
+    const schedule = scheduleForEmployee(cellTarget.employee.id);
+    const adjacent = adjacentBusinessDates(cellTarget.dateStr, schedule, holidayDates);
+    const read = (date: string | null) => {
+      if (!date) return null;
+      const rec = recordMap.get(`${cellTarget.employee.id}|${date}`);
+      return {
+        date,
+        punches: rec ? (Array.isArray(rec.punches) ? rec.punches.map(String) : []) : null,
+      };
+    };
+    return { previous: read(adjacent.previous), next: read(adjacent.next) };
+  }, [cellTarget, scheduleForEmployee, holidayDates, recordMap]);
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-border/70 bg-card p-4 shadow-sm space-y-3">
@@ -486,7 +524,7 @@ export default function AdjustmentWorkspace() {
                 </tr>
               </thead>
               <tbody>
-                {rowData.map(({ employee, statuses }, rowIdx) => (
+                {rowData.map(({ employee, statuses, schedule }, rowIdx) => (
                   <tr
                     key={employee.id}
                     className={cn('border-b border-border/40', rowIdx % 2 === 1 && 'bg-muted/10')}
@@ -507,18 +545,19 @@ export default function AdjustmentWorkspace() {
                       const rec = recordMap.get(`${employee.id}|${dateStr}`);
                       const reimportProtected = !!rec?.reimport_protected;
                       const mark = statusMark(status, reimportProtected);
-                      const punchPreview = rec
-                        ? ((rec.punches as string[]) || [])
-                            .map(p => String(p).replace(/\*$/, ''))
-                            .slice(0, 2)
-                            .join(' ')
-                        : '';
+                      const punches = rec ? ((rec.punches as string[]) || []).map(String) : [];
+                      const holidayName = holidayNameOn(dateStr, holidays);
+                      const punchTip = dayCellPunchTooltip(
+                        punches,
+                        dayPunchContext(schedule, dateStr, holidayName),
+                      );
                       const titleParts = [
-                        punchPreview || null,
+                        punchTip,
                         status === 'needs_fix' ? 'Precisa de ajuste' : null,
                         status === 'justified' ? 'Justificado' : null,
                         reimportProtected ? 'Protegido do reimport' : null,
                       ].filter(Boolean);
+                      const cellLabel = titleParts.join(' · ');
 
                       return (
                         <td
@@ -531,20 +570,33 @@ export default function AdjustmentWorkspace() {
                               : 'cursor-not-allowed opacity-40',
                           )}
                           onClick={() => canEdit && openCell(employee, dateStr)}
-                          title={titleParts.length ? titleParts.join(' · ') : undefined}
                         >
-                          {mark ? (
-                            <span
-                              className={cn(
-                                'inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border text-[10px] font-bold tabular-nums',
-                                mark.className,
-                              )}
-                            >
-                              {mark.label}
-                            </span>
-                          ) : status === 'empty' ? (
-                            <span className="text-muted-foreground/40 text-[10px]">—</span>
-                          ) : null}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                className="flex h-6 w-full items-center justify-center"
+                                aria-label={cellLabel}
+                              >
+                                {mark ? (
+                                  <span
+                                    className={cn(
+                                      'inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border text-[10px] font-bold tabular-nums',
+                                      mark.className,
+                                    )}
+                                  >
+                                    {mark.label}
+                                  </span>
+                                ) : status === 'empty' ? (
+                                  <span className="text-muted-foreground/40 text-[10px]">—</span>
+                                ) : (
+                                  <span className="inline-block h-5 w-5" />
+                                )}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[260px] px-2 py-1.5 text-left text-[11px] leading-snug">
+                              {cellLabel}
+                            </TooltipContent>
+                          </Tooltip>
                         </td>
                       );
                     })}
@@ -569,6 +621,9 @@ export default function AdjustmentWorkspace() {
           nextDayRecord={nextDayRecord}
           schedule={scheduleForEmployee(cellTarget.employee.id)}
           coveringAbsence={coveringAbsence}
+          holidayName={dialogHolidayName}
+          previousDay={neighborDays.previous}
+          nextBusinessDay={neighborDays.next}
         />
       )}
     </div>
