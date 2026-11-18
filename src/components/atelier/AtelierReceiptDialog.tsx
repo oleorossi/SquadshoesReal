@@ -58,6 +58,7 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
   const [reason, setReason] = useState('');
   const [partId, setPartId] = useState<string | null>(null);
   const [chargeScrap, setChargeScrap] = useState(false);
+  const [reworkQty, setReworkQty] = useState('');
   const [busy, setBusy] = useState(false);
   const { roles } = useAccessControl();
   const canReverse = roles.includes('admin') || roles.includes('gerente');
@@ -78,6 +79,13 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
   const resolvedFor = (receiptId: string) => (resolutionsQuery.data ?? [])
     .filter((row) => row.receipt_id === receiptId)
     .reduce((sum, row) => sum + Number(row.pairs || 0), 0);
+  const reworkSent = (resolutionsQuery.data ?? [])
+    .filter((row) => row.kind === 'rework')
+    .reduce((sum, row) => sum + Number(row.pairs || 0), 0);
+  const reworkBack = history
+    .filter((row) => row.rework_resolution_id && !row.reversed_at)
+    .reduce((sum, row) => sum + Number(row.pairs || 0), 0);
+  const openRework = Math.max(0, reworkSent - reworkBack);
   const partsQuery = useQuery({
     queryKey: ['atelier-job-parts', job?.id ?? '', 'receipt'],
     enabled: open,
@@ -107,6 +115,7 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
     setLoss('');
     setNote('');
     setReason('');
+    setReworkQty('');
     setPartId(null);
   }, [job?.id]);
   useEffect(() => {
@@ -131,6 +140,13 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
     }
     setBusy(true);
     try {
+      const typedRework = reworkQty.trim() === '' ? openRework : atelierWholePairs(reworkQty, true);
+      if (typedRework == null) {
+        toast.error('Retorno do retrabalho: use só pares inteiros.');
+        return;
+      }
+      const askedRework = typedRework;
+      const reworkPairs = Math.min(good, openRework, Math.max(0, askedRework));
       await registerAtelierJobReceipt({
         jobId: job.id,
         pairs: good,
@@ -138,6 +154,7 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
         loss: lossPairs,
         note,
         partId: activePart?.id ?? null,
+        reworkPairs,
       });
       toast.success(`${sector}: ${good} pares bons conferidos`);
       await refresh();
@@ -226,7 +243,7 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
             <SelectContent>
               {parts.map((part) => (
                 <SelectItem key={part.id} value={part.id}>
-                  {part.execution_mode === 'internal' ? 'Interno' : 'Prestador'} · {part.received_pairs}/{part.pairs}
+                  {part.execution_mode === 'internal' ? 'Interno' : 'Prestador'} · {part.pairs} pares
                 </SelectItem>
               ))}
             </SelectContent>
@@ -244,6 +261,22 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
                 aria-label="Quantidade recebida"
               />
             </label>
+            {openRework > 0 && (
+              <label className="block space-y-1 text-xs">
+                <span className="font-medium text-foreground">Retorno do retrabalho</span>
+                <Input
+                  inputMode="numeric"
+                  className="h-9 font-mono"
+                  value={reworkQty}
+                  placeholder={String(openRework)}
+                  onChange={(e) => setReworkQty(e.target.value)}
+                  aria-label="Pares que voltam do retrabalho"
+                />
+                <span className="text-[11px] text-muted-foreground">
+                  {openRework} em retrabalho. Esses pares abatem o defeito e não geram conta. O restante entra como bom pago.
+                </span>
+              </label>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <label className="block space-y-1 text-xs">
                 <span className="font-medium text-foreground">Defeito</span>

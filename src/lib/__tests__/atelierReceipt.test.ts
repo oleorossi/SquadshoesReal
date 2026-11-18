@@ -75,10 +75,10 @@ describe('recebimento parcial do Ateliê', () => {
   it('separa bons, defeito, perda e o que ainda está fora', () => {
     expect(atelierReceiptDetail({
       sent: 12, good: 7, defect: 1, loss: 1,
-    })).toBe('7 bons · 1 defeito · 1 perda · 3 a receber · defeito pendente: 1');
+    })).toBe('7 bons · 1 defeito · 1 perda · 3 a receber');
     expect(atelierReceiptDetail({
-      sent: 12, good: 10, defect: 1, loss: 1, pendingDefect: 0,
-    })).toBe('10 bons · 1 defeito · 1 perda · 0 a receber');
+      sent: 12, good: 8, defect: 1, loss: 1, pendingDefect: 0, stillOut: 3,
+    })).toBe('8 bons · 0 defeito · 1 perda · 3 a receber');
     expect(atelierReceiptDetail({
       sent: 12, good: 4, defect: 1, loss: 0, pendingDefect: 0, inRework: 1, stillOut: 7,
     })).toBe('4 bons · 1 em retrabalho · 0 perda · 7 a receber');

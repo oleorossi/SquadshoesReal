@@ -105,6 +105,7 @@ jobs:
           bun scripts/check-migration-syntax.mjs
           psql -v ON_ERROR_STOP=1 -f scripts/atelier-return-balance-test.sql
           psql -v ON_ERROR_STOP=1 -f scripts/atelier-estorno-payable-test.sql
+          psql -v ON_ERROR_STOP=1 -f scripts/atelier-rework-close-test.sql
 
       - name: Branding Check
         id: branding_check

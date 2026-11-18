@@ -549,6 +549,7 @@ export interface AtelierJobReceipt {
   created_by: string | null;
   reversed_at: string | null;
   reversal_reason: string | null;
+  rework_resolution_id?: string | null;
 }
 
 export async function registerAtelierJobReceipt(input: {
@@ -558,6 +559,7 @@ export async function registerAtelierJobReceipt(input: {
   loss?: number;
   note?: string | null;
   partId?: string | null;
+  reworkPairs?: number;
 }) {
   const { data, error } = await supabase.rpc(
     'register_atelier_job_receipt' as never,
@@ -568,6 +570,7 @@ export async function registerAtelierJobReceipt(input: {
       p_defect: input.defect ?? 0,
       p_loss: input.loss ?? 0,
       p_part_id: input.partId ?? null,
+      p_rework_pairs: input.reworkPairs ?? 0,
     } as never,
   );
   if (error) throw error;
@@ -590,7 +593,7 @@ export function useAtelierJobReceipts(jobId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('atelier_job_receipts' as never)
-        .select('id, job_id, pairs, qty_defect, qty_loss, note, created_at, created_by, reversed_at, reversal_reason')
+        .select('id, job_id, pairs, qty_defect, qty_loss, note, created_at, created_by, reversed_at, reversal_reason, rework_resolution_id')
         .eq('job_id', jobId as never)
         .order('created_at', { ascending: false });
       if (error) throw error;

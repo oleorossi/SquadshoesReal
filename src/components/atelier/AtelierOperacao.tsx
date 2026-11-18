@@ -415,7 +415,16 @@ function JobActions({
               : (contractors.find((c) => c.id === part.contractor_id)?.name ?? 'Prestador');
             return (
               <li key={part.id}>
-                {name} {part.pairs} · {Number(part.received_pairs) || 0}/{part.pairs} recebidos
+                {name}
+                {tallyQuery.data ? ` · ${atelierReceiptDetail({
+                  sent: Number(part.pairs) || sentPairs || Number(job.pairs) || 0,
+                  good: tallyQuery.data.good,
+                  defect: tallyQuery.data.defect,
+                  loss: tallyQuery.data.loss,
+                  pendingDefect: tallyQuery.data.pendingDefect,
+                  inRework: tallyQuery.data.inRework,
+                  stillOut: tallyQuery.data.stillOut,
+                })}` : ` · ${part.pairs} pares`}
                 {part.unit_price != null ? ` · ${formatCurrency(Number(part.unit_price))}/par` : ''}
               </li>
             );
