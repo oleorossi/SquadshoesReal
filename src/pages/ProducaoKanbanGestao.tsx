@@ -162,15 +162,18 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     queryFn: async () => {
       const { data, error } = await supabase
         .from('cabedal_prep_jobs' as never)
-        .select('sale_order_id, sector, pipeline_status')
+        .select('sale_order_id, sector, pipeline_status, pairs, received_pairs')
         .neq('pipeline_status', 'cancelled')
         .limit(2000);
       if (error) throw error;
       const m = new Map<string, string>();
+      const caps = new Map<string, number>();
       const rows = (data ?? []) as {
         sale_order_id: string | null;
         sector: string | null;
         pipeline_status: string;
+        pairs: number | null;
+        received_pairs: number | null;
       }[];
       for (const row of rows) {
         const sectorKey =
@@ -179,9 +182,16 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           : row.sector === 'aviamento' ? 'Aviamento'
           : null;
         if (!sectorKey || !row.sale_order_id) continue;
-        m.set(`${row.sale_order_id}|${norm(sectorKey)}`, row.pipeline_status);
+        const received = Number(row.received_pairs) || 0;
+        const total = Number(row.pairs) || 0;
+        const label = total > 0 ? `${row.pipeline_status}|${received}/${total}` : row.pipeline_status;
+        m.set(`${row.sale_order_id}|${norm(sectorKey)}`, label);
+        if (row.sector === 'costura_cabedal' || row.sector === 'aviamento') {
+          const prev = caps.get(row.sale_order_id);
+          caps.set(row.sale_order_id, prev == null ? received : Math.min(prev, received));
+        }
       }
-      return m;
+      return { status: m, caps };
     },
     staleTime: 30_000,
   });
@@ -189,7 +199,23 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   const atelierStatusForCard = useCallback((card: KanbanCardData): string | null => {
     const so = card.q.sale_order_id;
     if (!so || !atelierJobMap) return null;
-    return atelierJobMap.get(`${so}|${norm(card.column)}`) ?? null;
+    const raw = atelierJobMap.status.get(`${so}|${norm(card.column)}`) ?? null;
+    if (!raw) return null;
+    return raw.split('|')[0];
+  }, [atelierJobMap]);
+
+  const atelierCapForCard = useCallback((card: KanbanCardData): number | null => {
+    const so = card.q.sale_order_id;
+    if (!so || !atelierJobMap) return null;
+    return atelierJobMap.caps.get(so) ?? null;
+  }, [atelierJobMap]);
+
+  const atelierProgressForCard = useCallback((card: KanbanCardData): string | null => {
+    const so = card.q.sale_order_id;
+    if (!so || !atelierJobMap) return null;
+    const raw = atelierJobMap.status.get(`${so}|${norm(card.column)}`);
+    if (!raw || !raw.includes('|')) return null;
+    return raw.split('|')[1] ?? null;
   }, [atelierJobMap]);
 
   const [filterAtelierRua, setFilterAtelierRua] = useState(false);
@@ -746,11 +772,12 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
     const plan = buildPointingPlan(card, resolved, flowOrder, levelOf, {
       ...planOptions,
       atelierBlocksColumn: atelierBlocksKanbanPointing(atelierSt),
+      atelierReceivedCap: atelierCapForCard(card),
     });
     if (!plan.available) return { ok: false, kind: 'frente', reason: plan.unavailableReason };
     if (plan.isBackward) return { ok: true, kind: 'estorno' };
     return { ok: true, kind: plan.skipped.length > 0 ? 'pulo' : 'frente' };
-  }, [flowOrder, levelOf, planOptions, atelierStatusForCard]);
+  }, [flowOrder, levelOf, planOptions, atelierStatusForCard, atelierCapForCard]);
 
   /**
    * Elegibilidade do card EM ARRASTE por setor, calculada uma vez por arraste.
@@ -1985,7 +2012,12 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                         landed={landedId === card.q.order_id}
                         materialGateDate={gateMap?.get(card.q.order_id)?.ready_date ?? null}
                         materialGateReason={gateMap?.get(card.q.order_id)?.reason ?? null}
-                        atelierBadge={atelierKanbanBadgeLabel(atelierStatusForCard(card))}
+                        atelierBadge={(() => {
+                          const progress = atelierProgressForCard(card);
+                          const base = atelierKanbanBadgeLabel(atelierStatusForCard(card));
+                          if (!progress) return base;
+                          return base ? `${base} · ${progress}` : `Ateliê · ${progress}`;
+                        })()}
                         earlyReleaseBadge={!!card.q.is_ahead_of_schedule}
                         materialStatus={card.q.sale_order_id
                           ? materialShortageStatus(shortageBySaleOrder.get(card.q.sale_order_id))
@@ -2024,6 +2056,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             : undefined}
           onApontado={markLanded}
           onClose={() => setDropTarget(null)}
+          atelierReceivedCap={atelierCapForCard(dropTarget.card)}
         />
       )}
       {detailStage && (
@@ -2040,6 +2073,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
             : undefined}
           onApontado={markLanded}
           readOnly={!canEdit}
+          atelierReceivedCap={atelierCapForCard(detailStage.card)}
           onClose={() => setDetailStage(null)}
         />
       )}

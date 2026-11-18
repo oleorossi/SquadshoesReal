@@ -27,6 +27,7 @@ interface HoldRow {
   color: string | null;
   pending_jobs: string | null;
   reason: string | null;
+  blocks?: boolean | null;
 }
 
 function parseRows(raw: unknown): AtelierProductionHoldLine[] {
@@ -40,6 +41,7 @@ function parseRows(raw: unknown): AtelierProductionHoldLine[] {
       color: String(row.color ?? '—'),
       pendingJobs: String(row.pending_jobs ?? '').trim(),
       reason: String(row.reason ?? '').trim(),
+      blocks: row.blocks == null ? true : Boolean(row.blocks),
     }))
     .filter(line => line.saleOrderId !== '' && line.itemId !== '' && line.reason !== '');
 }

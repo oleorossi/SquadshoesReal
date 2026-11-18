@@ -40,7 +40,7 @@ const ORIGIN_CIENTE_FALTA = 'Via Kanban (ciente: PV com falta de material)';
  */
 export function DropApontarDialog({
   card, target, flowOrder, levelOf, apontar, onClose, photoUrl, onApontado, readOnly = false,
-  allowParallelSkip = false, materialShortage,
+  allowParallelSkip = false, materialShortage, atelierReceivedCap = null,
 }: {
   card: KanbanCardData;
   target: string | null;
@@ -63,12 +63,14 @@ export function DropApontarDialog({
    * `confirmedWarnings` do servidor.
    */
   materialShortage?: SaleOrderMaterialShortageInfo;
+  /** Saldo conferido do Ateliê. null = sem teto. */
+  atelierReceivedCap?: number | null;
 }) {
   const { q, stages, column } = card;
   const { data: profile } = useCurrentProfile();
   const { data: pointings = [], isLoading: pointingsLoading } = useOrderPointings(q.order_id);
   const referencePhoto = thumbUrl(photoUrl || q.reference_photo_url, 112);
-  const planOptions = { allowParallelSkip };
+  const planOptions = { allowParallelSkip, atelierReceivedCap };
 
   // Modo detalhe (target=null): o usuário pode escolher um destino no select —
   // vale como se tivesse arrastado o card até lá.

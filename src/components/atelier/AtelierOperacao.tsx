@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { atelierCanRecordReceipt, atelierReceiptProgressLabel } from '@/lib/atelierReceipt';
 import {
   ATELIER_BOARD_COLUMNS,
   ATELIER_RAIL_LABEL,
@@ -70,16 +71,15 @@ import {
   useAtelierLotKitPreview,
   useConfirmAtelierLotCut,
   useConfirmAtelierLotRelease,
-  useMarkAtelierInternalDone,
   useMarkAtelierInternalStart,
   useMarkAtelierRealized,
-  useMarkAtelierReceived,
   useMarkAtelierSent,
   useSetAtelierJobExecutionMode,
   type AtelierLotJob,
   type AtelierLotRow,
 } from '@/hooks/useAtelier';
 import { useContractors } from '@/hooks/useContractors';
+import { AtelierReceiptDialog } from '@/components/atelier/AtelierReceiptDialog';
 
 type Modo = 'quadro' | 'pedido';
 
@@ -178,24 +178,23 @@ function JobActions({
   job,
   lot,
   contractors,
+  onReceipt,
 }: {
   job: AtelierLotJob;
   lot: AtelierLotRow;
   contractors: { id: string; name: string }[];
+  onReceipt?: () => void;
 }) {
   const mode = atelierEffectiveMode(job.execution_mode);
   const setMode = useSetAtelierJobExecutionMode();
   const sendMut = useMarkAtelierSent();
   const realizedMut = useMarkAtelierRealized();
-  const receiveMut = useMarkAtelierReceived();
   const startMut = useMarkAtelierInternalStart();
-  const doneMut = useMarkAtelierInternalDone();
   const [contractorId, setContractorId] = useState(job.contractor_id ?? '');
   const action = atelierSingleAction(job);
   const canChangeMode = job.pipeline_status === 'awaiting_cut' || job.pipeline_status === 'cut';
   const kitWaiting = lot.kit_gate === 'awaiting_components';
-  const busy = setMode.isPending || sendMut.isPending || realizedMut.isPending
-    || receiveMut.isPending || startMut.isPending || doneMut.isPending;
+  const busy = setMode.isPending || sendMut.isPending || realizedMut.isPending || startMut.isPending;
 
   return (
     <div className="space-y-1.5">
@@ -271,11 +270,11 @@ function JobActions({
         </div>
       )}
 
-      {action === 'received' && (
+      {atelierCanRecordReceipt(job) && job.execution_mode !== 'internal' && (
         <div className="flex justify-end">
-          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={() => receiveMut.mutate(job.id)}>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onReceipt}>
             <Warehouse className="h-3 w-3" />
-            Conferir
+            Conferir recebimento
           </Button>
         </div>
       )}
@@ -289,11 +288,11 @@ function JobActions({
         </div>
       )}
 
-      {action === 'internal_done' && (
+      {atelierCanRecordReceipt(job) && job.execution_mode === 'internal' && (
         <div className="flex justify-end">
-          <Button size="sm" className="h-7 px-2 text-[11px]" disabled={busy} onClick={() => doneMut.mutate(job.id)}>
+          <Button size="sm" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onReceipt}>
             <CheckCircle className="h-3 w-3" />
-            Concluído
+            Lançar concluído
           </Button>
         </div>
       )}
@@ -314,16 +313,18 @@ function JobCard({
   contractors,
   selected,
   onToggle,
+  onReceipt,
 }: {
   job: AtelierLotJob;
   lot: AtelierLotRow;
   contractors: { id: string; name: string }[];
   selected?: boolean;
   onToggle?: () => void;
+  onReceipt?: () => void;
 }) {
-  const blocks = atelierJobBlocksProduction(job.execution_mode, job.pipeline_status);
-  const late = atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode);
+  const blocks = atelierJobBlocksProduction(job.execution_mode, job.pipeline_status, job.received_pairs);
   const sector = ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector;
+  const late = atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode);
   const canSelect = !!onToggle && atelierBatchAction(job) != null;
 
   return (
@@ -357,12 +358,15 @@ function JobCard({
           </span>
         )}
       </div>
+      <p className="text-[10px] font-medium text-foreground">
+        {atelierReceiptProgressLabel(sector, Number(job.received_pairs) || 0, Number(job.pairs) || 0)}
+      </p>
       {blocks && (
         <p className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
           Trava Em Produção de {job.order_number}
         </p>
       )}
-      <JobActions job={job} lot={lot} contractors={contractors} />
+      <JobActions job={job} lot={lot} contractors={contractors} onReceipt={onReceipt} />
     </article>
   );
 }
@@ -508,6 +512,7 @@ export function AtelierOperacao({
   const [failures, setFailures] = useState<BatchFailure[]>([]);
   const [batching, setBatching] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [receiptJob, setReceiptJob] = useState<AtelierLotJob | null>(null);
 
   const filters = useMemo<AtelierBoardFilters>(() => ({
     orderNumber: pedido,
@@ -741,7 +746,13 @@ export function AtelierOperacao({
                               {rows.length === 0 ? (
                                 <p className="py-3 text-center text-[10px] text-muted-foreground">—</p>
                               ) : rows.map(({ lot, job }) => (
-                                <JobCard key={job.id} job={job} lot={lot} contractors={contractorOpts} />
+                                <JobCard
+                                  key={job.id}
+                                  job={job}
+                                  lot={lot}
+                                  contractors={contractorOpts}
+                                  onReceipt={() => setReceiptJob(job)}
+                                />
                               ))}
                             </div>
                           </section>
@@ -760,10 +771,12 @@ export function AtelierOperacao({
               setSelected={setSelected}
               batching={batching}
               onBatch={runBatch}
+              onReceipt={setReceiptJob}
             />
           )}
         </>
       )}
+      <AtelierReceiptDialog job={receiptJob} onClose={() => setReceiptJob(null)} />
     </div>
   );
 }
@@ -804,6 +817,7 @@ function PedidoView({
   setSelected,
   batching,
   onBatch,
+  onReceipt,
 }: {
   groups: {
     orderNumber: string;
@@ -819,6 +833,7 @@ function PedidoView({
   setSelected: (next: Set<string>) => void;
   batching: boolean;
   onBatch: (items: { label: string; run: () => Promise<unknown> }[]) => Promise<void>;
+  onReceipt: (job: AtelierLotJob) => void;
 }) {
   if (groups.length === 0) {
     return <EmptyState icon={CheckCircle} title="Nenhum pedido com esses filtros" description="Troque o pedido ou limpe os filtros." />;
@@ -947,7 +962,14 @@ function PedidoView({
                           Trava Em Produção de {group.orderNumber}
                         </p>
                       )}
-                      <JobActions job={job} lot={lot} contractors={contractors} />
+                      <p className="text-[10px] font-medium text-foreground">
+                        {atelierReceiptProgressLabel(
+                          ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector,
+                          Number(job.received_pairs) || 0,
+                          Number(job.pairs) || 0,
+                        )}
+                      </p>
+                      <JobActions job={job} lot={lot} contractors={contractors} onReceipt={() => onReceipt(job)} />
                     </li>
                   );
                 })}

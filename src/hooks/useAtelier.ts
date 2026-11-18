@@ -177,6 +177,8 @@ export interface AtelierLotJob {
   atelier_service_number: string | null;
   target_end: string | null;
   execution_mode: AtelierExecutionMode | null;
+  /** Pares já conferidos (soma dos lançamentos não estornados). */
+  received_pairs?: number | null;
   /** Congelado no envio — qtds debitadas no corte para a OS. */
   sent_kit_lines?: AtelierSentKitLine[] | null;
 }
@@ -426,6 +428,59 @@ export async function markAtelierJobRealized(jobId: string) {
   );
   if (error) throw error;
   return data;
+}
+
+export interface AtelierJobReceipt {
+  id: string;
+  job_id: string;
+  pairs: number;
+  note: string | null;
+  created_at: string;
+  created_by: string | null;
+  reversed_at: string | null;
+  reversal_reason: string | null;
+}
+
+export async function registerAtelierJobReceipt(input: {
+  jobId: string;
+  pairs: number;
+  note?: string | null;
+}) {
+  const { data, error } = await supabase.rpc(
+    'register_atelier_job_receipt' as never,
+    {
+      p_job_id: input.jobId,
+      p_pairs: input.pairs,
+      p_note: input.note ?? null,
+    } as never,
+  );
+  if (error) throw error;
+  return data as { ok?: boolean; received_pairs?: number; pairs?: number } | null;
+}
+
+export async function reverseAtelierJobReceipt(input: { receiptId: string; reason: string }) {
+  const { data, error } = await supabase.rpc(
+    'reverse_atelier_job_receipt' as never,
+    { p_receipt_id: input.receiptId, p_reason: input.reason } as never,
+  );
+  if (error) throw error;
+  return data as { ok?: boolean; received_pairs?: number } | null;
+}
+
+export function useAtelierJobReceipts(jobId: string | null) {
+  return useQuery({
+    queryKey: [...atelierKeys.all, 'receipts', jobId ?? ''] as const,
+    enabled: !!jobId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('atelier_job_receipts' as never)
+        .select('id, job_id, pairs, note, created_at, created_by, reversed_at, reversal_reason')
+        .eq('job_id', jobId as never)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as AtelierJobReceipt[];
+    },
+  });
 }
 
 export async function markAtelierJobReceived(jobId: string) {

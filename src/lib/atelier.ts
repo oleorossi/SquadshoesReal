@@ -31,8 +31,10 @@ export type AtelierPipelineStatus =
   | 'cut'
   | 'sent_to_contractor'
   | 'realized'
+  | 'partially_received'
   | 'received_at_factory'
   | 'in_progress'
+  | 'partially_done'
   | 'done'
   | 'cancelled';
 
@@ -47,8 +49,10 @@ export const ATELIER_PIPELINE_LABEL: Record<AtelierPipelineStatus, string> = {
   cut: 'Cortado',
   sent_to_contractor: 'Enviado ao prestador',
   realized: 'Realizado',
+  partially_received: 'Recebido parcial',
   received_at_factory: 'Recebido e conferido',
   in_progress: 'Em realização',
+  partially_done: 'Concluído parcial',
   done: 'Concluído',
   cancelled: 'Cancelado',
 };
@@ -64,8 +68,10 @@ export const ATELIER_QUEUE_COLUMNS: AtelierPipelineStatus[] = [
   'cut',
   'sent_to_contractor',
   'realized',
+  'partially_received',
   'received_at_factory',
   'in_progress',
+  'partially_done',
   'done',
 ];
 
@@ -87,9 +93,11 @@ const PIPELINE_ORDER: Record<AtelierPipelineStatus, number> = {
   cut: 1,
   sent_to_contractor: 2,
   realized: 3,
-  received_at_factory: 4,
+  partially_received: 4,
+  received_at_factory: 5,
   in_progress: 2,
-  done: 4,
+  partially_done: 3,
+  done: 5,
   cancelled: 99,
 };
 
@@ -126,10 +134,14 @@ export function atelierKanbanBadgeLabel(status: string | null | undefined): stri
       return 'Ateliê · enviado ao prestador';
     case 'realized':
       return 'Ateliê · realizado';
+    case 'partially_received':
+      return 'Ateliê · recebido parcial';
     case 'received_at_factory':
       return 'Ateliê · recebido e conferido';
     case 'in_progress':
       return 'Ateliê · em realização';
+    case 'partially_done':
+      return 'Ateliê · concluído parcial';
     case 'done':
       return 'Ateliê · concluído';
     default:
@@ -151,13 +163,29 @@ export function atelierJobReleasesFactory(
   return status === 'received_at_factory';
 }
 
+/**
+ * Em Produção libera com saldo conferido (> 0), mesmo antes dos 100%.
+ * Sem saldo, o job ainda trava. Status integral continua liberando
+ * mesmo se o campo de pares não veio na lista.
+ */
+export function atelierJobBlocksProduction(
+  mode: AtelierExecutionMode | string | null | undefined,
+  status: AtelierPipelineStatus | string | null | undefined,
+  receivedPairs?: number | null,
+): boolean {
+  if (!status || status === 'cancelled') return false;
+  if (atelierJobReleasesFactory(mode, status)) return false;
+  if (receivedPairs != null && Number(receivedPairs) > 0) return false;
+  return true;
+}
+
 /** Próximo OK de rua (prestador) a partir do status atual. */
 export function atelierNextStreetOk(
   status: AtelierPipelineStatus | string | null | undefined,
 ): AtelierPipelineStatus | null {
   if (status === 'cut') return 'sent_to_contractor';
   if (status === 'sent_to_contractor') return 'realized';
-  if (status === 'realized') return 'received_at_factory';
+  if (status === 'realized' || status === 'partially_received') return 'received_at_factory';
   return null;
 }
 
@@ -166,7 +194,7 @@ export function atelierNextInternalOk(
   status: AtelierPipelineStatus | string | null | undefined,
 ): AtelierPipelineStatus | null {
   if (status === 'cut') return 'in_progress';
-  if (status === 'in_progress') return 'done';
+  if (status === 'in_progress' || status === 'partially_done') return 'done';
   return null;
 }
 

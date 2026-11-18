@@ -2,6 +2,7 @@ import type { OrderStage, PointingWarning, useApontarProducao } from '@/hooks/us
 import { supabase } from '@/integrations/supabase/client';
 import { norm, KanbanCardData, orderStagesByRoute } from './kanbanDerive';
 import { inboundAvailability } from '@/lib/production/stageFlow';
+import { ATELIER_DOWNSTREAM_STAGES } from '@/lib/atelierReceipt';
 import { isFilaQueueStatus } from './kanbanQueueSplit';
 
 /**
@@ -64,6 +65,11 @@ export interface PointingPlanOptions {
   allowParallelSkip?: boolean;
   /** Coluna do card está `sent_to_contractor` no Ateliê — bloqueia apontamento. */
   atelierBlocksColumn?: boolean;
+  /**
+   * Menor saldo conferido dos jobs de rua do item.
+   * null = a OP não é de cabedal complexo.
+   */
+  atelierReceivedCap?: number | null;
 }
 
 function uniqueNames(names: string[]): string[] {
@@ -194,6 +200,10 @@ export function buildPointingPlan(
     const inbound = inboundAvailability(pointedStage.stage_name, ordered);
     if (inbound != null) {
       remaining = Math.min(remaining, Math.max(0, inbound - pointedStage.quantity_processed));
+    }
+    const cap = options?.atelierReceivedCap;
+    if (cap != null && (ATELIER_DOWNSTREAM_STAGES as readonly string[]).includes(norm(pointedStage.stage_name))) {
+      remaining = Math.min(remaining, Math.max(0, cap - pointedStage.quantity_processed));
     }
   }
 

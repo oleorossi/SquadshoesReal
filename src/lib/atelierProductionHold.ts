@@ -20,6 +20,8 @@ export interface AtelierProductionHoldLine {
   color: string;
   pendingJobs: string;
   reason: string;
+  /** false = saldo parcial, Em Produção já pode nascer com esse saldo. */
+  blocks?: boolean;
 }
 
 /** Status em que o selo faz sentido: a próxima porta de fábrica ainda pode ser Em Produção. */

@@ -27,8 +27,10 @@ describe('quadro do Ateliê por job', () => {
       'Cortado',
       'Enviado ao prestador',
       'Realizado',
+      'Recebido parcial',
       'Recebido e conferido',
       'Em realização',
+      'Concluído parcial',
       'Concluído',
     ]);
     expect(atelierJobBoardColumn('in_progress')).toBe('in_progress');
@@ -191,7 +193,7 @@ describe('visão por pedido', () => {
     expect(pv251.entries).toHaveLength(1);
     expect(pv251.openLots).toHaveLength(1);
     expect(atelierTimeline('contractor').map((s) => s.id)).toEqual([
-      'awaiting_cut', 'cut', 'sent_to_contractor', 'realized', 'received_at_factory',
+      'awaiting_cut', 'cut', 'sent_to_contractor', 'realized', 'partially_received', 'received_at_factory',
     ]);
     expect(atelierTimeline('internal').map((s) => s.id)).toContain('in_progress');
   });

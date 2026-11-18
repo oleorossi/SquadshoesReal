@@ -123,7 +123,7 @@ export function isAtelierFactoryReady(input: {
     return { ready: true, blockReason: null };
   }
   const status = String(input.pipelineStatus || '');
-  if (status === 'received_at_factory') {
+  if (status === 'received_at_factory' || status === 'partially_received' || status === 'partially_done' || status === 'done') {
     return { ready: true, blockReason: null };
   }
   if (status === 'sent_to_contractor') {

@@ -8,7 +8,7 @@ import {
   ATELIER_PIPELINE_LABEL,
   ATELIER_SECTOR_LABEL,
   atelierEffectiveMode,
-  atelierJobReleasesFactory,
+  atelierJobBlocksProduction,
   atelierNextInternalOk,
   atelierNextStreetOk,
   type AtelierExecutionMode,
@@ -32,8 +32,10 @@ export const ATELIER_BOARD_COLUMNS: readonly AtelierBoardColumn[] = [
   { id: 'cut', title: 'Cortado', rail: 'antes' },
   { id: 'sent_to_contractor', title: 'Enviado ao prestador', rail: 'prestador' },
   { id: 'realized', title: 'Realizado', rail: 'prestador' },
+  { id: 'partially_received', title: 'Recebido parcial', rail: 'prestador' },
   { id: 'received_at_factory', title: 'Recebido e conferido', rail: 'prestador' },
   { id: 'in_progress', title: 'Em realização', rail: 'interno' },
+  { id: 'partially_done', title: 'Concluído parcial', rail: 'interno' },
   { id: 'done', title: 'Concluído', rail: 'interno' },
 ];
 
@@ -96,14 +98,7 @@ export function humanizeAtelierBlockReason(reason: string): string {
   return out;
 }
 
-/** Enquanto o job não liberou o setor, o PV não entra em Em Produção. */
-export function atelierJobBlocksProduction(
-  mode: AtelierExecutionMode | string | null | undefined,
-  status: AtelierPipelineStatus | string | null | undefined,
-): boolean {
-  if (!status || status === 'cancelled') return false;
-  return !atelierJobReleasesFactory(mode, status);
-}
+export { atelierJobBlocksProduction };
 
 /** Atraso contra a data em que o job deveria voltar (`target_end`), não contra a entrega do PV. */
 export function atelierJobIsLate(
@@ -112,7 +107,7 @@ export function atelierJobIsLate(
   mode: AtelierExecutionMode | string | null | undefined,
   today = new Date(),
 ): boolean {
-  if (!atelierJobBlocksProduction(mode, status)) return false;
+  if (!atelierJobBlocksProduction(mode, status, undefined)) return false;
   const days = daysUntilDeadline(targetEnd, today);
   return days != null && days < 0;
 }
@@ -192,6 +187,7 @@ export function atelierTimeline(mode: AtelierExecutionMode | string | null | und
     return [
       ...head,
       { id: 'in_progress', label: ATELIER_PIPELINE_LABEL.in_progress },
+      { id: 'partially_done', label: 'Parcial' },
       { id: 'done', label: ATELIER_PIPELINE_LABEL.done },
     ];
   }
@@ -199,6 +195,7 @@ export function atelierTimeline(mode: AtelierExecutionMode | string | null | und
     ...head,
     { id: 'sent_to_contractor', label: 'Enviado' },
     { id: 'realized', label: ATELIER_PIPELINE_LABEL.realized },
+    { id: 'partially_received', label: 'Parcial' },
     { id: 'received_at_factory', label: 'Conferido' },
   ];
 }
@@ -239,6 +236,7 @@ export function matchesAtelierBoardJob(
     execution_mode?: AtelierExecutionMode | string | null;
     pipeline_status: string;
     target_end?: string | null;
+    received_pairs?: number | null;
   },
   lot: { color?: string | null },
   filters: AtelierBoardFilters,
@@ -254,7 +252,7 @@ export function matchesAtelierBoardJob(
   if (filters.lateOnly && !atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode, today)) {
     return false;
   }
-  if (filters.blocksProductionOnly && !atelierJobBlocksProduction(job.execution_mode, job.pipeline_status)) {
+  if (filters.blocksProductionOnly && !atelierJobBlocksProduction(job.execution_mode, job.pipeline_status, job.received_pairs)) {
     return false;
   }
   return true;
