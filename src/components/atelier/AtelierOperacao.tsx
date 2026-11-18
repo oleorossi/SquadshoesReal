@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select';
 import { atelierCanRecordReceipt } from '@/lib/atelierReceipt';
 import { atelierCanReassign, atelierContractorCanTake } from '@/lib/atelierAdmin';
+import { printAtelierShipment } from '@/lib/printAtelierShipment';
 import {
   ATELIER_BOARD_COLUMNS,
   ATELIER_RAIL_LABEL,
@@ -74,7 +75,8 @@ import {
   useConfirmAtelierLotRelease,
   useMarkAtelierInternalStart,
   useMarkAtelierRealized,
-  useMarkAtelierSent,
+  useSendAtelierShipment,
+  sendAtelierShipment,
   setAtelierJobExecutionMode,
   useAtelierContractorSectors,
   useSetAtelierJobExecutionMode,
@@ -191,14 +193,14 @@ function JobActions({
 }) {
   const mode = atelierEffectiveMode(job.execution_mode);
   const setMode = useSetAtelierJobExecutionMode();
-  const sendMut = useMarkAtelierSent();
+  const sendMut = useSendAtelierShipment();
   const realizedMut = useMarkAtelierRealized();
   const startMut = useMarkAtelierInternalStart();
   const [contractorId, setContractorId] = useState(job.contractor_id ?? '');
   const action = atelierSingleAction(job);
   const canChangeMode = job.pipeline_status === 'awaiting_cut' || job.pipeline_status === 'cut';
-  const kitWaiting = lot.kit_gate === 'awaiting_components';
-  const dispatchSignal = !kitWaiting && lot.dispatch_signal ? lot.dispatch_signal : null;
+  const kitClosed = lot.kit_closed === true;
+  const dispatchSignal = kitClosed && lot.dispatch_signal ? lot.dispatch_signal : null;
   const busy = setMode.isPending || sendMut.isPending || realizedMut.isPending || startMut.isPending;
 
   return (
@@ -235,13 +237,13 @@ function JobActions({
         </p>
       )}
 
-      {action === 'sent' && kitWaiting && (
+      {action === 'sent' && !kitClosed && (
         <p className="text-[10px] text-amber-700 dark:text-amber-400">
-          {atelierKitGateLabel(lot.kit_gate)}. Libere o kit na faixa de corte antes de enviar.
+          O kit ainda não fechou. O envio espera o corte sem falta e os componentes prontos.
         </p>
       )}
 
-      {action === 'sent' && !kitWaiting && (
+      {action === 'sent' && kitClosed && (
         <div className="space-y-1">
           <div className="flex gap-1">
             <Select value={contractorId || undefined} onValueChange={setContractorId}>
@@ -258,7 +260,7 @@ function JobActions({
               size="sm"
               className="h-7 px-2 text-[11px]"
               disabled={busy || !contractorId || contractors.every((c) => c.id !== contractorId)}
-              onClick={() => sendMut.mutate({ jobId: job.id, contractorId })}
+              onClick={() => sendMut.mutate({ jobIds: [job.id], contractorId })}
             >
               <Truck className="h-3 w-3" />
               Enviar
@@ -269,6 +271,19 @@ function JobActions({
               O prestador gravado não atende este setor.
             </p>
           )}
+        </div>
+      )}
+
+      {job.service_order_id && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-[11px]"
+            onClick={() => { void printAtelierShipment(job.service_order_id as string).catch((error: Error) => toast.error(error.message || 'Não foi possível imprimir')); }}
+          >
+            Imprimir remessa
+          </Button>
         </div>
       )}
 
@@ -771,8 +786,49 @@ export function AtelierOperacao({
                   ))}
                 </SelectContent>
               </Select>
+              {selectedRows.every(({ job, lot }) => (
+                job.pipeline_status === 'cut'
+                && lot.kit_closed === true
+                && atelierEffectiveMode(job.execution_mode) !== 'internal'
+              )) && (
+                <Button
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={batching || !optionsFor(assignSector).some((c) => c.id === assignContractorId)}
+                  onClick={() => {
+                    void (async () => {
+                      setBatching(true);
+                      setFailures([]);
+                      try {
+                        const data = await sendAtelierShipment({
+                          jobIds: selectedRows.map(({ job }) => job.id),
+                          contractorId: assignContractorId,
+                        });
+                        setSelected(new Set());
+                        await qc.invalidateQueries({ queryKey: atelierKeys.all });
+                        toast.success(data?.order_number ? `Remessa ${data.order_number}` : 'Remessa enviada', data?.service_order_id ? {
+                          action: {
+                            label: 'Imprimir',
+                            onClick: () => { void printAtelierShipment(data.service_order_id as string); },
+                          },
+                        } : undefined);
+                      } catch (error) {
+                        const message = error && typeof error === 'object' && 'message' in error
+                          ? String((error as { message?: string }).message)
+                          : 'Falha ao enviar a remessa';
+                        toast.error(message);
+                      } finally {
+                        setBatching(false);
+                      }
+                    })();
+                  }}
+                >
+                  Enviar remessa
+                </Button>
+              )}
               <Button
                 size="sm"
+                variant="outline"
                 className="h-8 text-xs"
                 disabled={batching || !optionsFor(assignSector).some((c) => c.id === assignContractorId)}
                 onClick={() => {

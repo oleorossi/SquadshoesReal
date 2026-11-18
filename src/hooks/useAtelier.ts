@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { printAtelierShipment } from '@/lib/printAtelierShipment';
 import type {
   AtelierExecutionMode,
   AtelierPipelineStatus,
@@ -182,6 +183,8 @@ export interface AtelierLotJob {
   atelier_service_number: string | null;
   target_end: string | null;
   execution_mode: AtelierExecutionMode | null;
+  /** OS da remessa. Impressão lê este id. */
+  service_order_id?: string | null;
   /** Pares já conferidos (soma dos lançamentos não estornados). */
   received_pairs?: number | null;
   /** Congelado no envio — qtds debitadas no corte para a OS. */
@@ -198,6 +201,8 @@ export interface AtelierLotRow {
   kit_gate?: AtelierKitGate;
   /** Kit debitado e pronto para o clique de envio. Não envia sozinho. */
   dispatch_signal?: string | null;
+  /** atelier_lot_kit_is_closed. O botão Enviar só aparece quando é true. */
+  kit_closed?: boolean | null;
   reference_id: string;
   reference_code: string | null;
   reference_name: string | null;
@@ -427,6 +432,24 @@ export async function markAtelierJobSent(input: { jobId: string; contractorId?: 
   return data as {
     atelier_service_number?: string;
     kit_lines?: AtelierSentKitLine[];
+    service_order_id?: string;
+    order_number?: string;
+  } | null;
+}
+
+export async function sendAtelierShipment(input: { jobIds: string[]; contractorId: string }) {
+  const { data, error } = await supabase.rpc(
+    'atelier_send_shipment' as never,
+    {
+      p_job_ids: input.jobIds,
+      p_contractor_id: input.contractorId,
+    } as never,
+  );
+  if (error) throw error;
+  return data as {
+    service_order_id?: string;
+    order_number?: string;
+    jobs?: number;
   } | null;
 }
 
@@ -611,13 +634,39 @@ export function useMarkAtelierSent() {
               .map((l) => `${l.product_name ?? '?'} ${Number(l.quantity) || 0}${l.unit ? ` ${l.unit}` : ''}`)
               .join(', ')}`
           : '';
-      toast.success(
-        data?.atelier_service_number
-          ? `OS ${data.atelier_service_number}${kitSummary}`
-          : `Enviado ao prestador${kitSummary}`,
-      );
+      const label = data?.order_number
+        ? `Remessa ${data.order_number}${kitSummary}`
+        : data?.atelier_service_number
+          ? `Enviado ${data.atelier_service_number}${kitSummary}`
+          : `Enviado ao prestador${kitSummary}`;
+      toast.success(label, data?.service_order_id ? {
+        action: {
+          label: 'Imprimir',
+          onClick: () => { void printAtelierShipment(data.service_order_id as string); },
+        },
+      } : undefined);
     },
     onError: (e: Error) => toast.error(e.message || 'Falha ao marcar envio'),
+  });
+}
+
+export function useSendAtelierShipment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: sendAtelierShipment,
+    onSuccess: (data) => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      const label = data?.order_number
+        ? `Remessa ${data.order_number}`
+        : 'Remessa enviada';
+      toast.success(label, data?.service_order_id ? {
+        action: {
+          label: 'Imprimir',
+          onClick: () => { void printAtelierShipment(data.service_order_id as string); },
+        },
+      } : undefined);
+    },
+    onError: (e: Error) => toast.error(e.message || 'Falha ao enviar a remessa'),
   });
 }
 
