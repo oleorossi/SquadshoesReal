@@ -208,6 +208,8 @@ export interface AtelierLotRow {
   dispatch_signal?: string | null;
   /** atelier_lot_kit_is_closed. O botão Enviar só aparece quando é true. */
   kit_closed?: boolean | null;
+  /** Lote criado para um pedido só. O agrupamento automático não o reabsorve. */
+  manual_split?: boolean | null;
   reference_id: string;
   reference_code: string | null;
   reference_name: string | null;
@@ -763,6 +765,30 @@ export async function setAtelierJobExecutionMode(input: {
   );
   if (error) throw error;
   return data as { execution_mode?: string } | null;
+}
+
+export async function splitAtelierJobToOwnLot(jobId: string) {
+  const { data, error } = await supabase.rpc(
+    'atelier_split_job_to_own_lot' as never,
+    { p_job_id: jobId } as never,
+  );
+  if (error) throw error;
+  return data as { ok?: boolean; already_own_lot?: boolean; lot_number?: string } | null;
+}
+
+export function useSplitAtelierJobToOwnLot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: splitAtelierJobToOwnLot,
+    onSuccess: (data) => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      const number = data?.lot_number ? ` ${data.lot_number}` : '';
+      toast.success(data?.already_own_lot
+        ? `Este pedido já está no lote próprio${number}`
+        : `Pedido separado no lote próprio${number}`);
+    },
+    onError: (e: Error) => toast.error(e.message || 'Não foi possível separar o lote'),
+  });
 }
 
 export function useSetAtelierJobExecutionMode() {

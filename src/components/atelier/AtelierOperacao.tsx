@@ -60,6 +60,7 @@ import {
   type AtelierSector,
 } from '@/lib/atelier';
 import { normalizeFilaText } from '@/lib/atelierFilaFilters';
+import { atelierJobCanSplit, atelierSplitConfirmMessage } from '@/lib/atelierSplit';
 import { kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
 import { deadlineChipLabel, deadlineTone } from '@/lib/reportOrderGrouping';
 import { daysUntilDeadline } from '@/lib/production/productionSequence';
@@ -77,6 +78,7 @@ import {
   useMarkAtelierInternalStart,
   useMarkAtelierRealized,
   useSendAtelierShipment,
+  useSplitAtelierJobToOwnLot,
   sendAtelierShipment,
   setAtelierJobExecutionMode,
   useAtelierContractorSectors,
@@ -197,12 +199,14 @@ function JobActions({
   const sendMut = useSendAtelierShipment();
   const realizedMut = useMarkAtelierRealized();
   const startMut = useMarkAtelierInternalStart();
+  const splitMut = useSplitAtelierJobToOwnLot();
   const [contractorId, setContractorId] = useState(job.contractor_id ?? '');
   const action = atelierSingleAction(job);
   const canChangeMode = job.pipeline_status === 'awaiting_cut' || job.pipeline_status === 'cut';
+  const canSplit = atelierJobCanSplit(job, lot);
   const kitClosed = lot.kit_closed === true;
   const dispatchSignal = kitClosed && lot.dispatch_signal ? lot.dispatch_signal : null;
-  const busy = setMode.isPending || sendMut.isPending || realizedMut.isPending || startMut.isPending;
+  const busy = setMode.isPending || sendMut.isPending || realizedMut.isPending || startMut.isPending || splitMut.isPending;
 
   return (
     <div className="space-y-1.5">
@@ -235,7 +239,27 @@ function JobActions({
       {job.pipeline_status === 'awaiting_cut' && (
         <p className="text-[10px] text-muted-foreground">
           Corte do lote {lot.lot_number}. A napa sai uma vez, para todos os jobs desta cor.
+          {lot.manual_split ? ' Lote próprio: o agrupamento não junta outro pedido aqui.' : ''}
         </p>
+      )}
+
+      {canSplit && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-[11px]"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm(atelierSplitConfirmMessage(job, lot))) return;
+              splitMut.mutate(job.id);
+            }}
+          >
+            <Scissors className="h-3 w-3" />
+            Separar em lote próprio
+          </Button>
+        </div>
       )}
 
       {action === 'sent' && !kitClosed && (
