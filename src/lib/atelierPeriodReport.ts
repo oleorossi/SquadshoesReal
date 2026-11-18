@@ -57,7 +57,7 @@ export function atelierPeriodCsv(rows: readonly AtelierPeriodRow[]): string {
     'pares enviados',
     'pares bons',
     'defeito pendente',
-    'defeito retrabalhado',
+    'defeito retrabalhado/descartado',
     'perda',
     'pares a receber',
     'jobs atrasados',

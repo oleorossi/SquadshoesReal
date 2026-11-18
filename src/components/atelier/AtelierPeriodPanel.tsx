@@ -96,7 +96,7 @@ export function AtelierPeriodPanel() {
                 <th className="py-1 pr-3 text-right font-medium">Enviados</th>
                 <th className="py-1 pr-3 text-right font-medium">Bons</th>
                 <th className="py-1 pr-3 text-right font-medium">Defeito</th>
-                <th className="py-1 pr-3 text-right font-medium">Retrabalhado</th>
+                <th className="py-1 pr-3 text-right font-medium">Retrabalhado/descartado</th>
                 <th className="py-1 pr-3 text-right font-medium">Perda</th>
                 <th className="py-1 pr-3 text-right font-medium">A receber</th>
                 <th className="py-1 pr-3 text-right font-medium">Atrasados</th>

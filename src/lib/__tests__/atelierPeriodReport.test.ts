@@ -21,7 +21,7 @@ describe('relatório do período', () => {
     expect(csv).toContain('"Casa ""A"""');
     expect(csv).toContain('interno;Interno');
     expect(csv).toContain('defeito pendente');
-    expect(csv).toContain('defeito retrabalhado');
+    expect(csv).toContain('defeito retrabalhado/descartado');
     expect(csv).toContain('perda');
     expect(row.pending_pairs).toBe(0);
     expect(row.avg_lead_full_days).toBeNull();
