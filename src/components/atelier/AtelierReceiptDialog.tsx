@@ -57,6 +57,7 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
   const [partId, setPartId] = useState<string | null>(null);
+  const [chargeScrap, setChargeScrap] = useState(false);
   const [busy, setBusy] = useState(false);
   const { roles } = useAccessControl();
   const canReverse = roles.includes('admin') || roles.includes('gerente');
@@ -124,6 +125,34 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
       const message = error && typeof error === 'object' && 'message' in error
         ? String((error as { message?: string }).message)
         : 'Falha ao conferir';
+      toast.error(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const tratarDefeito = async (receiptId: string, pairs: number, kind: 'rework' | 'scrap') => {
+    if (kind === 'scrap' && !reason.trim()) {
+      toast.error('Informe o motivo do descarte');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.rpc(
+        (kind === 'rework' ? 'atelier_rework_defect' : 'atelier_scrap_defect') as never,
+        (kind === 'rework'
+          ? { p_receipt_id: receiptId, p_pairs: pairs }
+          : { p_receipt_id: receiptId, p_pairs: pairs, p_charge: chargeScrap, p_reason: reason.trim() }) as never,
+      );
+      if (error) throw error;
+      toast.success(kind === 'rework'
+        ? 'Par devolvido para retrabalho na mesma OS, sem nova conta'
+        : 'Defeito baixado como descarte');
+      await refresh();
+    } catch (error) {
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: string }).message)
+        : 'Falha ao tratar o defeito';
       toast.error(message);
     } finally {
       setBusy(false);
@@ -257,6 +286,22 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
                     {row.note ? ` · ${row.note}` : ''}
                     {row.reversed_at ? ` · estornado (${row.reversal_reason})` : ''}
                   </span>
+                  {!row.reversed_at && Number(row.qty_defect) > 0 && (
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" disabled={busy}
+                        onClick={() => void tratarDefeito(row.id, Number(row.qty_defect), 'rework')}>
+                        Devolver para retrabalho
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" disabled={busy}
+                        onClick={() => void tratarDefeito(row.id, Number(row.qty_defect), 'scrap')}>
+                        Baixar como perda/descarte
+                      </Button>
+                      <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <input type="checkbox" checked={chargeScrap} onChange={(e) => setChargeScrap(e.target.checked)} />
+                        Cobrar do prestador
+                      </label>
+                    </span>
+                  )}
                   {!row.reversed_at && canReverse && (
                     <Button
                       type="button"

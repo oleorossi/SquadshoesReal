@@ -14,6 +14,54 @@ export const ATELIER_DOWNSTREAM_STAGES = [
   'Expedição',
 ] as const;
 
+export interface AtelierReceiptBreakdown {
+  good: number;
+  defect: number;
+  loss: number;
+  stillOut: number;
+  pendingDefect: number;
+}
+
+/** O card e o relatório usam a mesma conta: bom, defeito, perda e o que ainda está fora. */
+export function atelierReceiptBreakdown(input: {
+  sent: number;
+  good: number;
+  defect: number;
+  loss: number;
+  pendingDefect?: number;
+}): AtelierReceiptBreakdown {
+  const sent = Math.max(0, Math.trunc(Number(input.sent) || 0));
+  const good = Math.max(0, Math.trunc(Number(input.good) || 0));
+  const defect = Math.max(0, Math.trunc(Number(input.defect) || 0));
+  const loss = Math.max(0, Math.trunc(Number(input.loss) || 0));
+  const pendingDefect = Math.max(0, Math.trunc(Number(input.pendingDefect ?? defect) || 0));
+  return {
+    good,
+    defect,
+    loss,
+    stillOut: Math.max(0, sent - good - defect - loss),
+    pendingDefect,
+  };
+}
+
+export function atelierReceiptDetail(input: {
+  sent: number;
+  good: number;
+  defect: number;
+  loss: number;
+  pendingDefect?: number;
+}): string {
+  const row = atelierReceiptBreakdown(input);
+  const parts = [
+    `${row.good} bons`,
+    `${row.defect} defeito`,
+    `${row.loss} perda`,
+    `${row.stillOut} a receber`,
+  ];
+  if (row.pendingDefect > 0) parts.push(`defeito pendente: ${row.pendingDefect}`);
+  return parts.join(' · ');
+}
+
 export function atelierReceiptRemaining(pairs: number, received: number): number {
   const total = Number(pairs) || 0;
   const done = Number(received) || 0;

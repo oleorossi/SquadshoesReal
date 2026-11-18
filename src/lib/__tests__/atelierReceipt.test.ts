@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  atelierReceiptDetail,
   atelierReceiptProgressLabel,
   atelierReceiptRemaining,
   atelierReceivedCap,
@@ -69,5 +70,14 @@ describe('recebimento parcial do Ateliê', () => {
       alreadyProcessed: 0,
       cap: null,
     })).toBe(40);
+  });
+
+  it('separa bons, defeito, perda e o que ainda está fora', () => {
+    expect(atelierReceiptDetail({
+      sent: 12, good: 7, defect: 1, loss: 1,
+    })).toBe('7 bons · 1 defeito · 1 perda · 3 a receber · defeito pendente: 1');
+    expect(atelierReceiptDetail({
+      sent: 12, good: 10, defect: 1, loss: 1, pendingDefect: 0,
+    })).toBe('10 bons · 1 defeito · 1 perda · 0 a receber');
   });
 });

@@ -94,8 +94,10 @@ export function AtelierPeriodPanel() {
               <tr>
                 <th className="py-1 pr-3 font-medium">Quem</th>
                 <th className="py-1 pr-3 text-right font-medium">Enviados</th>
-                <th className="py-1 pr-3 text-right font-medium">Recebidos</th>
-                <th className="py-1 pr-3 text-right font-medium">Pendentes</th>
+                <th className="py-1 pr-3 text-right font-medium">Bons</th>
+                <th className="py-1 pr-3 text-right font-medium">Defeito</th>
+                <th className="py-1 pr-3 text-right font-medium">Perda</th>
+                <th className="py-1 pr-3 text-right font-medium">A receber</th>
                 <th className="py-1 pr-3 text-right font-medium">Atrasados</th>
                 <th className="py-1 pr-3 text-right font-medium">Até a 1ª entrada</th>
                 <th className="py-1 pr-3 text-right font-medium">Até 100%</th>
@@ -122,6 +124,8 @@ function PeriodLine({ row }: { row: AtelierPeriodRow }) {
       <td className="py-2 pr-3 font-medium text-foreground">{periodLabel(row)}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{qty(row.sent_pairs)}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{qty(row.received_pairs)}</td>
+      <td className="py-2 pr-3 text-right tabular-nums">{qty(row.defect_pairs)}</td>
+      <td className="py-2 pr-3 text-right tabular-nums">{qty(row.loss_pairs)}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{qty(row.pending_pairs)}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{row.late_jobs}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{days(row.avg_lead_first_days)}</td>

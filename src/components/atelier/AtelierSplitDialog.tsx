@@ -175,7 +175,7 @@ export function AtelierSplitDialog({ job, lot, contractors, onClose }: Props) {
     const weights = sizes.map((size) => remaining[size] || 0);
     const exact = weights.map((weight) => (pool === 0 ? 0 : (total * weight) / pool));
     const floors = exact.map((value) => Math.floor(value));
-    let left = total - floors.reduce((sum, value) => sum + value, 0);
+    const left = total - floors.reduce((sum, value) => sum + value, 0);
     const order = exact.map((value, index) => ({ index, frac: value - Math.floor(value) }))
       .sort((a, b) => b.frac - a.frac || a.index - b.index);
     for (let step = 0; step < left; step += 1) floors[order[step].index] += 1;

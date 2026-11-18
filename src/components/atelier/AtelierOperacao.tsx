@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { atelierCanRecordReceipt } from '@/lib/atelierReceipt';
+import { atelierCanRecordReceipt, atelierReceiptDetail } from '@/lib/atelierReceipt';
 import {
   atelierCanReassign,
   atelierContractorCanTake,
@@ -237,6 +237,24 @@ function JobActions({
   });
   const parts = partsQuery.data ?? [];
   const sentPairs = parts.reduce((sum, part) => sum + Number(part.pairs || 0), 0);
+  const tallyQuery = useQuery({
+    queryKey: ['atelier-receipt-tally', job.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('atelier_job_receipts' as never)
+        .select('pairs, qty_defect, qty_loss, reversed_at')
+        .eq('job_id', job.id);
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{
+        pairs: number; qty_defect: number | null; qty_loss: number | null; reversed_at: string | null;
+      }>;
+      return rows.filter((row) => !row.reversed_at).reduce((sum, row) => ({
+        good: sum.good + Number(row.pairs || 0),
+        defect: sum.defect + Number(row.qty_defect || 0),
+        loss: sum.loss + Number(row.qty_loss || 0),
+      }), { good: 0, defect: 0, loss: 0 });
+    },
+  });
   const quote = atelierOpenRatePrice(rates.data ?? [], contractorId, job.sector, atelierTodayISO());
   const quoteTotal = quote == null ? null : atelierShipmentTotal(Number(job.pairs) || 0, quote);
   const action = atelierSingleAction(job);
@@ -347,6 +365,16 @@ function JobActions({
         </div>
       )}
 
+      {(sentPairs > 0 || (tallyQuery.data?.good ?? 0) > 0) && (
+        <p className="text-[10px] text-foreground">
+          {atelierReceiptDetail({
+            sent: sentPairs || Number(job.pairs) || 0,
+            good: tallyQuery.data?.good ?? 0,
+            defect: tallyQuery.data?.defect ?? 0,
+            loss: tallyQuery.data?.loss ?? 0,
+          })}
+        </p>
+      )}
       {parts.length > 0 && (
         <ul className="space-y-0.5 text-[10px] text-muted-foreground">
           <li>{sentPairs} de {Number(job.pairs) || 0} enviados</li>

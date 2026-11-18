@@ -15,6 +15,8 @@ export interface AtelierPeriodRow {
   avg_lead_full_days: number | null;
   cost: number;
   done_pairs: number;
+  defect_pairs: number;
+  loss_pairs: number;
 }
 
 function num(value: unknown): number {
@@ -35,6 +37,8 @@ export function normalizePeriodRow(raw: Record<string, unknown>): AtelierPeriodR
     avg_lead_full_days: raw.avg_lead_full_days == null ? null : num(raw.avg_lead_full_days),
     cost: num(raw.cost),
     done_pairs: num(raw.done_pairs),
+    defect_pairs: num(raw.defect_pairs),
+    loss_pairs: num(raw.loss_pairs),
   };
 }
 
@@ -49,8 +53,10 @@ export function atelierPeriodCsv(rows: readonly AtelierPeriodRow[]): string {
     'lado',
     'prestador',
     'pares enviados',
-    'pares recebidos',
-    'pares pendentes',
+    'pares bons',
+    'defeito',
+    'perda',
+    'pares a receber',
     'jobs atrasados',
     'lead até a primeira entrada (dias)',
     'lead até 100% (dias)',
@@ -62,6 +68,8 @@ export function atelierPeriodCsv(rows: readonly AtelierPeriodRow[]): string {
     row.side === 'internal' ? 'Interno' : (row.contractor_name ?? ''),
     row.sent_pairs,
     row.received_pairs,
+    row.defect_pairs,
+    row.loss_pairs,
     row.pending_pairs,
     row.late_jobs,
     row.avg_lead_first_days,
