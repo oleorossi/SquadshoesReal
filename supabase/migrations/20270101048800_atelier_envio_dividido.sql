@@ -213,6 +213,8 @@ $$;
 REVOKE ALL ON FUNCTION public.atelier_job_remaining_grade(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.atelier_job_remaining_grade(uuid) TO authenticated, service_role;
 
+-- Cada ramo do UNION fica entre parênteses. ORDER BY/LIMIT solto antes do
+-- UNION ALL é erro de sintaxe e a função nem chega a ser criada.
 CREATE OR REPLACE FUNCTION public.atelier_suggested_pair_price(
   p_contractor_id uuid,
   p_sector text,
@@ -225,30 +227,34 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT r.price_per_pair, 'referencia'::text
-    FROM public.contractor_reference_rates r
-   WHERE r.contractor_id = p_contractor_id
-     AND r.technical_sheet_id = p_sheet_id
-     AND lower(r.sector) = lower(COALESCE(public.atelier_rate_sector(p_sector), p_sector))
-     AND r.valid_from <= p_date
-     AND (r.valid_to IS NULL OR r.valid_to >= p_date)
-   ORDER BY r.valid_from DESC
-   LIMIT 1
+  (
+    SELECT r.price_per_pair, 'referencia'::text
+      FROM public.contractor_reference_rates r
+     WHERE r.contractor_id = p_contractor_id
+       AND r.technical_sheet_id = p_sheet_id
+       AND lower(r.sector) = lower(COALESCE(public.atelier_rate_sector(p_sector), p_sector))
+       AND r.valid_from <= p_date
+       AND (r.valid_to IS NULL OR r.valid_to >= p_date)
+     ORDER BY r.valid_from DESC
+     LIMIT 1
+  )
   UNION ALL
-  SELECT public.get_contractor_rate(
-           p_contractor_id,
-           COALESCE(public.atelier_rate_sector(p_sector), p_sector),
-           p_date
-         ),
-         'setor'::text
-   WHERE NOT EXISTS (
-     SELECT 1 FROM public.contractor_reference_rates r
-      WHERE r.contractor_id = p_contractor_id
-        AND r.technical_sheet_id = p_sheet_id
-        AND lower(r.sector) = lower(COALESCE(public.atelier_rate_sector(p_sector), p_sector))
-        AND r.valid_from <= p_date
-        AND (r.valid_to IS NULL OR r.valid_to >= p_date)
-   );
+  (
+    SELECT public.get_contractor_rate(
+             p_contractor_id,
+             COALESCE(public.atelier_rate_sector(p_sector), p_sector),
+             p_date
+           ),
+           'setor'::text
+     WHERE NOT EXISTS (
+       SELECT 1 FROM public.contractor_reference_rates r
+        WHERE r.contractor_id = p_contractor_id
+          AND r.technical_sheet_id = p_sheet_id
+          AND lower(r.sector) = lower(COALESCE(public.atelier_rate_sector(p_sector), p_sector))
+          AND r.valid_from <= p_date
+          AND (r.valid_to IS NULL OR r.valid_to >= p_date)
+     )
+  );
 $$;
 
 REVOKE ALL ON FUNCTION public.atelier_suggested_pair_price(uuid, text, uuid, date) FROM PUBLIC, anon;

@@ -64,6 +64,45 @@ jobs:
       - name: Build production bundle
         run: bun run build
 
+  migration-syntax:
+    name: Migration SQL syntax
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: migrations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d migrations"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Parse new migrations on empty Postgres
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: migrations
+          LINT_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: bun scripts/check-migration-syntax.mjs
+
       - name: Branding Check
         id: branding_check
         run: bun run verify:no-branding
