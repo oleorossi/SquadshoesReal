@@ -31,10 +31,12 @@ import {
   ATELIER_SECTORS,
   type AtelierSector,
 } from '@/lib/atelier';
+import { supplementAtelierLotsWithOrderJobs } from '@/lib/atelierOrderSupplement';
 import {
   useAddAtelierReference,
   useAtelierCatalog,
   useAtelierLots,
+  useAtelierOrderJobs,
   useAtelierSettings,
   useReapplyAtelierEligibility,
   useRemoveAtelierReference,
@@ -328,6 +330,11 @@ function FilaView() {
   const [params, setParams] = useSearchParams();
   const { data: lots = [], isLoading, isError, refetch } = useAtelierLots();
   const pedido = params.get('pedido') ?? '';
+  const orderJobs = useAtelierOrderJobs(pedido);
+  const boardLots = useMemo(
+    () => supplementAtelierLotsWithOrderJobs(lots, orderJobs.data ?? []),
+    [lots, orderJobs.data],
+  );
   const modo = params.get('modo') === 'pedido' ? 'pedido' : 'quadro';
 
   const setParam = (key: string, value: string) => {
@@ -343,10 +350,13 @@ function FilaView() {
     <div className="space-y-3">
       <AgendaSettings />
       <AtelierOperacao
-        lots={lots}
-        isLoading={isLoading}
-        isError={isError}
-        onRefresh={() => void refetch()}
+        lots={boardLots}
+        isLoading={isLoading || (pedido.trim().length > 0 && orderJobs.isLoading)}
+        isError={isError && orderJobs.isError && boardLots.length === 0}
+        onRefresh={() => {
+          void refetch();
+          void orderJobs.refetch();
+        }}
         pedido={pedido}
         modo={modo}
         onPedidoChange={(orderNumber) => setParam('pedido', orderNumber)}

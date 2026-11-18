@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import type { AtelierOrderJobHit } from '@/lib/atelierOrderSupplement';
 import { printAtelierShipment } from '@/lib/printAtelierShipment';
 import type {
   AtelierExecutionMode,
@@ -18,6 +19,8 @@ export const atelierKeys = {
   sheetsLite: () => [...atelierKeys.all, 'sheets-lite'] as const,
   reference: (referenceId: string) => [...atelierKeys.all, 'reference', referenceId] as const,
   lots: () => [...atelierKeys.all, 'lots'] as const,
+  orderJobs: (orderNumber: string) =>
+    [...atelierKeys.all, 'order-jobs', orderNumber] as const,
   kitCandidates: (referenceId: string, sector: string) =>
     [...atelierKeys.all, 'kit-candidates', referenceId, sector] as const,
   contractorSectors: () => [...atelierKeys.all, 'contractor-sectors'] as const,
@@ -262,6 +265,55 @@ export function useAtelierLots() {
       return ((data ?? []) as unknown as AtelierLotRow[]);
     },
     staleTime: 15_000,
+  });
+}
+
+/**
+ * Jobs do PV da URL, lidos na tabela. A lista agregada às vezes não
+ * traz o cartão mesmo com sale_order_id certo. Só leitura.
+ */
+export function useAtelierOrderJobs(orderNumber: string) {
+  const number = orderNumber.trim();
+  return useQuery({
+    queryKey: atelierKeys.orderJobs(number),
+    enabled: number.length > 0,
+    staleTime: 15_000,
+    queryFn: async (): Promise<AtelierOrderJobHit[]> => {
+      const { data: orders, error: orderError } = await supabase
+        .from('sale_orders')
+        .select('id, order_number')
+        .eq('order_number', number)
+        .limit(5);
+      if (orderError) throw orderError;
+      const rows = orders ?? [];
+      const ids = rows.map((order) => order.id).filter(Boolean);
+      if (ids.length === 0) return [];
+      const { data: jobs, error: jobError } = await supabase
+        .from('cabedal_prep_jobs' as never)
+        .select('id, sector, pipeline_status, pairs, color, reference_code, execution_mode, contractor_id, sale_order_id, sale_order_item_id, lot_id, target_end, atelier_service_number, received_pairs, service_order_id')
+        .in('sale_order_id', ids)
+        .neq('pipeline_status', 'cancelled');
+      if (jobError) throw jobError;
+      const numberById = new Map(rows.map((order) => [order.id, order.order_number]));
+      return ((jobs ?? []) as unknown as AtelierOrderJobHit[]).map((job) => ({
+        id: job.id,
+        sector: job.sector,
+        pipeline_status: job.pipeline_status,
+        pairs: Number(job.pairs) || 0,
+        color: job.color,
+        reference_code: job.reference_code,
+        execution_mode: job.execution_mode,
+        contractor_id: job.contractor_id,
+        sale_order_id: job.sale_order_id,
+        sale_order_item_id: job.sale_order_item_id,
+        lot_id: job.lot_id,
+        target_end: job.target_end,
+        atelier_service_number: job.atelier_service_number,
+        received_pairs: job.received_pairs,
+        service_order_id: job.service_order_id,
+        order_number: numberById.get(job.sale_order_id) ?? number,
+      }));
+    },
   });
 }
 
