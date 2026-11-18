@@ -32,6 +32,7 @@ import {
   type AtelierLotRow,
   type AtelierReferenceSectorRow,
 } from '@/hooks/useAtelier';
+import { AtelierExecutionDefaultControl } from '@/components/atelier/AtelierAdminPanel';
 import { ReferenceTerceirizacoesPanel } from '@/components/technical-sheets/ReferenceTerceirizacoesPanel';
 import { GroupMaterialSelect } from '@/components/technical-sheets/sheetSelectors';
 
@@ -527,7 +528,7 @@ function SectorCard({
       {isStreet && active && support.ok && hasKitColumns && (
         <div className="mt-4 space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor={`${id}-price`} className="text-xs">Valor pago ao prestador por par</Label>
+            <Label htmlFor={`${id}-price`} className="text-xs">Sugestão na ficha, por par</Label>
             <div className="flex items-center gap-2" onBlur={savePrice}>
               <span className="text-sm text-muted-foreground">R$</span>
               <NumberInput
@@ -541,7 +542,19 @@ function SectorCard({
                 disabled={busy || disabled}
               />
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              O que se paga é a tarifa vigente do prestador, travada no envio.
+            </p>
           </div>
+
+          {sheet.id && (
+            <AtelierExecutionDefaultControl
+              referenceId={sheet.id}
+              sector={sector}
+              mode={row?.default_execution_mode ?? null}
+              contractorId={row?.default_contractor_id ?? null}
+            />
+          )}
 
           <fieldset className="space-y-1.5">
             <legend className="text-xs font-medium text-foreground">

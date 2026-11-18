@@ -19,6 +19,7 @@ export const atelierKeys = {
   lots: () => [...atelierKeys.all, 'lots'] as const,
   kitCandidates: (referenceId: string, sector: string) =>
     [...atelierKeys.all, 'kit-candidates', referenceId, sector] as const,
+  contractorSectors: () => [...atelierKeys.all, 'contractor-sectors'] as const,
 };
 
 export interface AtelierReferenceSectorRow {
@@ -30,6 +31,8 @@ export interface AtelierReferenceSectorRow {
   material_components: string[] | null;
   kit_product_ids: string[] | null;
   kit_group_ids: string[] | null;
+  default_execution_mode?: AtelierExecutionMode | null;
+  default_contractor_id?: string | null;
   updated_at: string | null;
 }
 
@@ -62,6 +65,8 @@ export function useAtelierReferenceConfig(referenceId: string | null | undefined
           material_components: r.material_components ?? null,
           kit_product_ids: (r as { kit_product_ids?: string[] | null }).kit_product_ids ?? null,
           kit_group_ids: (r as { kit_group_ids?: string[] | null }).kit_group_ids ?? null,
+          default_execution_mode: (r as { default_execution_mode?: AtelierExecutionMode | null }).default_execution_mode ?? null,
+          default_contractor_id: (r as { default_contractor_id?: string | null }).default_contractor_id ?? null,
         })) as AtelierReferenceSectorRow[],
         hasKitColumns,
       };
@@ -265,6 +270,8 @@ export interface AtelierCatalogRow {
   sector: AtelierSector;
   active: boolean;
   notes: string | null;
+  default_execution_mode?: AtelierExecutionMode | null;
+  default_contractor_id?: string | null;
   created_at: string;
   technical_sheets?: {
     id: string;
@@ -304,7 +311,7 @@ export function useAtelierCatalog(sector?: AtelierSector | null) {
       let q = supabase
         .from('atelier_complex_references' as never)
         .select(
-          'id, reference_id, sector, active, notes, created_at, technical_sheets(id, code, model, name)',
+          'id, reference_id, sector, active, notes, created_at, default_execution_mode, default_contractor_id, technical_sheets(id, code, model, name)',
         )
         .eq('active', true)
         .order('created_at', { ascending: false });
@@ -636,30 +643,30 @@ export function useMarkAtelierReceived() {
   });
 }
 
+export async function setAtelierJobExecutionMode(input: {
+  jobId: string;
+  mode: AtelierExecutionMode;
+  contractorId?: string | null;
+}) {
+  const { data, error } = await supabase.rpc(
+    'atelier_set_job_execution_mode' as never,
+    {
+      p_job_id: input.jobId,
+      p_mode: input.mode,
+      p_contractor_id: input.contractorId ?? null,
+    } as never,
+  );
+  if (error) throw error;
+  return data as { execution_mode?: string } | null;
+}
+
 export function useSetAtelierJobExecutionMode() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      jobId: string;
-      mode: AtelierExecutionMode;
-      contractorId?: string | null;
-    }) => {
-      const { data, error } = await supabase.rpc(
-        'atelier_set_job_execution_mode' as never,
-        {
-          p_job_id: input.jobId,
-          p_mode: input.mode,
-          p_contractor_id: input.contractorId ?? null,
-        } as never,
-      );
-      if (error) throw error;
-      return data as { execution_mode?: string } | null;
-    },
+    mutationFn: setAtelierJobExecutionMode,
     onSuccess: (_data, input) => {
       void qc.invalidateQueries({ queryKey: atelierKeys.all });
-      toast.success(
-        input.mode === 'internal' ? 'Modo: interno (fábrica)' : 'Modo: prestador',
-      );
+      toast.success(input.mode === 'internal' ? 'Modo: interno' : 'Modo: prestador');
     },
     onError: (e: Error) => toast.error(e.message || 'Falha ao definir o modo'),
   });
@@ -799,5 +806,82 @@ export function useAtelierPrepConsumption(saleOrderIds: string[]) {
         );
       });
     },
+  });
+}
+
+export interface AtelierContractorSectorRecord {
+  id: string;
+  contractor_id: string;
+  sector: AtelierSector;
+  capacity_pairs_per_day: number | null;
+  active: boolean;
+}
+
+export function useAtelierContractorSectors() {
+  return useQuery({
+    queryKey: atelierKeys.contractorSectors(),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('atelier_contractor_sectors' as never)
+        .select('id, contractor_id, sector, capacity_pairs_per_day, active');
+      if (error) throw error;
+      return (data ?? []) as unknown as AtelierContractorSectorRecord[];
+    },
+    staleTime: 15_000,
+  });
+}
+
+export function useUpsertAtelierContractorSector() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      contractorId: string;
+      sector: AtelierSector;
+      capacity: number | null;
+      active: boolean;
+    }) => {
+      const { error } = await supabase.rpc(
+        'atelier_upsert_contractor_sector' as never,
+        {
+          p_contractor_id: input.contractorId,
+          p_sector: input.sector,
+          p_capacity: input.capacity,
+          p_active: input.active,
+        } as never,
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.contractorSectors() });
+    },
+    onError: (e: Error) => toast.error(e.message || 'Não foi possível salvar o prestador'),
+  });
+}
+
+export function useSetAtelierReferenceDefault() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      referenceId: string;
+      sector: AtelierSector;
+      mode: AtelierExecutionMode | null;
+      contractorId?: string | null;
+    }) => {
+      const { error } = await supabase.rpc(
+        'atelier_set_reference_execution_default' as never,
+        {
+          p_reference_id: input.referenceId,
+          p_sector: input.sector,
+          p_mode: input.mode,
+          p_contractor_id: input.contractorId ?? null,
+        } as never,
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      toast.success('Padrão da ficha salvo');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Não foi possível salvar o padrão'),
   });
 }

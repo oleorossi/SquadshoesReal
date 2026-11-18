@@ -41,6 +41,7 @@ import {
   useTechnicalSheetsLiteForAtelier,
   useUpdateAtelierSettings,
 } from '@/hooks/useAtelier';
+import { AtelierExecutionDefaultControl, AtelierSectorAdmin } from '@/components/atelier/AtelierAdminPanel';
 import { AtelierOperacao } from '@/components/atelier/AtelierOperacao';
 import { AtelierRelatorioView } from '@/components/atelier/AtelierRelatorioView';
 import { AtelierStrapsView } from '@/components/atelier/AtelierStrapsView';
@@ -203,9 +204,7 @@ function CadastroView() {
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Cadastre as referências que fazem {ATELIER_SECTOR_LABEL[sector].toLowerCase()} no prestador. Quando o pedido
-            é aprovado, cada cor entra num lote da fila. O corte é do lote; costura e aviamento andam por job. A OP nasce quando o pedido vai para Em Produção, depois que esses jobs voltam. A ficha precisa
-            ter esse setor — o cadastro recusa se não tiver.
+            Cadastre as referências que passam por {ATELIER_SECTOR_LABEL[sector].toLowerCase()}. O padrão interno ou prestador fica aqui e o job novo copia. Até o corte, a fila ainda pode trocar. A OP nasce quando o pedido vai para Em Produção, depois que esses jobs voltam.
           </p>
         )}
         <div className="flex flex-col sm:flex-row gap-2">
@@ -245,6 +244,8 @@ function CadastroView() {
         </div>
       </Panel>
 
+      {sector !== 'corte_cabedal' && <AtelierSectorAdmin sector={sector} />}
+
       {isError ? (
         <p className="text-sm text-destructive">Não foi possível carregar o cadastro.</p>
       ) : isLoading ? (
@@ -260,12 +261,22 @@ function CadastroView() {
       ) : (
         <ul className="divide-y divide-border/60 rounded-lg border border-border/70 bg-card">
           {catalog.map((row) => (
-            <li key={row.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate font-medium text-foreground">
-                  {sheetLabel(row.technical_sheets ?? {})}
-                </p>
-                <p className="text-xs text-muted-foreground">{ATELIER_SECTOR_LABEL[row.sector]}</p>
+            <li key={row.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div>
+                  <p className="truncate font-medium text-foreground">
+                    {sheetLabel(row.technical_sheets ?? {})}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{ATELIER_SECTOR_LABEL[row.sector]}</p>
+                </div>
+                {sector !== 'corte_cabedal' && (
+                  <AtelierExecutionDefaultControl
+                    referenceId={row.reference_id}
+                    sector={row.sector}
+                    mode={row.default_execution_mode ?? null}
+                    contractorId={row.default_contractor_id ?? null}
+                  />
+                )}
               </div>
               <Button
                 variant="ghost"

@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { atelierCanRecordReceipt } from '@/lib/atelierReceipt';
+import { atelierCanReassign, atelierContractorCanTake } from '@/lib/atelierAdmin';
 import {
   ATELIER_BOARD_COLUMNS,
   ATELIER_RAIL_LABEL,
@@ -74,11 +75,13 @@ import {
   useMarkAtelierInternalStart,
   useMarkAtelierRealized,
   useMarkAtelierSent,
+  setAtelierJobExecutionMode,
+  useAtelierContractorSectors,
   useSetAtelierJobExecutionMode,
   type AtelierLotJob,
   type AtelierLotRow,
 } from '@/hooks/useAtelier';
-import { useContractors } from '@/hooks/useContractors';
+import { useContractors, type Contractor } from '@/hooks/useContractors';
 import { AtelierReceiptDialog } from '@/components/atelier/AtelierReceiptDialog';
 import { AtelierReceiptMeter } from '@/components/atelier/AtelierReceiptMeter';
 
@@ -235,26 +238,33 @@ function JobActions({
       )}
 
       {action === 'sent' && !kitWaiting && (
-        <div className="flex gap-1">
-          <Select value={contractorId || undefined} onValueChange={setContractorId}>
-            <SelectTrigger className="h-7 flex-1 text-[11px]" aria-label="Prestador">
-              <SelectValue placeholder="Prestador" />
-            </SelectTrigger>
-            <SelectContent>
-              {contractors.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            size="sm"
-            className="h-7 px-2 text-[11px]"
-            disabled={busy || !contractorId}
-            onClick={() => sendMut.mutate({ jobId: job.id, contractorId })}
-          >
-            <Truck className="h-3 w-3" />
-            Enviar
-          </Button>
+        <div className="space-y-1">
+          <div className="flex gap-1">
+            <Select value={contractorId || undefined} onValueChange={setContractorId}>
+              <SelectTrigger className="h-7 flex-1 text-[11px]" aria-label="Prestador">
+                <SelectValue placeholder="Prestador" />
+              </SelectTrigger>
+              <SelectContent>
+                {contractors.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              disabled={busy || !contractorId || contractors.every((c) => c.id !== contractorId)}
+              onClick={() => sendMut.mutate({ jobId: job.id, contractorId })}
+            >
+              <Truck className="h-3 w-3" />
+              Enviar
+            </Button>
+          </div>
+          {job.contractor_id && contractors.every((c) => c.id !== job.contractor_id) && (
+            <p className="text-[10px] text-amber-700 dark:text-amber-400">
+              O prestador gravado não atende este setor.
+            </p>
+          )}
         </div>
       )}
 
@@ -339,7 +349,7 @@ function JobCard({
   const blocks = atelierJobBlocksProduction(job.execution_mode, job.pipeline_status, job.received_pairs);
   const sector = ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector;
   const late = atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode);
-  const canSelect = !!onToggle && atelierBatchAction(job) != null;
+  const canSelect = !!onToggle && (atelierBatchAction(job) != null || atelierCanReassign(job));
   const enter = useColumnEnter(job.id, job.pipeline_status);
 
   return (
@@ -521,7 +531,11 @@ export function AtelierOperacao({
 }: Props) {
   const qc = useQueryClient();
   const { data: contractors = [] } = useContractors();
-  const contractorOpts = (contractors as { id: string; name: string }[]).map((c) => ({ id: c.id, name: c.name }));
+  const { data: contractorSectors = [] } = useAtelierContractorSectors();
+  const contractorRecords = contractors as Contractor[];
+  const optionsFor = (sectorName: string) => contractorRecords
+    .filter((c) => atelierContractorCanTake(c, sectorName, contractorSectors))
+    .map((c) => ({ id: c.id, name: c.name }));
   const [color, setColor] = useState('');
   const [sector, setSector] = useState<'' | 'costura_cabedal' | 'aviamento'>('');
   const [executionMode, setExecutionMode] = useState<'' | AtelierExecutionMode>('');
@@ -530,6 +544,7 @@ export function AtelierOperacao({
   const [failures, setFailures] = useState<BatchFailure[]>([]);
   const [batching, setBatching] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [assignContractorId, setAssignContractorId] = useState('');
   const [receiptJob, setReceiptJob] = useState<AtelierLotJob | null>(null);
 
   const filters = useMemo<AtelierBoardFilters>(() => ({
@@ -574,6 +589,14 @@ export function AtelierOperacao({
     return rows;
   }, [lots, filters]);
 
+  const selectedRows = visibleJobs.filter(({ job }) => selected.has(job.id));
+  const assignSectors = new Set(selectedRows.map(({ job }) => job.sector));
+  const assignSector = selectedRows.length > 0
+    && selectedRows.every(({ job }) => atelierCanReassign(job))
+    && assignSectors.size === 1
+    ? [...assignSectors][0]
+    : null;
+
   const cutLots = useMemo(() => {
     const jobFilterOn = Boolean(sector || executionMode || lateOnly || blocksOnly);
     return lots.filter((lot) => {
@@ -591,7 +614,10 @@ export function AtelierOperacao({
 
   const blockingCount = visibleJobs.filter(({ job }) => atelierJobBlocksProduction(job.execution_mode, job.pipeline_status)).length;
 
-  async function runBatch(items: { label: string; run: () => Promise<unknown> }[]) {
+  async function runBatch(
+    items: { label: string; run: () => Promise<unknown> }[],
+    done?: { one: string; many: (n: number) => string },
+  ) {
     setBatching(true);
     setFailures([]);
     const result = await runLabeledBatch(items);
@@ -600,9 +626,9 @@ export function AtelierOperacao({
     await qc.invalidateQueries({ queryKey: atelierKeys.all });
     setBatching(false);
     if (result.failed.length === 0) {
-      toast.success(result.ok === 1 ? '1 avançou' : `${result.ok} avançaram`);
+      toast.success(done ? (result.ok === 1 ? done.one : done.many(result.ok)) : (result.ok === 1 ? '1 avançou' : `${result.ok} avançaram`));
     } else {
-      toast.error(`${result.failed.length} não avançaram. O motivo está na lista.`);
+      toast.error(`${result.failed.length} não concluíram. O motivo está na lista.`);
     }
   }
 
@@ -724,6 +750,77 @@ export function AtelierOperacao({
 
       <FailureList failures={failures} />
 
+      {selectedRows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+          <p className="text-xs text-foreground">
+            {selectedRows.length} selecionado{selectedRows.length === 1 ? '' : 's'}
+          </p>
+          {assignSector ? (
+            <>
+              <Select value={assignContractorId || undefined} onValueChange={setAssignContractorId}>
+                <SelectTrigger className="h-8 w-[200px] text-xs" aria-label="Prestador da atribuição">
+                  <SelectValue placeholder="Prestador" />
+                </SelectTrigger>
+                <SelectContent>
+                  {optionsFor(assignSector).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                disabled={batching || !optionsFor(assignSector).some((c) => c.id === assignContractorId)}
+                onClick={() => {
+                  void runBatch(
+                    selectedRows.map(({ job, lot }) => ({
+                      label: jobFailureLabel(job, lot),
+                      run: () => setAtelierJobExecutionMode({
+                        jobId: job.id,
+                        mode: 'contractor',
+                        contractorId: assignContractorId,
+                      }),
+                    })),
+                    {
+                      one: 'Prestador atribuído',
+                      many: (n) => `${n} jobs com prestador`,
+                    },
+                  );
+                }}
+              >
+                Atribuir prestador
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs"
+                disabled={batching}
+                onClick={() => {
+                  void runBatch(
+                    selectedRows.map(({ job, lot }) => ({
+                      label: jobFailureLabel(job, lot),
+                      run: () => setAtelierJobExecutionMode({ jobId: job.id, mode: 'internal' }),
+                    })),
+                    {
+                      one: 'Marcado interno',
+                      many: (n) => `${n} jobs internos`,
+                    },
+                  );
+                }}
+              >
+                Marcar interno
+              </Button>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {selectedRows.every(({ job }) => atelierCanReassign(job))
+                ? 'Selecione jobs do mesmo setor.'
+                : 'Só dá para atribuir job que ainda não foi enviado.'}
+            </p>
+          )}
+        </div>
+      )}
+
       {lots.length === 0 ? (
         <EmptyState
           icon={CheckCircle}
@@ -768,7 +865,14 @@ export function AtelierOperacao({
                                   key={job.id}
                                   job={job}
                                   lot={lot}
-                                  contractors={contractorOpts}
+                                  contractors={optionsFor(job.sector)}
+                                  selected={selected.has(job.id)}
+                                  onToggle={(atelierCanReassign(job) || atelierBatchAction(job)) ? () => {
+                                    const next = new Set(selected);
+                                    if (next.has(job.id)) next.delete(job.id);
+                                    else next.add(job.id);
+                                    setSelected(next);
+                                  } : undefined}
                                   onReceipt={() => setReceiptJob(job)}
                                 />
                               ))}
@@ -784,7 +888,7 @@ export function AtelierOperacao({
           ) : (
             <PedidoView
               groups={orderGroups}
-              contractors={contractorOpts}
+              optionsFor={optionsFor}
               selected={selected}
               setSelected={setSelected}
               batching={batching}
@@ -863,7 +967,7 @@ function PedidoJob({
             {atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode) ? ' · atrasado' : ''}
           </p>
         </div>
-        {atelierBatchAction(job) && (
+        {(atelierBatchAction(job) || atelierCanReassign(job)) && (
           <Checkbox
             checked={selected}
             onCheckedChange={onToggle}
@@ -905,7 +1009,7 @@ function PedidoJob({
 
 function PedidoView({
   groups,
-  contractors,
+  optionsFor,
   selected,
   setSelected,
   batching,
@@ -921,7 +1025,7 @@ function PedidoView({
     entries: { lot: AtelierLotRow; job: AtelierLotJob }[];
     visible: { lot: AtelierLotRow; job: AtelierLotJob }[];
   }[];
-  contractors: { id: string; name: string }[];
+  optionsFor: (sectorName: string) => { id: string; name: string }[];
   selected: Set<string>;
   setSelected: (next: Set<string>) => void;
   batching: boolean;
@@ -1008,7 +1112,7 @@ function PedidoView({
                     job={job}
                     orderNumber={group.orderNumber}
                     selected={selected.has(job.id)}
-                    contractors={contractors}
+                    contractors={optionsFor(job.sector)}
                     onToggle={() => {
                       const next = new Set(selected);
                       if (next.has(job.id)) next.delete(job.id);
