@@ -21,7 +21,8 @@ import {
   ATELIER_SECTOR_LABEL,
   type AtelierSector,
 } from '@/lib/atelier';
-import { atelierReceiptRemaining } from '@/lib/atelierReceipt';
+import { atelierReceiptRemaining, atelierWholePairs } from '@/lib/atelierReceipt';
+import { useAccessControl } from '@/hooks/useAccessControl';
 import { AtelierReceiptMeter } from '@/components/atelier/AtelierReceiptMeter';
 import {
   atelierKeys,
@@ -49,17 +50,25 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
   const pairs = Number(job?.pairs) || 0;
   const remaining = atelierReceiptRemaining(pairs, received);
   const [qty, setQty] = useState(String(remaining || ''));
+  const [defect, setDefect] = useState('');
+  const [loss, setLoss] = useState('');
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const { roles } = useAccessControl();
+  const canReverse = roles.includes('admin') || roles.includes('gerente');
   const { data: history = [], isLoading } = useAtelierJobReceipts(open ? job!.id : null);
   const sector = job ? (ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector) : '';
-  const typed = Number(String(qty).replace(',', '.'));
-  const preview = Number.isFinite(typed) && typed > 0 ? typed : 0;
+  const good = atelierWholePairs(qty);
+  const defectPairs = defect.trim() === '' ? 0 : atelierWholePairs(defect, true);
+  const lossPairs = loss.trim() === '' ? 0 : atelierWholePairs(loss, true);
+  const preview = (good ?? 0) + (defectPairs ?? 0) + (lossPairs ?? 0);
 
   useEffect(() => {
     if (!job) return;
     setQty(String(atelierReceiptRemaining(Number(job.pairs) || 0, Number(job.received_pairs) || 0) || ''));
+    setDefect('');
+    setLoss('');
     setNote('');
     setReason('');
   }, [job]);
@@ -70,15 +79,20 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
 
   const conferir = async () => {
     if (!job) return;
-    const amount = Number(String(qty).replace(',', '.'));
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Informe a quantidade recebida');
+    if (good == null || defectPairs == null || lossPairs == null) {
+      toast.error('Use só pares inteiros. Sem vírgula, ponto ou número negativo.');
       return;
     }
     setBusy(true);
     try {
-      await registerAtelierJobReceipt({ jobId: job.id, pairs: amount, note });
-      toast.success(`${sector}: ${amount} pares conferidos`);
+      await registerAtelierJobReceipt({
+        jobId: job.id,
+        pairs: good,
+        defect: defectPairs,
+        loss: lossPairs,
+        note,
+      });
+      toast.success(`${sector}: ${good} pares bons conferidos`);
       await refresh();
       onClose();
     } catch (error) {
@@ -132,15 +146,42 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
         {job && remaining > 0 && (
           <div className="space-y-2">
             <label className="block space-y-1 text-xs">
-              <span className="font-medium text-foreground">Pares desta entrada</span>
+              <span className="font-medium text-foreground">Pares bons</span>
               <Input
-                inputMode="decimal"
+                inputMode="numeric"
                 className="h-9 font-mono"
                 value={qty}
                 onChange={(e) => setQty(e.target.value)}
                 aria-label="Quantidade recebida"
               />
             </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block space-y-1 text-xs">
+                <span className="font-medium text-foreground">Defeito</span>
+                <Input
+                  inputMode="numeric"
+                  className="h-9 font-mono"
+                  value={defect}
+                  onChange={(e) => setDefect(e.target.value)}
+                  placeholder="0"
+                  aria-label="Pares com defeito"
+                />
+              </label>
+              <label className="block space-y-1 text-xs">
+                <span className="font-medium text-foreground">Perda</span>
+                <Input
+                  inputMode="numeric"
+                  className="h-9 font-mono"
+                  value={loss}
+                  onChange={(e) => setLoss(e.target.value)}
+                  placeholder="0"
+                  aria-label="Pares perdidos"
+                />
+              </label>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              A conta a pagar usa só os pares bons. Defeito e perda entram no saldo do job.
+            </p>
             {preview > remaining && (
               <p className="text-[11px] text-amber-700 dark:text-amber-400">
                 Passa do saldo. O máximo desta entrada é {remaining}.
@@ -169,12 +210,15 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
                 <li key={row.id} className="flex items-start justify-between gap-2 rounded border border-border/60 px-2 py-1">
                   <span>
                     <span className="font-mono font-semibold">{row.pairs}</span>
-                    {' pares · '}
+                    {' bons'}
+                    {Number(row.qty_defect) > 0 ? ` · ${row.qty_defect} defeito` : ''}
+                    {Number(row.qty_loss) > 0 ? ` · ${row.qty_loss} perda` : ''}
+                    {' · '}
                     {formatWhen(row.created_at)}
                     {row.note ? ` · ${row.note}` : ''}
                     {row.reversed_at ? ` · estornado (${row.reversal_reason})` : ''}
                   </span>
-                  {!row.reversed_at && (
+                  {!row.reversed_at && canReverse && (
                     <Button
                       type="button"
                       variant="ghost"

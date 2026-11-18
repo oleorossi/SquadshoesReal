@@ -20,6 +20,16 @@ export function atelierReceiptRemaining(pairs: number, received: number): number
   return Math.max(0, total - done);
 }
 
+/** Só inteiro positivo. Vírgula, ponto e sinal não viram par. */
+export function atelierWholePairs(raw: string, allowZero = false): number | null {
+  const text = raw.trim();
+  if (!/^\d+$/.test(text)) return null;
+  const value = Number(text);
+  if (!Number.isInteger(value)) return null;
+  if (value < 0 || (!allowZero && value === 0)) return null;
+  return value;
+}
+
 export function atelierReceiptProgressLabel(
   sectorLabel: string,
   received: number,

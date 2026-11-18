@@ -1,4 +1,5 @@
 import AppLayout from "@/components/layout/AppLayout";
+import { AtelierOsDetailDialog, isAtelierRemessa } from '@/components/contractors/AtelierOsDetailDialog';
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
@@ -213,6 +214,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const queryClient = useQueryClient();
 
   const [genOsOpen, setGenOsOpen] = useState(false);
+  const [atelierOs, setAtelierOs] = useState<ServiceOrder | null>(null);
   // Gates de ação da área Terceirizados. Admin e
   // usuários sem permissão granular sempre passam.
   const osPerm = useCan('/terceirizados');
@@ -1326,6 +1328,10 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
   const openEditContractor = (c: Contractor) => { setEditingContractor(c); setIsEditing(true); setContractorDialog(true); };
   const openNewContractor = () => { setEditingContractor({ ...emptyContractor }); setIsEditing(false); setContractorDialog(true); };
   const openEditOrder = (o: ServiceOrder) => {
+    if (isAtelierRemessa(o)) {
+      setAtelierOs(o);
+      return;
+    }
     if (isGenericConsolidatedServiceOrder(o)) {
       toast.info('Esta OS é um contêiner consolidado. Edite e entregue suas linhas no fluxo consolidado.');
       return;
@@ -2596,6 +2602,8 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
           desmonta o conteúdo do Dialog quando open=false, e os botões
           "Enviar"/"Entregue" dos cards da lista abrem estes dialogs com o
           dialog de OS fechado. */}
+      <AtelierOsDetailDialog order={atelierOs} onClose={() => setAtelierOs(null)} />
+
       <ServiceOrderReturnDialog
         open={!!returnDialogOs}
         onOpenChange={(o) => { if (!o) setReturnDialogOs(null); }}

@@ -3,11 +3,21 @@ import {
   atelierReceiptProgressLabel,
   atelierReceiptRemaining,
   atelierReceivedCap,
+  atelierWholePairs,
   pointingRemainingWithAtelierCap,
 } from '@/lib/atelierReceipt';
 import { atelierJobBlocksProduction } from '@/lib/atelier';
 
 describe('recebimento parcial do Ateliê', () => {
+  it('recusa fração, vírgula e negativo antes de chegar no servidor', () => {
+    expect(atelierWholePairs('5')).toBe(5);
+    expect(atelierWholePairs('0', true)).toBe(0);
+    expect(atelierWholePairs('-2')).toBeNull();
+    expect(atelierWholePairs('2,5')).toBeNull();
+    expect(atelierWholePairs('2.5')).toBeNull();
+    expect(atelierWholePairs('')).toBeNull();
+  });
+
   it('não deixa a soma passar dos pares e mostra o saldo', () => {
     expect(atelierReceiptRemaining(180, 80)).toBe(100);
     expect(atelierReceiptRemaining(180, 180)).toBe(0);
