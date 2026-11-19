@@ -67,7 +67,10 @@ function appendixHtml(input: {
     </section>`;
 }
 
-export async function printAtelierShipment(serviceOrderId: string) {
+export async function printAtelierShipment(
+  serviceOrderId: string,
+  options?: { partId?: string },
+) {
   const { data: order, error } = await supabase
     .from('service_orders')
     .select('id, order_number, description, service_date, quantity, notes, target_sector, contractor_id, quoted_deadline, sale_order_id')
@@ -80,7 +83,7 @@ export async function printAtelierShipment(serviceOrderId: string) {
     .select('id, material_name, description, color, quantity, unit_price, atelier_job_id, atelier_part_id, sale_order_id')
     .eq('service_order_id', serviceOrderId);
   if (lineError) throw lineError;
-  const lineRows = (lines ?? []) as Array<{
+  let lineRows = (lines ?? []) as Array<{
     material_name: string | null;
     description: string | null;
     color: string | null;
@@ -90,6 +93,12 @@ export async function printAtelierShipment(serviceOrderId: string) {
     atelier_part_id: string | null;
     sale_order_id: string | null;
   }>;
+  if (options?.partId) {
+    lineRows = lineRows.filter((line) => line.atelier_part_id === options.partId);
+  }
+  const printedPairs = options?.partId
+    ? lineRows.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0)
+    : Number(order.quantity) || 0;
 
   const partIds = lineRows.map((line) => line.atelier_part_id).filter(Boolean);
   const { data: parts } = partIds.length
@@ -205,8 +214,10 @@ export async function printAtelierShipment(serviceOrderId: string) {
       order_number: order.order_number,
       description: order.description,
       service_date: order.service_date,
-      quantity: Number(order.quantity) || 0,
-      notes: order.notes,
+      quantity: printedPairs,
+      notes: options?.partId
+        ? [order.notes, `Acumulado da OS: ${Number(order.quantity) || 0} pares`].filter(Boolean).join(' · ')
+        : order.notes,
       target_sector: order.target_sector,
       quoted_deadline: order.quoted_deadline,
     },

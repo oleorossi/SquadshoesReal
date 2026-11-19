@@ -35,6 +35,8 @@ import {
 } from '@/lib/atelierAdmin';
 import { printAtelierShipment } from '@/lib/printAtelierShipment';
 import { AtelierSplitDialog } from '@/components/atelier/AtelierSplitDialog';
+import { AtelierRemessaPanel } from '@/components/atelier/AtelierRemessaPanel';
+import { atelierIdentityLabel, atelierJobIdentityLine, atelierLotIdentityLines } from '@/lib/atelierIdentity';
 import {
   ATELIER_BOARD_COLUMNS,
   ATELIER_RAIL_LABEL,
@@ -201,11 +203,13 @@ function JobActions({
   lot,
   contractors,
   onReceipt,
+  onManage,
 }: {
   job: AtelierLotJob;
   lot: AtelierLotRow;
   contractors: { id: string; name: string }[];
   onReceipt?: () => void;
+  onManage?: () => void;
 }) {
   const mode = atelierEffectiveMode(job.execution_mode);
   const setMode = useSetAtelierJobExecutionMode();
@@ -374,6 +378,17 @@ function JobActions({
               <Truck className="h-3 w-3" />
               Enviar
             </Button>
+            {onManage && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-[11px]"
+                onClick={onManage}
+              >
+                Envios
+              </Button>
+            )}
           </div>
           {contractorId && !rates.isLoading && quote == null && (
             <p className="text-[10px] text-amber-700 dark:text-amber-400">
@@ -523,6 +538,7 @@ function JobCard({
   selected,
   onToggle,
   onReceipt,
+  onManage,
 }: {
   job: AtelierLotJob;
   lot: AtelierLotRow;
@@ -530,6 +546,7 @@ function JobCard({
   selected?: boolean;
   onToggle?: () => void;
   onReceipt?: () => void;
+  onManage?: () => void;
 }) {
   const blocks = atelierJobBlocksProduction(job.execution_mode, job.pipeline_status, job.received_pairs);
   const sector = ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector;
@@ -550,8 +567,11 @@ function JobCard({
             <span className="ml-1 font-normal text-muted-foreground">{job.order_number}</span>
           </p>
           <p className="truncate text-[10px] text-muted-foreground">
-            {lot.reference_code ?? '—'} · {lot.color ?? 'Sem cor'} · {formatQty(Number(job.pairs))}p
+            {atelierIdentityLabel(atelierJobIdentityLine(job, lot))}
           </p>
+          {job.atelier_service_number && (
+            <p className="truncate font-mono text-[10px] text-muted-foreground">OS {job.atelier_service_number}</p>
+          )}
         </div>
         {canSelect && (
           <Checkbox
@@ -579,7 +599,7 @@ function JobCard({
           Trava Em Produção de {job.order_number}
         </p>
       )}
-      <JobActions job={job} lot={lot} contractors={contractors} onReceipt={onReceipt} />
+      <JobActions job={job} lot={lot} contractors={contractors} onReceipt={onReceipt} onManage={onManage} />
     </article>
   );
 }
@@ -587,9 +607,11 @@ function JobCard({
 function CutBand({
   lots,
   pedido,
+  onManage,
 }: {
   lots: AtelierLotRow[];
   pedido: string;
+  onManage: (lot: AtelierLotRow) => void;
 }) {
   const cutMut = useConfirmAtelierLotCut();
   const releaseMut = useConfirmAtelierLotRelease();
@@ -623,11 +645,13 @@ function CutBand({
                 </p>
                 <span className="font-mono text-[10px] text-muted-foreground">{lot.lot_number}</span>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                <span className="font-semibold tabular-nums text-foreground">{formatQty(Number(lot.pairs))}p</span>
-                {' · '}
-                {numbers.join(', ')}
-              </p>
+              <ul className="space-y-0.5">
+                {atelierLotIdentityLines(lot).map((line) => (
+                  <li key={`${lot.id}-${line.orderNumber}`} className="truncate text-[11px] text-foreground">
+                    {atelierIdentityLabel(line)}
+                  </li>
+                ))}
+              </ul>
               {others.length > 0 && (
                 <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
                   {pedido ? `Este corte também leva ${others.join(', ')}.` : `Este corte junta ${others.join(', ')}.`}
@@ -645,6 +669,12 @@ function CutBand({
                 )}
               </div>
               <GradeStrip grade={lot.grade} />
+              {lot.status === 'cut' && (
+                <Button type="button" size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => onManage(lot)}>
+                  <Truck className="h-3 w-3" />
+                  Gerir envios
+                </Button>
+              )}
               {shortage && (
                 <p className="text-[10px] font-medium text-red-700 dark:text-red-400">
                   Falta no kit: {kitShortageLabels(lot.debits).join(', ')}.
@@ -743,6 +773,7 @@ export function AtelierOperacao({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [assignContractorId, setAssignContractorId] = useState('');
   const [receiptJob, setReceiptJob] = useState<AtelierLotJob | null>(null);
+  const [remessaLot, setRemessaLot] = useState<AtelierLotRow | null>(null);
 
   const filters = useMemo<AtelierBoardFilters>(() => ({
     orderNumber: pedido,
@@ -1078,7 +1109,7 @@ export function AtelierOperacao({
         />
       ) : (
         <>
-          <CutBand lots={cutLots} pedido={pedido} />
+          <CutBand lots={cutLots} pedido={pedido} onManage={setRemessaLot} />
           {modo === 'quadro' ? (
             visibleJobs.length === 0 ? (
               <EmptyState icon={CheckCircle} title="Nenhum job com esses filtros" description="Troque o pedido, o setor ou limpe os filtros." />
@@ -1123,6 +1154,7 @@ export function AtelierOperacao({
                                     setSelected(next);
                                   } : undefined}
                                   onReceipt={() => setReceiptJob(job)}
+                                  onManage={() => setRemessaLot(lot)}
                                 />
                               ))}
                             </div>
@@ -1143,11 +1175,17 @@ export function AtelierOperacao({
               batching={batching}
               onBatch={runBatch}
               onReceipt={setReceiptJob}
+              onManage={setRemessaLot}
             />
           )}
         </>
       )}
       <AtelierReceiptDialog job={receiptJob} onClose={() => setReceiptJob(null)} />
+      <AtelierRemessaPanel
+        lot={remessaLot}
+        contractors={contractorRecords.map((item) => ({ id: item.id, name: item.name }))}
+        onClose={() => setRemessaLot(null)}
+      />
     </div>
   );
 }
@@ -1189,6 +1227,7 @@ function PedidoJob({
   contractors,
   onToggle,
   onReceipt,
+  onManage,
 }: {
   lot: AtelierLotRow;
   job: AtelierLotJob;
@@ -1197,6 +1236,7 @@ function PedidoJob({
   contractors: { id: string; name: string }[];
   onToggle: () => void;
   onReceipt: () => void;
+  onManage: () => void;
 }) {
   const steps = atelierTimeline(job.execution_mode);
   const current = steps.findIndex((s) => s.id === job.pipeline_status);
@@ -1207,11 +1247,11 @@ function PedidoJob({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[12px] font-semibold text-foreground">
-            {lot.reference_code ?? '—'} · {lot.color ?? 'Sem cor'}
+            {atelierIdentityLabel(atelierJobIdentityLine(job, lot))}
             <span className="ml-1 font-normal text-muted-foreground">{sector}</span>
           </p>
           <p className="text-[10px] text-muted-foreground">
-            {formatQty(Number(job.pairs))}p · {ATELIER_PIPELINE_LABEL[job.pipeline_status as AtelierPipelineStatus] ?? job.pipeline_status}
+            {ATELIER_PIPELINE_LABEL[job.pipeline_status as AtelierPipelineStatus] ?? job.pipeline_status}
             {job.target_end ? ` · voltar ${formatDay(job.target_end)}` : ''}
             {atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode) ? ' · atrasado' : ''}
           </p>
@@ -1251,7 +1291,7 @@ function PedidoJob({
         pairs={Number(job.pairs) || 0}
         label="recebidos"
       />
-      <JobActions job={job} lot={lot} contractors={contractors} onReceipt={onReceipt} />
+      <JobActions job={job} lot={lot} contractors={contractors} onReceipt={onReceipt} onManage={onManage} />
     </li>
   );
 }
@@ -1264,6 +1304,7 @@ function PedidoView({
   batching,
   onBatch,
   onReceipt,
+  onManage,
 }: {
   groups: {
     orderNumber: string;
@@ -1280,6 +1321,7 @@ function PedidoView({
   batching: boolean;
   onBatch: (items: { label: string; run: () => Promise<unknown> }[]) => Promise<void>;
   onReceipt: (job: AtelierLotJob) => void;
+  onManage: (lot: AtelierLotRow) => void;
 }) {
   if (groups.length === 0) {
     return <EmptyState icon={CheckCircle} title="Nenhum pedido com esses filtros" description="Troque o pedido ou limpe os filtros." />;
@@ -1369,6 +1411,7 @@ function PedidoView({
                       setSelected(next);
                     }}
                     onReceipt={() => onReceipt(job)}
+                    onManage={() => onManage(lot)}
                   />
                 ))}
               </ul>

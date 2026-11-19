@@ -513,6 +513,42 @@ export async function sendAtelierSplit(input: {
   return data as { service_order_ids?: string[]; remaining_pairs?: number } | null;
 }
 
+export async function sendAtelierRemessa(input: {
+  lotId: string;
+  sector: string;
+  contractorId: string;
+  grade: Record<string, number>;
+  unitPrice: number | null;
+}) {
+  const { data, error } = await supabase.rpc(
+    'atelier_send_remessa' as never,
+    {
+      p_lot_id: input.lotId,
+      p_sector: input.sector,
+      p_contractor_id: input.contractorId,
+      p_grade: input.grade,
+      p_unit_price: input.unitPrice,
+    } as never,
+  );
+  if (error) throw error;
+  return data as {
+    service_order_id?: string;
+    order_number?: string;
+    reused?: boolean;
+    part_ids?: string[];
+    unit_price?: number;
+  } | null;
+}
+
+export async function closeAtelierShipments(serviceOrderId: string) {
+  const { data, error } = await supabase.rpc(
+    'atelier_close_shipments' as never,
+    { p_service_order_id: serviceOrderId } as never,
+  );
+  if (error) throw error;
+  return data as { concluded?: boolean } | null;
+}
+
 export async function sendAtelierShipment(input: { jobIds: string[]; contractorId: string }) {
   const { data, error } = await supabase.rpc(
     'atelier_send_shipment' as never,
