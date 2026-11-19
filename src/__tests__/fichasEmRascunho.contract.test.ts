@@ -9,7 +9,7 @@ describe('Fichas em rascunho · catálogo separado do hub', () => {
   it('rota, nav e módulo produtos existem', () => {
     const nav = read('src/data/navigation.ts');
     expect(nav).toContain("'/engenharia/fichas-rascunho'");
-    expect(nav).toContain('Fichas em rascunho');
+    expect(nav).toContain("label: 'Rascunhos'");
     expect(nav).toContain('FichasEmRascunhoPage');
 
     const access = read('src/hooks/useAccessControl.ts');

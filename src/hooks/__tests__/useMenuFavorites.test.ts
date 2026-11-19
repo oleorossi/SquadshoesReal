@@ -18,13 +18,13 @@ describe('canonicalizeFavorites', () => {
     ]);
     expect(out).toEqual([
       { name: 'Terceirizados', path: '/terceirizados' },
-      { name: 'Ordens de Compra', path: '/purchase-orders' },
+      { name: 'Pedidos de compra', path: '/purchase-orders' },
     ]);
   });
 
   it('mantém favoritos válidos intactos', () => {
     const favs = [
-      { name: 'Pedidos de Venda', path: '/sales' },
+      { name: 'Pedidos', path: '/sales' },
       { name: 'Estoque', path: '/estoque' },
     ];
     expect(canonicalizeFavorites(favs)).toEqual(favs);
