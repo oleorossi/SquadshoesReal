@@ -11,6 +11,15 @@ export interface OsListValue {
   forecast: number | null;
 }
 
+export function serviceOrderPartyName(input: {
+  internal?: boolean | null;
+  contractorName?: string | null;
+}): string {
+  if (input.internal) return 'Interno';
+  const name = (input.contractorName ?? '').trim();
+  return name || 'Sem prestador';
+}
+
 export function osListValue(input: {
   contracted: number;
   hasPayable: boolean;

@@ -516,18 +516,20 @@ export async function sendAtelierSplit(input: {
 export async function sendAtelierRemessa(input: {
   lotId: string;
   sector: string;
-  contractorId: string;
+  contractorId: string | null;
   grade: Record<string, number>;
   unitPrice: number | null;
+  internal?: boolean;
 }) {
   const { data, error } = await supabase.rpc(
     'atelier_send_remessa' as never,
     {
       p_lot_id: input.lotId,
       p_sector: input.sector,
-      p_contractor_id: input.contractorId,
+      p_contractor_id: input.internal ? null : input.contractorId,
       p_grade: input.grade,
       p_unit_price: input.unitPrice,
+      p_internal: !!input.internal,
     } as never,
   );
   if (error) throw error;

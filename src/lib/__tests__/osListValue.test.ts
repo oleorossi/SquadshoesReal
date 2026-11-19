@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { osListValue } from '@/lib/osListValue';
+import { osListValue, serviceOrderPartyName } from '@/lib/osListValue';
 
 describe('valor da OS na lista', () => {
   it('mostra o devido das contas e o contratado como previsto', () => {
@@ -14,6 +14,11 @@ describe('valor da OS na lista', () => {
       primary: 60,
       forecast: null,
     });
+  });
+
+  it('a fábrica aparece como Interno', () => {
+    expect(serviceOrderPartyName({ internal: true, contractorName: null })).toBe('Interno');
+    expect(serviceOrderPartyName({ internal: false, contractorName: 'Casa A' })).toBe('Casa A');
   });
 
   it('antes de existir conta, mostra o contratado', () => {

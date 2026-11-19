@@ -136,7 +136,9 @@ export function atelierCanRecordReceipt(job: {
   const remaining = atelierReceiptRemaining(Number(job.pairs) || 0, Number(job.received_pairs) || 0);
   if (remaining <= 0) return false;
   if (atelierEffectiveMode(job.execution_mode) === 'internal') {
-    return job.pipeline_status === 'in_progress' || job.pipeline_status === 'partially_done';
+    return job.pipeline_status === 'in_progress'
+      || job.pipeline_status === 'partially_done'
+      || job.pipeline_status === 'partially_sent';
   }
   return job.pipeline_status === 'sent_to_contractor'
     || job.pipeline_status === 'realized'

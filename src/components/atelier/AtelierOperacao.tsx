@@ -465,7 +465,7 @@ function JobActions({
       {action === 'realized' && (
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-[10px] text-muted-foreground">
-            {job.contractor_name ?? 'Prestador'}
+            {job.execution_mode === 'internal' ? 'Interno' : (job.contractor_name ?? 'Prestador')}
             {job.atelier_service_number ? ` · ${job.atelier_service_number}` : ''}
           </span>
           <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={() => realizedMut.mutate(job.id)}>

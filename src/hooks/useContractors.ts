@@ -103,6 +103,8 @@ const normalizeServiceOrderMaterialRequirements = (value: unknown): ServiceOrder
 export interface ServiceOrder {
   id: string;
   contractor_id: string;
+  /** Produção interna do Ateliê: sem prestador e sem conta a pagar. */
+  internal_execution?: boolean | null;
   order_number: string;
   description: string;
   service_date: string;

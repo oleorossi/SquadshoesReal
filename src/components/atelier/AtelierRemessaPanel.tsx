@@ -32,9 +32,12 @@ import { remessaGradeError, suggestRemessaGrade, sumGrades } from '@/lib/atelier
 import { ATELIER_SECTOR_LABEL, type AtelierSector } from '@/lib/atelier';
 import { cn, formatCurrency } from '@/lib/utils';
 
+const INTERNAL = '__internal__';
+
 interface PartRow {
   id: string;
   job_id: string;
+  execution_mode: string | null;
   contractor_id: string | null;
   pairs: number;
   grade: SizeGrade | null;
@@ -113,7 +116,7 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
       }));
       const { data: parts, error: partError } = await supabase
         .from('atelier_job_parts' as never)
-        .select('id, job_id, contractor_id, pairs, grade, service_order_id, unit_price')
+        .select('id, job_id, execution_mode, contractor_id, pairs, grade, service_order_id, unit_price')
         .in('job_id', ids);
       if (partError) throw partError;
       const { data: receipts, error: receiptError } = await supabase
@@ -164,15 +167,16 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
 
   const byContractor = new Map<string, { sent: number; returned: number; os: OsRow | null }>();
   for (const part of sectorParts) {
-    if (!part.contractor_id) continue;
-    const row = byContractor.get(part.contractor_id) ?? { sent: 0, returned: 0, os: null };
+    const key = part.execution_mode === 'internal' || !part.contractor_id ? INTERNAL : part.contractor_id;
+    const row = byContractor.get(key) ?? { sent: 0, returned: 0, os: null };
     row.sent += Number(part.pairs) || 0;
     row.returned += returnedByPart.get(part.id) || 0;
     const os = part.service_order_id ? orderById.get(part.service_order_id) ?? null : null;
     if (os && (os.accepting_shipments || !row.os)) row.os = os;
-    byContractor.set(part.contractor_id, row);
+    byContractor.set(key, row);
   }
   const sentTotal = [...byContractor.values()].reduce((sum, row) => sum + row.sent, 0);
+  const internal = contractorId === INTERNAL;
   const sectorPairs = sectorJobs.reduce((sum, job) => sum + Math.trunc(Number(job.pairs) || 0), 0);
   const openOs = contractorId ? byContractor.get(contractorId)?.os : null;
   const inherited = !!(openOs && openOs.accepting_shipments);
@@ -216,9 +220,10 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
       const data = await sendAtelierRemessa({
         lotId: lot.id,
         sector,
-        contractorId,
+        contractorId: internal ? null : contractorId,
         grade,
         unitPrice: inherited || !priceTouched ? null : Number(price),
+        internal,
       });
       await refresh();
       const number = data?.order_number;
@@ -242,7 +247,7 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
   }
 
   async function closeOs(order: OsRow) {
-    if (!window.confirm(`Encerrar envios de ${order.order_number || 'esta OS'}? Remessa nova deste prestador abre outra OS.`)) return;
+    if (!window.confirm(`Encerrar envios de ${order.order_number || 'esta OS'}? Remessa nova deste destino abre outra OS.`)) return;
     setBusy(true);
     try {
       const data = await closeAtelierShipments(order.id);
@@ -264,7 +269,7 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
         <DialogHeader>
           <DialogTitle>Envios de {lot?.lot_number}</DialogTitle>
           <DialogDescription>
-            A OS do prestador fica aberta. Cada remessa entra nela até você encerrar os envios.
+            Prestador ou a fábrica. A OS fica aberta até você encerrar os envios. A fábrica não gera conta.
           </DialogDescription>
         </DialogHeader>
         {lot && (
@@ -298,7 +303,7 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
             </p>
             <ul className="space-y-1">
               {[...byContractor.entries()].map(([id, row]) => {
-                const name = contractors.find((item) => item.id === id)?.name ?? 'Prestador';
+                const name = id === INTERNAL ? 'Interno' : (contractors.find((item) => item.id === id)?.name ?? 'Prestador');
                 return (
                   <li key={id} className="flex flex-wrap items-center gap-2 rounded border border-border/70 px-2 py-1 text-[12px]">
                     <span className="font-medium text-foreground">{name}</span>
@@ -323,10 +328,11 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
             </ul>
             <div className="space-y-2 rounded border border-border/70 p-2">
               <Select value={contractorId || undefined} onValueChange={(value) => { setContractorId(value); setPriceTouched(false); }}>
-                <SelectTrigger className="h-8" aria-label="Prestador da remessa">
-                  <SelectValue placeholder="Prestador" />
+                <SelectTrigger className="h-8" aria-label="Destino da remessa">
+                  <SelectValue placeholder="Destino" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={INTERNAL}>Produção interna (fábrica)</SelectItem>
                   {contractors.map((item) => (
                     <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
                   ))}
@@ -351,16 +357,17 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
                 ))}
               </div>
               <label className="flex items-center gap-2 text-[12px]">
-                {atelierRateLabel(sector) || 'R$/par'}
+                {internal ? 'Custo interno' : (atelierRateLabel(sector) || 'R$/par')}
                 <Input
                   className="h-8 w-24"
                   inputMode="decimal"
                   disabled={inherited || !contractorId}
-                  value={inherited ? String(shownPrice || '') : (priceTouched ? price : (suggestedPrice ?? ''))}
+                  value={inherited ? String(shownPrice || '') : (priceTouched ? price : (internal ? '' : (suggestedPrice ?? '')))}
                   onChange={(event) => { setPriceTouched(true); setPrice(event.target.value.replace(',', '.')); }}
                 />
-                {inherited && <span className="text-muted-foreground">preço da OS aberta</span>}
-                {!inherited && shownPrice != null && Number(shownPrice) > 0 && (
+                {internal && <span className="text-muted-foreground">não gera conta</span>}
+                {!internal && inherited && <span className="text-muted-foreground">preço da OS aberta</span>}
+                {!internal && !inherited && shownPrice != null && Number(shownPrice) > 0 && (
                   <span className="text-muted-foreground">{formatCurrency(Number(shownPrice))}/par</span>
                 )}
               </label>

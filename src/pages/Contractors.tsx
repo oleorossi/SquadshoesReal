@@ -1,6 +1,6 @@
 import AppLayout from "@/components/layout/AppLayout";
 import { AtelierOsDetailDialog, isAtelierRemessa } from '@/components/contractors/AtelierOsDetailDialog';
-import { osListValue } from '@/lib/osListValue';
+import { osListValue, serviceOrderPartyName } from '@/lib/osListValue';
 import ServiceOrderReturnDialog from '@/components/contractors/ServiceOrderReturnDialog';
 import ServiceOrderDispatchDialog from '@/components/contractors/ServiceOrderDispatchDialog';
 import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
@@ -585,7 +585,11 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
       payableAmount: overview?.payable_amount,
     });
     if (value.primary == null) {
-      return <span className="text-sm font-medium text-muted-foreground">A definir</span>;
+      return (
+        <span className="text-sm font-medium text-muted-foreground">
+          {order.internal_execution ? 'Sem conta' : 'A definir'}
+        </span>
+      );
     }
     return (
       <span className="block text-right">
@@ -911,7 +915,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
             <span className="flex items-start justify-between gap-2">
               <span className="min-w-0">
                 <span className="block font-mono text-sm font-bold tracking-tight">{o.order_number}</span>
-                <span className="block truncate text-sm font-semibold">{o.contractors?.name || 'Sem prestador'}</span>
+                <span className="block truncate text-sm font-semibold">{serviceOrderPartyName({ internal: o.internal_execution, contractorName: o.contractors?.name })}</span>
               </span>
               <Badge variant="outline" className={cn('shrink-0 gap-1 text-[11px]', osStatusColor(o.status))}>
                 <span className={cn('h-1.5 w-1.5 rounded-full', osStatusDot(o.status))} />
@@ -1671,7 +1675,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                             <Checkbox checked={selected} onCheckedChange={() => toggleOsSelect(o.id)} className="mt-0.5 shrink-0" aria-label={`Selecionar OS ${o.order_number}`} />
                             <div className="min-w-0">
                               <span className="font-mono text-sm font-bold tracking-tight">{o.order_number}</span>
-                              <p className="truncate text-sm font-medium text-foreground">{o.contractors?.name || 'Sem prestador'}</p>
+                              <p className="truncate text-sm font-medium text-foreground">{serviceOrderPartyName({ internal: o.internal_execution, contractorName: o.contractors?.name })}</p>
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
@@ -1799,7 +1803,7 @@ export default function Contractors({ embedded = false, activeTab, onActiveTabCh
                                 {o.order_number}
                               </button>
                             </TableCell>
-                            <TableCell className="text-sm">{o.contractors?.name || <span className="text-muted-foreground">Sem prestador</span>}</TableCell>
+                            <TableCell className="text-sm">{serviceOrderPartyName({ internal: o.internal_execution, contractorName: o.contractors?.name })}</TableCell>
                             <TableCell className="hidden whitespace-nowrap md:table-cell">
                               {so
                                 ? <span className="inline-flex items-center gap-1"><span className="font-mono text-xs font-semibold text-primary">{so.order_number}</span>{isAuto && <Badge variant="outline" className="h-4 bg-primary/5 px-1 text-[9px] text-primary border-primary/30">PV</Badge>}</span>
