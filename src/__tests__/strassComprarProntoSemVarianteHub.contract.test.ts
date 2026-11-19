@@ -25,8 +25,13 @@ function latestFileWith(needle: string): string {
 describe('strass Comprar pronto sem variante Hub — contrato 45600', () => {
   const sql = readFileSync(resolve(MIGRATIONS, FILE), 'utf8');
 
-  it('é a autoridade viva do ramo finished_product_group', () => {
-    expect(latestFileWith(MARKER)).toBe(FILE);
+  it('o ramo vivo é o patch que resolve o SKU sem criar produto', () => {
+    // 49800 cita o marcador da 45600 dentro do bloco antigo que substitui.
+    // A autoridade do writer passou a ser essa migration.
+    expect(latestFileWith(MARKER)).toBe('20270101049800_tira_pronta_resolve_sku.sql');
+    expect(latestFileWith('strap_pronta_sku_direto_20270101049800')).toBe(
+      '20270101049800_tira_pronta_resolve_sku.sql',
+    );
     expect(sql).toContain('pg_get_functiondef');
     expect(sql).toContain("'public.prepare_sale_order_item_internal_straps(jsonb)'");
     expect(sql).toContain("'public.tg_validate_sale_order_item_strap_color_alignment()'");
