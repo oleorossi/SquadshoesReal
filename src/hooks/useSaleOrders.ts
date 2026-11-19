@@ -405,12 +405,15 @@ export type SaleOrderItemFormData = {
     consumption_per_size?: Record<string, number> | null;
     /** Escolha do PV quando Hub = escolhe_no_pv (fábrica | prestador | tira pronta). */
     pv_origem?: 'fabrica' | 'prestador' | 'sku_acabado' | null;
+    /** SKU do grupo de estoque quando a tira é comprada pronta. */
+    finished_product_id?: string | null;
   }>;
   /** Origem explícita por `technical_strap_line_id`; ausência bloqueia confirmação. */
   strap_sourcing?: Record<string, {
     source_mode: 'internal' | 'buy_ready';
     color_id?: string | null;
     strap_variant_id?: string | null;
+    finished_product_id?: string | null;
     recipe_id?: string | null;
     base_group_id?: string | null;
     base_group_name?: string | null;

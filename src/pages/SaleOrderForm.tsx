@@ -90,6 +90,8 @@ import {
   SaleOrderCommandExecutionError,
 } from '@/lib/saleOrderCommand';
 import { strapColorMode } from '@/lib/technicalStrapLines';
+import { purchasedReadyStockGroupId } from '@/lib/buyReadyStrapGap';
+import { getStrapSourcingSelection } from '@/lib/strapSourcing';
 import { copyItemStraps, loadStrapCopyContext } from '@/lib/copySaleOrderStraps';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
 import {
@@ -707,6 +709,13 @@ export default function SaleOrderForm() {
         : [];
       const semCor = straps.filter((s) => {
         if (!s) return false;
+        // Tira comprada pronta com SKU do grupo não usa cor do Hub.
+        if (purchasedReadyStockGroupId(s)) {
+          const lineId = s.technical_strap_line_id || s.id;
+          const pinned = s.finished_product_id
+            || getStrapSourcingSelection(its[i].strap_sourcing, lineId)?.finished_product_id;
+          return !pinned;
+        }
         // Somente reference_base + follow_main deriva a identidade da cor
         // principal. Uma tira interna select_on_order precisa carregar texto e
         // UUID canônicos da posição, assim como uma tira comprada pronta.
@@ -722,10 +731,16 @@ export default function SaleOrderForm() {
       const tiras = semCor
         .map((s) => String(s.label || s.group_name || 'TIRA').trim() || 'TIRA')
         .join(', ');
-      return (
-        `Tira sem cor canônica no item ${i + 1} (${refLabel}): ${tiras}. ` +
-        `Selecione a cor no catálogo; texto antigo não identifica estoque nem permite confirmar o pedido.`
-      );
+      const faltaSku = semCor.some((s) => purchasedReadyStockGroupId(s));
+      return faltaSku
+        ? (
+          `Selecione o SKU da tira comprada pronta no item ${i + 1} (${refLabel}): ${tiras}. ` +
+          `A baixa usa esse produto. O pedido não cria SKU.`
+        )
+        : (
+          `Tira sem cor canônica no item ${i + 1} (${refLabel}): ${tiras}. ` +
+          `Selecione a cor no catálogo; texto antigo não identifica estoque nem permite confirmar o pedido.`
+        );
     }
     return null;
   };

@@ -76,6 +76,8 @@ import { ArtisanalStrapEditor } from '@/components/artisanal-straps/ArtisanalStr
 import { buyReadyStrapDescription, buyReadyStrapRequiredM } from '@/lib/buyReadyStrap';
 import {
   listBuyReadyStrapGaps,
+  purchasedReadySkusForGroup,
+  purchasedReadyStockGroupId,
   strapLineIsPvBuyReadyChoice,
   strapLineNeedsBuyReadyHubCadastro,
   strapLineWantsBuyReady,
@@ -371,8 +373,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   });
   // Latest-ref pattern: avoids stale closures when items are reordered (sortedIndices
   // in the parent shifts `index` between renders) without triggering effect re-runs.
-  const latestRef = useRef({ index, onUpdate });
-  latestRef.current = { index, onUpdate };
+  const latestRef = useRef({ index, onUpdate, onUpdateFields });
+  latestRef.current = { index, onUpdate, onUpdateFields };
 
   const grade = item.grade as Record<string, number>;
   const selectedRef = references.find(r => r.id === item.reference_id);
@@ -904,8 +906,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       const usesFinishedGroup = identityBasis === 'finished_product_group';
       requiresReferenceBase ||= usesReferenceBase;
       hasPurchasedReady ||= usesFinishedGroup;
+      const stockGroupId = purchasedReadyStockGroupId(strap);
       const identityGroupResolved = usesFinishedGroup
-        ? isUuid(strap.identity_group_id)
+        ? !!stockGroupId
         : strapMaterialMode(strap) === 'select_on_order'
           ? Array.isArray(strap.allowed_material_group_ids) && strap.allowed_material_group_ids.some(isUuid)
           : isUuid(resolvedBaseGroupId);
@@ -921,9 +924,10 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
       }
       // Enquanto o preview carrega, só a ausência já conhecida da medida abre
       // a pendência; isso evita piscar o CTA em fichas canônicas.
-      if (canonicalIdsMissing
+      // Grupo de estoque da tira pronta dispensa medida/família do Hub.
+      if (!stockGroupId && (canonicalIdsMissing
           || (!strapCatalogLoading && !measureResolved)
-          || (!strapLinesLoading && !identityGroupResolved)) issueCount += 1;
+          || (!strapLinesLoading && !identityGroupResolved))) issueCount += 1;
     });
     return {
       hasIssue: issueCount > 0,
@@ -1000,6 +1004,56 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     });
     if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
   }, [item.strap_colors, preserveCommittedStrapSnapshot, strapLineByKey, strapSourcingMap]);
+
+  // Um único SKU ativo no grupo da tira pronta já é a identidade. Não pede
+  // medida nem cor do Hub.
+  useEffect(() => {
+    if (preserveCommittedStrapSnapshot || !strapCatalog) return;
+    const straps = item.strap_colors || [];
+    let nextStraps = straps;
+    let nextSourcing = strapSourcingMap;
+    let changed = false;
+    straps.forEach((strap, sIdx) => {
+      const groupId = purchasedReadyStockGroupId(strap);
+      if (!groupId || (isUuid(strap.measure_id) && isUuid(strap.strap_type_id))) return;
+      const skus = purchasedReadySkusForGroup(strapCatalog, groupId);
+      if (skus.length !== 1) return;
+      const product = skus[0];
+      const lineId = technicalStrapLineId(strap);
+      const pinned = (strap as { finished_product_id?: string | null }).finished_product_id
+        || getStrapSourcingSelection(nextSourcing, lineId)?.finished_product_id;
+      if (pinned === product.id) return;
+      const colorId = strapCatalog.colors.find((entry) =>
+        entry.active && entry.name.trim().toUpperCase() === String(product.color || '').trim().toUpperCase(),
+      )?.id || null;
+      const snapshotIndex = lineId
+        ? nextStraps.findIndex((entry) => technicalStrapLineId(entry) === lineId)
+        : sIdx;
+      if (snapshotIndex < 0) return;
+      nextStraps = nextStraps.map((entry, index) => index === snapshotIndex ? {
+        ...entry,
+        finished_product_id: product.id,
+        color: product.color || product.name || entry.color,
+        color_id: colorId,
+      } : entry);
+      nextSourcing = setStrapSourcing(nextSourcing, lineId, {
+        source_mode: 'buy_ready',
+        color_id: colorId,
+        strap_variant_id: null,
+        finished_product_id: product.id,
+        recipe_id: null,
+        gross_required_m: buyReadyStrapRequiredM(strap, item.grade, item.fichas),
+      });
+      changed = true;
+    });
+    if (!changed) return;
+    const current = latestRef.current;
+    if (current.onUpdateFields) current.onUpdateFields(current.index, { strap_colors: nextStraps, strap_sourcing: nextSourcing });
+    else {
+      current.onUpdate(current.index, 'strap_colors', nextStraps);
+      current.onUpdate(current.index, 'strap_sourcing', nextSourcing);
+    }
+  }, [item.fichas, item.grade, item.strap_colors, preserveCommittedStrapSnapshot, strapCatalog, strapSourcingMap]);
 
   // Hub origem_padrao + pv_origem → source_mode do motor (internal | buy_ready).
   useEffect(() => {
@@ -2942,8 +2996,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                   const displayedColors = selectedColor && !colorIsAvailable
                     ? [selectedColor, ...identityColors]
                     : identityColors;
+                  const stockGroupId = purchasedReadyStockGroupId(strap);
                   const identityGroupResolved = usesFinishedGroup
-                    ? isUuid(strap.identity_group_id)
+                    ? !!stockGroupId
                     : isUuid(baseGroupId);
                   const canonicalMeasure = isUuid(strap.measure_id)
                     ? strapCatalog?.measures.find((entry) => entry.id === strap.measure_id && entry.active !== false)
@@ -3018,7 +3073,77 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           </SelectContent>
                         </Select>
                       ) : null}
-                      {selectsOnOrder ? readOnlyHistoricalColor ? (
+                      {usesFinishedGroup && stockGroupId && (!isUuid(strap.measure_id) || !isUuid(strap.strap_type_id)) ? (() => {
+                        const skus = purchasedReadySkusForGroup(strapCatalog, stockGroupId);
+                        const pinned = (strap as { finished_product_id?: string | null }).finished_product_id
+                          || getStrapSourcingSelection(strapSourcingMap, lineId)?.finished_product_id
+                          || '';
+                        const pinSku = (productId: string) => {
+                          const product = skus.find((entry) => entry.id === productId);
+                          if (!product) return;
+                          const colorId = strapCatalog?.colors.find((entry) =>
+                            entry.active && entry.name.trim().toUpperCase() === String(product.color || '').trim().toUpperCase(),
+                          )?.id || null;
+                          const updated = [...snapshotStraps];
+                          const snapshotIndex = lineId
+                            ? updated.findIndex((entry) => technicalStrapLineId(entry) === lineId)
+                            : sIdx;
+                          const snapshot = updated[snapshotIndex];
+                          if (!snapshot) return;
+                          updated[snapshotIndex] = {
+                            ...snapshot,
+                            finished_product_id: product.id,
+                            color: product.color || product.name || snapshot.color,
+                            color_id: colorId,
+                          };
+                          const nextSourcing = setStrapSourcing(strapSourcingMap, lineId, {
+                            source_mode: 'buy_ready',
+                            color_id: colorId,
+                            strap_variant_id: null,
+                            finished_product_id: product.id,
+                            recipe_id: null,
+                            gross_required_m: buyReadyStrapRequiredM(strap, item.grade, item.fichas),
+                          });
+                          if (onUpdateFields) onUpdateFields(index, { strap_colors: updated, strap_sourcing: nextSourcing });
+                          else {
+                            onUpdate(index, 'strap_colors', updated);
+                            onUpdate(index, 'strap_sourcing', nextSourcing);
+                          }
+                        };
+                        if (skus.length === 0) {
+                          return (
+                            <p className="text-[11px] leading-snug text-destructive">
+                              O grupo {strap.group_name || 'desta tira'} não tem SKU ativo em metros.
+                              Cadastre o produto nesse grupo de estoque. O pedido não cria SKU.
+                            </p>
+                          );
+                        }
+                        return (
+                          <div className="space-y-1">
+                            <Select
+                              value={skus.some((entry) => entry.id === pinned) ? pinned : ''}
+                              disabled={!!readOnlyHistoricalColor || !strapCatalog || strapCatalogLoading}
+                              onValueChange={pinSku}
+                            >
+                              <SelectTrigger className={cn('h-8', !pinned && 'border-amber-500/60')} aria-label={`SKU de ${strap.label || `Tira ${sIdx + 1}`}`}>
+                                <SelectValue placeholder="Selecione o SKU da tira" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {skus.map((product) => (
+                                  <SelectItem key={product.id} value={product.id}>
+                                    {product.name}{product.color ? ` · ${product.color}` : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {!pinned && (
+                              <p className="text-[11px] leading-tight text-destructive">
+                                Selecione o SKU. A baixa usa esse produto, sem medida nem cor do Hub.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })() : selectsOnOrder ? readOnlyHistoricalColor ? (
                         <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2 text-xs">
                           <span className="truncate font-medium">
                             {strap.color || 'Cor histórica não informada'}
@@ -3208,7 +3333,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                           A cor {referenceBaseMaterialWithArticle} não corresponde a uma cor canônica ou alias aprovado. Corrija essa identidade no estoque antes de salvar.
                         </p>
                       )}
-                      {!strapLinesLoading && (!identityGroupResolved || !measureResolved) && (
+                      {!strapLinesLoading && !stockGroupId && (!identityGroupResolved || !measureResolved) && (
                         <p className="truncate text-[11px] leading-tight text-destructive" title={!measureResolved
                             ? 'A linha técnica não identifica uma família e medida canônicas coerentes por UUID.'
                             : usesFinishedGroup
@@ -3521,7 +3646,9 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
                                     // Sem isto a tela dizia "aguardando" para um
                                     // estado que só sai com cadastro manual.
                                     ? 'Falta a variante comercial desta cor — cadastre acima para liberar o salvamento.'
-                                    : 'Aguardando a identidade canônica do produto acabado.'}
+                                    : stockGroupId
+                                      ? 'Selecione o SKU ativo deste grupo. A baixa usa esse produto.'
+                                      : 'Aguardando a identidade canônica do produto acabado.'}
                               </p>
                             )}
                           </div>

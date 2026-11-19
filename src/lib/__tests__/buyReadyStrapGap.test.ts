@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   listBuyReadyStrapGaps,
   listOrderBuyReadyStrapGaps,
+  purchasedReadySkusForGroup,
+  purchasedReadyStockGroupId,
   purchasedReadyStrapProductForColor,
   strapLineNeedsBuyReadyHubCadastro,
   strapLineWantsBuyReady,
@@ -62,6 +64,28 @@ describe('strapLineNeedsBuyReadyHubCadastro — D4/45600', () => {
   it('strapLineWantsBuyReady ainda identifica strass na ficha', () => {
     expect(strapLineWantsBuyReady(buyReadyLine())).toBe(true);
     expect(strapLineWantsBuyReady(buyReadyLine({ identity_basis: 'reference_base' }))).toBe(false);
+  });
+});
+
+describe('tira comprada pronta pelo SKU do grupo', () => {
+  const line = buyReadyLine({ measure_id: null, strap_type_id: null, color_id: null, color: '' });
+
+  it('o grupo de estoque basta, sem medida do Hub', () => {
+    expect(purchasedReadyStockGroupId(line)).toBe(GROUP);
+    expect(purchasedReadyStockGroupId({ ...line, identity_group_id: null, group_id: GROUP })).toBe(GROUP);
+    expect(purchasedReadyStockGroupId({ ...line, identity_basis: 'reference_base' })).toBeNull();
+  });
+
+  it('lista os SKUs ativos em metros e ignora inativo ou outra unidade', () => {
+    const withExtra = catalog({
+      products: [
+        ...catalog().products,
+        { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: 'Inativo', group_id: GROUP, color: 'OFF', unit: 'm', active: false },
+        { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Placa', group_id: GROUP, color: 'OFF', unit: 'placa', active: true },
+      ],
+    });
+    expect(purchasedReadySkusForGroup(withExtra, GROUP).map((product) => product.id)).toEqual([PRODUCT]);
+    expect(purchasedReadySkusForGroup(withExtra, null)).toEqual([]);
   });
 });
 

@@ -91,6 +91,33 @@ const str = (value: unknown): string => (value == null ? '' : String(value));
  * resolve para exatamente esta cor canônica. Ambiguidade devolve `null`: dois
  * produtos na mesma cor é erro de cadastro e não pode ser desempatado por nome.
  */
+/**
+ * Grupo de estoque da tira comprada pronta. A medida do Hub é ponte opcional
+ * (spec tira-material-de-estoque R4): o grupo na ficha já identifica o SKU.
+ */
+export function purchasedReadyStockGroupId(
+  strap: BuyReadyStrapGapLine | null | undefined,
+): string | null {
+  if (strapIdentityBasis(strap) !== 'finished_product_group') return null;
+  const identityGroupId = str(strap?.identity_group_id);
+  if (isUuid(identityGroupId)) return identityGroupId;
+  const groupId = str(strap?.group_id);
+  return isUuid(groupId) ? groupId : null;
+}
+
+/** SKUs ativos em metros do grupo. A escolha do pedido é o produto, não a cor do Hub. */
+export function purchasedReadySkusForGroup(
+  catalog: BuyReadyStrapGapCatalog | null | undefined,
+  groupId: string | null | undefined,
+): GapCatalogProduct[] {
+  if (!catalog || !groupId) return [];
+  return catalog.products
+    .filter((product) => product.active !== false
+      && product.group_id === groupId
+      && product.unit === 'm')
+    .sort((left, right) => (left.name || '').localeCompare(right.name || '', 'pt-BR'));
+}
+
 export function purchasedReadyStrapProductForColor(
   catalog: BuyReadyStrapGapCatalog | null | undefined,
   identityGroupId: string | null | undefined,
