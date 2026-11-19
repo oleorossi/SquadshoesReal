@@ -24,19 +24,19 @@ import {
 
 const ORIGIN_OPTIONS: { value: StrapOrigin; label: string; hint: string }[] = [
   {
-    value: 'prestador',
-    label: 'Prestador',
-    hint: 'Compra a napa e envia ao prestador. A tira pronta entra no estoque no Recebido do Ateliê.',
+    value: 'fabrica',
+    label: 'Artesanal — fábrica',
+    hint: 'Corta a tira a partir da napa. Exige rendimento m/m por material linear.',
   },
   {
-    value: 'fabrica',
-    label: 'Fábrica',
-    hint: 'Corta a tira no Ateliê (Produzido): baixa napa e entra a tira.',
+    value: 'prestador',
+    label: 'Artesanal — prestador',
+    hint: 'Envia a napa ao prestador. Exige rendimento m/m e a mão de obra.',
   },
   {
     value: 'comprar_pronto',
-    label: 'Comprar pronto',
-    hint: 'Compra o SKU da tira acabada. Não movimenta napa.',
+    label: 'Comprada pronta',
+    hint: 'O pedido baixa o SKU deste grupo, por cor. Não pede napa, rendimento nem medida do Hub.',
   },
 ];
 
@@ -123,26 +123,26 @@ export default function StrapGroupConfigPanel({
       <div className="flex items-start gap-3">
         <Scissors className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
         <div className="min-w-0">
-          <p className="text-sm font-medium">Tira — origem e rendimento</p>
+          <p className="text-sm font-medium">Tipo da tira</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Cadastre aqui o rendimento (m de tira por m de napa). No pedido de venda o sistema
-            só calcula quantos metros de napa enviar — não edita o rendimento por PV.
+            {strapOrigin === 'comprar_pronto'
+              ? 'Comprada pronta baixa o SKU deste grupo, em metros. Não usa napa, rendimento nem medida do Hub.'
+              : 'Artesanal corta a tira a partir da napa e exige rendimento m/m. Comprada pronta não pede esse número.'}
           </p>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <Label className="text-xs">Origem padrão</Label>
+          <Label className="text-xs">Tipo da tira *</Label>
           <Select
-            value={strapOrigin ?? '__none__'}
-            onValueChange={(v) => onStrapOriginChange(v === '__none__' ? null : v as StrapOrigin)}
+            value={strapOrigin ?? ''}
+            onValueChange={(v) => onStrapOriginChange(v as StrapOrigin)}
           >
-            <SelectTrigger className="mt-1 h-9">
-              <SelectValue placeholder="Definir origem" />
+            <SelectTrigger className="mt-1 h-9" aria-label="Tipo da tira">
+              <SelectValue placeholder="Artesanal ou comprada pronta" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">Sem origem (assume Comprar pronto)</SelectItem>
               {ORIGIN_OPTIONS.map((o) => (
                 <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
               ))}

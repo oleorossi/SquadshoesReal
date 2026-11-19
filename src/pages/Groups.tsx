@@ -1,5 +1,6 @@
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import GroupOrganizationPanel from '@/components/groups/GroupOrganizationPanel';
+import StrapTypeClassificationPanel from '@/components/groups/StrapTypeClassificationPanel';
 
 /**
  * Página Grupos (/grupos) — árvore Setor → Família → Grupo. Mesmo painel usado
@@ -14,6 +15,7 @@ export default function Groups() {
         title="Grupos de Estoque"
         description="Organize o estoque em Setor → Família → Grupo, com saldo, valor e reservas por nível"
       />
+      <StrapTypeClassificationPanel />
       <GroupOrganizationPanel permPath="/grupos" />
     </div>
   );

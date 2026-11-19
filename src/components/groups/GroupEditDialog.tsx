@@ -47,7 +47,8 @@ import { assertAreaGeometry, isAreaStockUnit } from '@/lib/areaGeometry';
 import { UNITS, UNIT_LABELS } from '@/types/inventory';
 import { createWidthLeafGroup, parseWidthMm, widthLeafName } from '@/lib/createWidthLeafGroup';
 import StrapGroupConfigPanel from '@/components/groups/StrapGroupConfigPanel';
-import type { StrapOrigin } from '@/hooks/useStrapGroupYields';
+import { useStrapGroupNapaYields, type StrapOrigin } from '@/hooks/useStrapGroupYields';
+import { activeMeterSkus, strapRegistrationBlock } from '@/lib/strapTypeClassification';
 
 /** Abas da janela de grupo. `bulk` e `items` chegaram aqui em 22/08/2026, quando
  *  o `MasterVariantDialog` deixou de ser um segundo diálogo e virou painel.
@@ -803,8 +804,25 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
     );
   }, [itemFieldsPending, itemUnitDirty, itemUnit, itemPriceDirty, itemUnitPrice, products]);
 
+  const artesanalYield = strapOrigin === 'fabrica' || strapOrigin === 'prestador';
+  const { data: strapYields = [], isLoading: strapYieldsLoading, isError: strapYieldsError } = useStrapGroupNapaYields(
+    group.id,
+    open && isArtisanalStrap && artesanalYield,
+  );
+
   const persistGroupAndMaybeItems = async (applyToItems: boolean) => {
     const finalUnit = consumptionUnit === '__none__' ? null : consumptionUnit;
+    const registrationBlock = strapRegistrationBlock({
+      isStrap: !isContainer && isArtisanalStrap,
+      origin: strapOrigin,
+      meterSkuCount: activeMeterSkus(products, group.id).length,
+      yieldCount: strapYields.filter((row) => Number(row.yield_m_per_m) > 0).length,
+      yieldsKnown: !strapYieldsLoading && !strapYieldsError,
+    });
+    if (registrationBlock) {
+      toast.error(registrationBlock);
+      return;
+    }
 
     setSaving(true);
     try {

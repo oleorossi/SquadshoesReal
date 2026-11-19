@@ -496,8 +496,9 @@ export function ArtisanalStrapEditor({
   };
 
   const validate = (): string | null => {
-    if (!form.typeId && !form.typeName.trim()) return 'Selecione uma família ou informe uma nova.';
-    if (!form.measureId && (!form.measureName.trim() || form.finishedWidthMm <= 0)) {
+    const purchased = form.identityBasis === 'finished_product_group';
+    if (!purchased && !form.typeId && !form.typeName.trim()) return 'Selecione uma família ou informe uma nova.';
+    if (!purchased && !form.measureId && (!form.measureName.trim() || form.finishedWidthMm <= 0)) {
       return 'Selecione uma medida ou informe nome e largura final.';
     }
     if (form.identityBasis === 'reference_base' && !form.baseGroupId) return 'Selecione a napa-base.';
@@ -759,10 +760,12 @@ export function ArtisanalStrapEditor({
                   </Select>
                   <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                     {form.identityBasis === 'reference_base' && form.internalProductionEnabled
-                      ? 'Prestador: a napa-base da cor do pedido vai ao prestador, que devolve a tira pelo rendimento confirmado. A fábrica não corta tira.'
-                      : 'Comprar pronto: movimenta diretamente o SKU acabado do fornecedor. Não debita napa e não exige conversão de rendimento.'}
+                      ? 'Artesanal (prestador): a napa-base da cor do pedido vai ao prestador, que devolve a tira pelo rendimento confirmado. A fábrica não corta tira. Família e medida do Hub são obrigatórias.'
+                      : 'Comprada pronta: o pedido baixa o SKU do grupo, em metros. Não debita napa, não exige rendimento e não exige família nem medida do Hub.'}
                   </div>
                 </div>
+                {form.identityBasis === 'reference_base' && (
+                <>
                 <div className="space-y-1.5">
                   <Label>Família/tipo *</Label>
                   <Select
@@ -825,6 +828,8 @@ export function ArtisanalStrapEditor({
                     </div>
                   )}
                 </div>
+                </>
+                )}
 
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label>Origem padrão *</Label>
