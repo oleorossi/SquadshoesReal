@@ -82,12 +82,15 @@ describe('contrato de busca do sistema', () => {
     for (const rel of offenders) {
       const absolute = path.join(ROOT, rel);
       const source = fs.readFileSync(absolute, 'utf8');
-      // matchesOrderSearch encapsula searchMatchesAllTerms (lista OP/PV + AND);
-      // ambos satisfazem o contrato — o anti-padrão é includes ad-hoc.
+      // matchesOrderSearch encapsula searchMatchesAllTerms (lista OP/PV + AND).
+      // searchScreens é a busca de telas (rótulo, sinônimo, setor). O anti-padrão
+      // é includes ad-hoc.
       const usesCanonical =
-        source.includes('searchMatchesAllTerms') || source.includes('matchesOrderSearch');
+        source.includes('searchMatchesAllTerms')
+        || source.includes('matchesOrderSearch')
+        || source.includes('searchScreens');
       if (!usesCanonical) {
-        violations.push(`${rel}: falta import/uso de searchMatchesAllTerms ou matchesOrderSearch`);
+        violations.push(`${rel}: falta import/uso de searchMatchesAllTerms, matchesOrderSearch ou searchScreens`);
       }
       // Padrões que quebravam acento / SP10 / multi-termo nestes arquivos
       if (/\.toLowerCase\(\)\.includes\(/.test(source) && /searchQuery|searchText|maisQuery|search\b/.test(source)) {
