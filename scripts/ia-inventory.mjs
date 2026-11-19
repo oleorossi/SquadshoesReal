@@ -602,9 +602,16 @@ const ROLES_QUE_VEEM_TUDO = new Set(['admin', 'gerente', 'consulta']);
  * tabelas com atividade na semana. Tirar qualquer uma da barra empurraria
  * trabalho diário pra busca. Decisão de 30/07/2026 — o limite existe pra
  * evitar catálogo, não pra esconder ferramenta que a pessoa abre todo dia.
+ *
+ * PCP e Comercial (18/11/2026): o dono pediu o menu inteiro agrupado pelo
+ * fluxo da fábrica, com o grupo recolhível. PCP junta ficha, grade e MRP;
+ * Comercial junta pedido, cliente e tabela de preço. Cortar no 5º item
+ * esconderia tela que ele mandou ficar no setor.
  */
 const LIMITE_DISPENSADO = new Map([
   ['Produção', 'telas de uso diário do chão de fábrica (dono, 30/08/2026)'],
+  ['PCP', 'ficha, grade e MRP no mesmo setor recolhível (dono, 18/11/2026)'],
+  ['Comercial', 'pedido, cliente e tabela de preço no mesmo setor (dono, 18/11/2026)'],
 ]);
 const groupOverflow = (() => {
   const pior = new Map();
