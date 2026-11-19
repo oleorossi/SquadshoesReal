@@ -615,7 +615,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
                           onMouseEnter={() => prefetch(child.path)}
                           onMouseLeave={cancelPrefetch}
                           onFocus={() => prefetch(child.path)}
-                          className={() => cn(navItemClass(childActive), 'pl-9')}
+                          className={() => cn(navItemClass(childActive), '!pl-9')}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <child.icon className={navIconClass(childActive)} weight={childActive ? 'bold' : 'regular'} />
