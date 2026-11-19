@@ -5,7 +5,7 @@ export default function ProducaoHub() {
     <HubLanding
       hubPath="/producao"
       sectionLabel="Produção"
-      description="Sequência oficial de entrada, planejamento, kanban e apontamento."
+      description="Corte, ateliê, prestadores, gestão e apontamento do chão."
       hints={{
         '/producao/sequencia': 'Ordem oficial — fechar PV, cor e referência',
         '/producao/planejamento': 'Carga diária por setor',

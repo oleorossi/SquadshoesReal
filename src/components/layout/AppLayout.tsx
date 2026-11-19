@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { SignOut as LogOut, List as Menu, X, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star } from '@phosphor-icons/react';
+import { SignOut as LogOut, List as Menu, X, SidebarSimple as PanelLeftClose, SidebarSimple as PanelLeftOpen, Gear as Settings, ArrowLeft, Plus, ShoppingCart, Package, Star, CaretDown } from '@phosphor-icons/react';
 import {
   HUBS,
   systemItems,
@@ -111,6 +111,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
   // que dependem dele.
   const roleNames = React.useMemo(() => currentRoles.map((r) => r.role), [currentRoles]);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsedHubs, setCollapsedHubs] = useState<Set<string>>(() => new Set());
   // O drawer mobile é um aside artesanal (não usa o primitive Sheet): prender o
   // foco, fechar no Escape e DEVOLVER o foco ao gatilho são responsabilidade
   // nossa. Antes só o foco inicial e o Escape estavam feitos (achado F17): o Tab
@@ -250,11 +251,23 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
   if (isInsideLayout) return <>{children}</>;
 
+  const pathMatches = (itemPath: string) => {
+    const [pathname, query] = itemPath.split('?');
+    if (location.pathname !== pathname && !location.pathname.startsWith(pathname + '/')) return false;
+    if (!query) return location.pathname === pathname || location.pathname.startsWith(pathname + '/');
+    return query.split('&').every((part) => location.search.includes(part));
+  };
   const isHubActive = (hub: NavigationHub) => {
-    if (location.pathname === hub.path || location.pathname.startsWith(hub.path + '/')) return true;
-    return hub.children.some((item) => {
-      const p = item.path.split('?')[0];
-      return location.pathname === p || location.pathname.startsWith(p + '/');
+    if (location.pathname === hub.path) return true;
+    return hub.children.some((item) => pathMatches(item.path));
+  };
+  const hubExpanded = (hub: NavigationHub) => isHubActive(hub) || !collapsedHubs.has(hub.path);
+  const toggleHub = (hubPath: string) => {
+    setCollapsedHubs((current) => {
+      const next = new Set(current);
+      if (next.has(hubPath)) next.delete(hubPath);
+      else next.add(hubPath);
+      return next;
     });
   };
 
@@ -553,6 +566,8 @@ export default function AppLayout({ children, printMode = false }: { children: R
               )}
               {orderedHubs.map((hub) => {
                 const active = isHubActive(hub);
+                const expanded = hubExpanded(hub);
+                const children = hub.children.filter((child) => canAccessRoute(child.path));
                 return (
                   <div
                     key={hub.path}
@@ -560,22 +575,55 @@ export default function AppLayout({ children, printMode = false }: { children: R
                     onDrop={!mobile ? handleHubDrop(hub.label) : undefined}
                     style={hubDropStyle(hub.label)}
                   >
-                    <NavLink
-                      to={hub.path}
-                      draggable={!mobile}
-                      onDragStart={!mobile ? handleHubDragStart(hub.label) : undefined}
-                      onDragEnd={!mobile ? clearDrag : undefined}
-                      onClick={mobile ? () => setMobileOpen(false) : undefined}
-                      onMouseEnter={() => prefetch(hub.path)}
-                      onMouseLeave={cancelPrefetch}
-                      onFocus={() => prefetch(hub.path)}
-                      className={() => cn(navItemClass(active), !mobile && 'cursor-grab active:cursor-grabbing select-none')}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <hub.icon className={navIconClass(active)} weight={active ? 'bold' : 'regular'} />
-                        <span className="truncate">{hub.label}</span>
-                      </div>
-                    </NavLink>
+                    <div className="flex items-center">
+                      <NavLink
+                        to={hub.path}
+                        draggable={!mobile}
+                        onDragStart={!mobile ? handleHubDragStart(hub.label) : undefined}
+                        onDragEnd={!mobile ? clearDrag : undefined}
+                        onClick={mobile ? () => setMobileOpen(false) : undefined}
+                        onMouseEnter={() => prefetch(hub.path)}
+                        onMouseLeave={cancelPrefetch}
+                        onFocus={() => prefetch(hub.path)}
+                        className={() => cn(navItemClass(active), 'min-w-0 flex-1', !mobile && 'cursor-grab active:cursor-grabbing select-none')}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <hub.icon className={navIconClass(active)} weight={active ? 'bold' : 'regular'} />
+                          <span className="truncate">{hub.label}</span>
+                        </div>
+                      </NavLink>
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        aria-label={expanded ? `Recolher ${hub.label}` : `Abrir ${hub.label}`}
+                        className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sidebar-muted hover:text-sidebar-foreground"
+                        onClick={() => { if (!active) toggleHub(hub.path); }}
+                      >
+                        <CaretDown className={cn('h-3.5 w-3.5 transition-transform', !expanded && '-rotate-90')} />
+                      </button>
+                    </div>
+                    {expanded && children.map((child) => {
+                      const childActive = pathMatches(child.path) && !children.some((other) => {
+                        if (other.path === child.path) return false;
+                        return other.path.split('?')[0].length > child.path.split('?')[0].length && pathMatches(other.path);
+                      });
+                      return (
+                        <NavLink
+                          key={child.path}
+                          to={child.path}
+                          onClick={mobile ? () => setMobileOpen(false) : undefined}
+                          onMouseEnter={() => prefetch(child.path)}
+                          onMouseLeave={cancelPrefetch}
+                          onFocus={() => prefetch(child.path)}
+                          className={() => cn(navItemClass(childActive), 'pl-9')}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <child.icon className={navIconClass(childActive)} weight={childActive ? 'bold' : 'regular'} />
+                            <span className="truncate">{child.label}</span>
+                          </div>
+                        </NavLink>
+                      );
+                    })}
                   </div>
                 );
               })}
@@ -591,7 +639,7 @@ export default function AppLayout({ children, printMode = false }: { children: R
 
               {filteredSystemItems.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-sidebar-border/40">
-                  <p className={sectionLabelClass}>Sistema</p>
+                  <p className={sectionLabelClass}>Configurações</p>
                   {filteredSystemItems.map((item) => (
                     <NavLink
                       key={item.path}

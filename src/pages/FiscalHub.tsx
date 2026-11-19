@@ -4,7 +4,7 @@ export default function FiscalHub() {
   return (
     <HubLanding
       hubPath="/fiscal"
-      sectionLabel="Fiscal"
+      sectionLabel="Faturamento"
       description="NF-e, CT-e, MDF-e, SPED e apuração de impostos."
       hints={{
         '/nfe': 'Emissão e consulta de notas',

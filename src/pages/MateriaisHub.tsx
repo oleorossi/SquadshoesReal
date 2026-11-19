@@ -4,8 +4,8 @@ export default function MateriaisHub() {
   return (
     <HubLanding
       hubPath="/materiais"
-      sectionLabel="Materiais"
-      description="Estoque, grupos, ajustes e inventário — o saldo da fábrica."
+      sectionLabel="Estoque"
+      description="Saldos, grupos, ajustes e inventário do almoxarifado."
       hints={{
         '/estoque': 'Saldos, movimentações e conversões',
         '/grupos': 'Famílias e variantes de material',

@@ -69,8 +69,11 @@ export function BottomNav() {
 
   const filteredHubs = useMemo(() => {
     if (!maisQuery.trim()) return visibleHubs;
-    return visibleHubs.filter((hub) => searchMatchesAllTerms(maisQuery, hub.label));
-  }, [visibleHubs, maisQuery]);
+    return visibleHubs.filter((hub) =>
+      searchMatchesAllTerms(maisQuery, hub.label)
+      || hub.children.some((child) => canAccessRoute(child.path) && searchMatchesAllTerms(maisQuery, child.label)),
+    );
+  }, [visibleHubs, maisQuery, canAccessRoute]);
 
   const filteredSecondary = useMemo(() => {
     if (!maisQuery.trim()) return secondaryItems;
@@ -264,27 +267,44 @@ export function BottomNav() {
               </div>
             )}
             {filteredHubs.length > 0 && (
-              <div>
-                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Áreas
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {filteredHubs.map((hub) => {
-                    const active = isActive(hub.path)
-                      || hub.children.some((c) => isActive(c.path.split('?')[0]));
-                    return (
+              <div className="space-y-3">
+                {filteredHubs.map((hub) => {
+                  const children = hub.children.filter((child) => {
+                    if (!canAccessRoute(child.path)) return false;
+                    if (!maisQuery.trim()) return true;
+                    return searchMatchesAllTerms(maisQuery, child.label, hub.label);
+                  });
+                  if (maisQuery.trim() && children.length === 0 && !searchMatchesAllTerms(maisQuery, hub.label)) return null;
+                  return (
+                    <div key={hub.path}>
                       <button
-                        key={hub.path}
+                        type="button"
                         onClick={() => { navigate(hub.path); setMoreOpen(false); }}
-                        className={tileClass(active)}
+                        className="mb-1.5 flex min-h-11 w-full items-center gap-2 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground"
                       >
-                        <span className={tileBarClass(active)} aria-hidden="true" />
-                        <hub.icon className="h-4 w-4" weight={active ? 'bold' : 'regular'} />
-                        <span className="leading-none text-center">{hub.label}</span>
+                        <hub.icon className="h-3.5 w-3.5" />
+                        {hub.label}
                       </button>
-                    );
-                  })}
-                </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {children.map((child) => {
+                          const active = isActive(child.path.split('?')[0]);
+                          return (
+                            <button
+                              key={child.path}
+                              type="button"
+                              onClick={() => { navigate(child.path); setMoreOpen(false); }}
+                              className={tileClass(active)}
+                            >
+                              <span className={tileBarClass(active)} aria-hidden="true" />
+                              <child.icon className="h-4 w-4" weight={active ? 'bold' : 'regular'} />
+                              <span className="leading-none text-center">{child.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
             {filteredSecondary.length > 0 && (

@@ -31,7 +31,7 @@ describe('Tiras — fronteira própria fora de Terceirizados', () => {
     expect(navigation).toContain("label: 'Central de Tiras', group: 'Engenharia'");
     expect(navigation).toContain("label: 'Terceirizados', group: 'RH'");
     expect(navigation).toMatch(
-      /label: 'Engenharia',[\s\S]*?children: \[[\s\S]*?resource\('\/tiras-artesanais'\)/,
+      /label: 'PCP',[\s\S]*?children: \[[\s\S]*?resource\('\/tiras-artesanais'\)/,
     );
     expect(strapsHub).toContain('sectionLabel="CENTRAL DE TIRAS"');
     expect(strapsHub).not.toContain('ENGENHARIA · TIRAS');

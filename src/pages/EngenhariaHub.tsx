@@ -4,8 +4,8 @@ export default function EngenhariaHub() {
   return (
     <HubLanding
       hubPath="/engenharia"
-      sectionLabel="Engenharia"
-      description="Fichas, solados, silks e tiras artesanais — o projeto do calçado."
+      sectionLabel="PCP"
+      description="Fichas, grade, planejamento e MRP — o que a fábrica vai fazer."
       hints={{
         '/fichas-tecnicas': 'Catálogo publicado — modelo, BOM e rota',
         '/engenharia/fichas-rascunho': 'Referências em elaboração (ainda não publicadas)',

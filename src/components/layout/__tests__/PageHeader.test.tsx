@@ -30,14 +30,14 @@ function crumbs(path: string) {
 describe('PageHeader — breadcrumb derivado da navegação', () => {
   it('não repete o grupo quando o primeiro segmento já é o próprio grupo', () => {
     const trilha = crumbs('/producao/kanban');
-    expect(trilha).toEqual(['Produção', 'Modo Gestão']);
+    expect(trilha).toEqual(['Produção', 'Gestão']);
     // A regressão original: 'Produção' duas vezes seguidas.
     expect(trilha.filter((c) => c === 'Produção')).toHaveLength(1);
   });
 
   it('nomeia o destino pelo rótulo do menu, não pelo slug da URL', () => {
     // O slug é "fichas-tecnicas"; o menu chama de "Fichas Técnicas".
-    expect(crumbs('/fichas-tecnicas')).toContain('Fichas Técnicas');
+    expect(crumbs('/fichas-tecnicas')).toContain('Fichas');
   });
 
   it('não emite crumb nenhum no Painel', () => {
@@ -83,7 +83,7 @@ describe('resolveMobileNavMeta', () => {
   });
 
   it('usa o rótulo e o grupo do catálogo', () => {
-    expect(resolveMobileNavMeta('/sales')).toEqual({ label: 'Pedidos de Venda', group: 'Comercial' });
+    expect(resolveMobileNavMeta('/sales')).toEqual({ label: 'Pedidos', group: 'Comercial' });
     expect(resolveMobileNavMeta('/producao/planejamento')).toEqual({
       label: 'Planejamento',
       group: 'Produção',
