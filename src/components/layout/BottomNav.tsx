@@ -13,7 +13,7 @@ import {
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useCurrentUserRoles } from '@/hooks/useUserManagement';
-import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchScreens } from '@/lib/screenSearch';
 import { SearchInput } from '@/components/ui/search-input';
 
 const PRIMARY_ITEMS = [
@@ -57,30 +57,33 @@ export function BottomNav() {
   const iconForPath = (path: string) =>
     getAllMenuItems().find(i => i.path === path)?.icon ?? Star;
 
+  const screenHits = useMemo(() => {
+    if (!maisQuery.trim()) return null;
+    return new Set(searchScreens(maisQuery).map((hit) => hit.path));
+  }, [maisQuery]);
+
   const filteredFavItems = useMemo(() => {
-    if (!maisQuery.trim()) return favItems;
-    return favItems.filter((item) => searchMatchesAllTerms(maisQuery, item.name));
-  }, [favItems, maisQuery]);
+    if (!screenHits) return favItems;
+    return favItems.filter((item) => screenHits.has(item.path));
+  }, [favItems, screenHits]);
 
   const filteredShortcuts = useMemo(() => {
-    if (!maisQuery.trim()) return shortcutItems;
-    return shortcutItems.filter((item) => searchMatchesAllTerms(maisQuery, item.label));
-  }, [shortcutItems, maisQuery]);
+    if (!screenHits) return shortcutItems;
+    return shortcutItems.filter((item) => screenHits.has(item.path));
+  }, [shortcutItems, screenHits]);
 
   const filteredHubs = useMemo(() => {
-    if (!maisQuery.trim()) return visibleHubs;
+    if (!screenHits) return visibleHubs;
     return visibleHubs.filter((hub) =>
-      searchMatchesAllTerms(maisQuery, hub.label)
-      || hub.children.some((child) => canAccessRoute(child.path) && searchMatchesAllTerms(maisQuery, child.label)),
+      screenHits.has(hub.path)
+      || hub.children.some((child) => canAccessRoute(child.path) && screenHits.has(child.path)),
     );
-  }, [visibleHubs, maisQuery, canAccessRoute]);
+  }, [visibleHubs, screenHits, canAccessRoute]);
 
   const filteredSecondary = useMemo(() => {
-    if (!maisQuery.trim()) return secondaryItems;
-    return secondaryItems.filter(
-      (item) => searchMatchesAllTerms(maisQuery, item.label, item.group),
-    );
-  }, [secondaryItems, maisQuery]);
+    if (!screenHits) return secondaryItems;
+    return secondaryItems.filter((item) => screenHits.has(item.path));
+  }, [secondaryItems, screenHits]);
 
   const hasMaisResults =
     filteredFavItems.length > 0
@@ -271,10 +274,10 @@ export function BottomNav() {
                 {filteredHubs.map((hub) => {
                   const children = hub.children.filter((child) => {
                     if (!canAccessRoute(child.path)) return false;
-                    if (!maisQuery.trim()) return true;
-                    return searchMatchesAllTerms(maisQuery, child.label, hub.label);
+                    if (!screenHits) return true;
+                    return screenHits.has(child.path);
                   });
-                  if (maisQuery.trim() && children.length === 0 && !searchMatchesAllTerms(maisQuery, hub.label)) return null;
+                  if (screenHits && children.length === 0 && !screenHits.has(hub.path)) return null;
                   return (
                     <div key={hub.path}>
                       <button

@@ -7,7 +7,7 @@ import {
   X, ArrowRight, House as Home, Buildings, ClockCounterClockwise as Clock, Star,
   Receipt, ShoppingBag, Truck, FolderOpen, UserCircle, Lightning, Plus, Scissors,
 } from '@phosphor-icons/react';
-import { menuGroups, navigationCatalog } from '@/data/navigation';
+import { menuGroups } from '@/data/navigation';
 import { useMenuFavorites } from '@/hooks/useMenuFavorites';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn, formatCurrency } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { normalizeForSearch, searchNormOrFilter, searchMatchesAllTerms } from '@/lib/searchUtils';
+import { searchScreens } from '@/lib/screenSearch';
 import { HighlightMatch as Highlight } from '@/components/ui/highlight-match';
 import { isStrapServiceOrder } from '@/lib/strapServiceOrderIdentity';
 import { isMissingPostgrestRelation } from '@/lib/postgrestErrors';
@@ -736,11 +737,9 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
   // catálogo já inclui sidebar, Sistema e rotas secundárias sem remontar listas.
   const filteredNavItems = useMemo(() => {
     if (!query.trim() || isGroupSearch) return [];
-    return navigationCatalog
-      .filter((item) => item.surfaces.includes('command'))
-      .filter((item) => searchMatchesAllTerms(query, item.label, item.group))
+    return searchScreens(query)
       .filter((item) => canAccessRoute(item.path))
-      .map((item) => ({ name: item.label, icon: item.icon, path: item.path, groupLabel: item.group }));
+      .map((item) => ({ name: item.label, icon: item.icon, path: item.path, groupLabel: item.sector }));
   }, [query, isGroupSearch, canAccessRoute]);
 
   const goTo = useCallback((path: string, persistTerm?: string, recentItem?: RecentItem) => {
@@ -1080,7 +1079,9 @@ export function GlobalSearch({ compact }: { compact?: boolean }) {
                     <CommandItem key={item.path} onSelect={() => goTo(item.path, undefined, { type: 'page', id: item.path, label: item.name, href: item.path, meta: item.groupLabel })}>
                       <item.icon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-xs font-medium"><Highlight text={item.name} term={q} /></span>
-                      <span className="ml-2 text-xs text-muted-foreground">{item.groupLabel}</span>
+                      {item.groupLabel !== item.name && (
+                        <span className="ml-2 text-xs text-muted-foreground">· {item.groupLabel}</span>
+                      )}
                       <span className="ml-auto flex items-center gap-0.5 shrink-0">
                         <FavStar name={item.name} path={item.path} />
                         <ArrowRight className="h-3 w-3 text-muted-foreground" />
