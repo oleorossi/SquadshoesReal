@@ -213,7 +213,7 @@ export function OsPrestadorGestao() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Envios, retornos, retrabalho, descarte e estorno. Estorno desconta o saldo. Produção interna continua na lista como exceção. Esta tela não grava nada.
+        Envios, retornos, retrabalho, descarte, estorno e devolução sem produção. Estorno desconta o saldo. A devolução sem produção tira o par da rua e não gera conta. Produção interna continua na lista como exceção. Esta tela não grava nada.
       </p>
       <div className="flex flex-wrap gap-2">
         {([

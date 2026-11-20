@@ -42,6 +42,17 @@ describe('sinal do retorno', () => {
     expect(returnPhysicalSign(null, 'ret-1')).toBe(-1);
     expect(returnPhysicalSign('scrap', null)).toBe(0);
     expect(returnPhysicalSign(null, null)).toBe(1);
+    expect(returnPhysicalSign('unproduced_return', null)).toBe(1);
+    const back = buildLedger([
+      raw({ id: 'd2', source: 'dispatch', qtyDispatched: 40, at: '2026-11-01' }),
+      raw({ id: 'u', source: 'return', qtyGood: 40, adjustmentKind: 'unproduced_return', payableAmount: 80, at: '2026-11-04' }),
+    ], '2026-11-15');
+    const devolucao = back.find((line) => line.id === 'u')!;
+    expect(devolucao.kind).toBe('devolucao_sem_producao');
+    expect(devolucao.received).toBe(0);
+    expect(devolucao.payable).toBe(0);
+    expect(devolucao.value).toBe(0);
+    expect(devolucao.pending).toBe(0);
     const lines = buildLedger([
       raw({ id: 'd', source: 'dispatch', qtyDispatched: 10, at: '2026-11-01' }),
       raw({ id: 'r', source: 'return', qtyGood: 6, qtyDefect: 1, payableAmount: 12, at: '2026-11-08' }),

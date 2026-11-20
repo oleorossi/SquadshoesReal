@@ -4,7 +4,7 @@
  * negativo. Descarte (scrap) aparece no lançamento e não mexe no saldo físico.
  */
 
-export type OsMovementKind = 'envio' | 'retorno' | 'estorno' | 'retrabalho' | 'descarte';
+export type OsMovementKind = 'envio' | 'retorno' | 'estorno' | 'retrabalho' | 'descarte' | 'devolucao_sem_producao';
 export type OsStreetStatus = 'na_rua' | 'recebido' | 'atrasado';
 export type OsGroupBy = 'referencia_cor_prestador' | 'prestador' | 'pedido' | 'referencia';
 export type OsPeriodPreset = 'hoje' | 'semana' | 'mes' | 'mes_anterior' | 'personalizado';
@@ -98,6 +98,7 @@ export function movementKind(raw: OsRawMovement): OsMovementKind {
   if (raw.source === 'dispatch') return 'envio';
   if (raw.reversesReturnId || raw.adjustmentKind === 'reversal') return 'estorno';
   if (raw.adjustmentKind === 'scrap') return 'descarte';
+  if (raw.adjustmentKind === 'unproduced_return') return 'devolucao_sem_producao';
   if (raw.adjustmentKind === 'rework_return') return 'retrabalho';
   return 'retorno';
 }
@@ -128,10 +129,11 @@ export function buildLedger(raws: readonly OsRawMovement[], today: string): OsLe
   const pending = osPendingByOrder(raws);
   return raws.map((raw) => {
     const sign = raw.source === 'dispatch' ? 1 : returnPhysicalSign(raw.adjustmentKind, raw.reversesReturnId);
+    const unproduced = raw.source === 'return' && raw.adjustmentKind === 'unproduced_return';
     const sent = raw.source === 'dispatch' ? n(raw.qtyDispatched) : 0;
-    const received = raw.source === 'return' ? sign * n(raw.qtyGood) : 0;
-    const defect = raw.source === 'return' ? sign * n(raw.qtyDefect) : 0;
-    const loss = raw.source === 'return' ? sign * n(raw.qtyLoss) : 0;
+    const received = raw.source === 'return' && !unproduced ? sign * n(raw.qtyGood) : 0;
+    const defect = raw.source === 'return' && !unproduced ? sign * n(raw.qtyDefect) : 0;
+    const loss = raw.source === 'return' && !unproduced ? sign * n(raw.qtyLoss) : 0;
     const open = pending.get(raw.serviceOrderId) ?? 0;
     const status = osStatus(open, raw.dueDate, today);
     return {
@@ -147,14 +149,14 @@ export function buildLedger(raws: readonly OsRawMovement[], today: string): OsLe
       contractorId: raw.contractorId,
       contractorName: raw.internal ? 'Produção interna' : (raw.contractorName || 'Prestador'),
       internal: raw.internal,
-      pairs: sent || received + defect + loss,
+      pairs: sent || (unproduced ? sign * n(raw.qtyGood) : received + defect + loss),
       sent,
       received,
       defect,
       loss,
-      value: received * n(raw.unitPrice),
-      payable: raw.source === 'return' ? sign * n(raw.payableAmount) : 0,
-      paid: raw.source === 'return' ? sign * n(raw.payablePaid) : 0,
+      value: unproduced ? 0 : received * n(raw.unitPrice),
+      payable: unproduced || raw.source !== 'return' ? 0 : sign * n(raw.payableAmount),
+      paid: unproduced || raw.source !== 'return' ? 0 : sign * n(raw.payablePaid),
       dueDate: raw.dueDate,
       pending: open,
       status,
@@ -327,6 +329,7 @@ export const OS_KIND_LABEL: Record<OsMovementKind, string> = {
   estorno: 'Estorno',
   retrabalho: 'Retrabalho',
   descarte: 'Descarte',
+  devolucao_sem_producao: 'Devolução sem produção',
 };
 
 export const OS_STATUS_LABEL: Record<OsStreetStatus, string> = {
