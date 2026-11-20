@@ -35,6 +35,7 @@ import { supplementAtelierLotsWithOrderJobs } from '@/lib/atelierOrderSupplement
 import {
   useAddAtelierReference,
   useAtelierCatalog,
+  useSetAtelierPrepDays,
   useAtelierLots,
   useAtelierOrderJobs,
   useAtelierSettings,
@@ -171,6 +172,7 @@ function CadastroView() {
   const { data: catalog = [], isLoading, isError } = useAtelierCatalog(sector);
   const { data: sheets = [] } = useTechnicalSheetsLiteForAtelier();
   const addMut = useAddAtelierReference();
+  const prepMut = useSetAtelierPrepDays();
   const removeMut = useRemoveAtelierReference();
   const reapply = useReapplyAtelierEligibility();
 
@@ -269,8 +271,33 @@ function CadastroView() {
                   <p className="truncate font-medium text-foreground">
                     {sheetLabel(row.technical_sheets ?? {})}
                   </p>
-                  <p className="text-xs text-muted-foreground">{ATELIER_SECTOR_LABEL[row.sector]}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {ATELIER_SECTOR_LABEL[row.sector]}
+                    {row.prep_business_days != null && row.prep_business_days > 5
+                      ? ' · Complexo'
+                      : row.prep_business_days != null && row.prep_business_days > 0
+                        ? ' · Preparo curto'
+                        : ' · Marcação explícita'}
+                  </p>
                 </div>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  Preparo do cabedal (dias úteis)
+                  <Input
+                    type="number"
+                    min={0}
+                    max={90}
+                    className="h-8 w-20 text-right"
+                    placeholder="vazio = 7"
+                    defaultValue={row.prep_business_days ?? ''}
+                    key={`${row.id}-${row.prep_business_days ?? 'vazio'}`}
+                    onBlur={(event) => {
+                      const raw = event.target.value.trim();
+                      const next = raw === '' ? null : Math.max(0, Math.min(90, Math.round(Number(raw))));
+                      if (next === (row.prep_business_days ?? null) || (raw !== '' && !Number.isFinite(Number(raw)))) return;
+                      prepMut.mutate({ id: row.id, prepBusinessDays: next });
+                    }}
+                  />
+                </label>
                 {sector !== 'corte_cabedal' && (
                   <AtelierExecutionDefaultControl
                     referenceId={row.reference_id}

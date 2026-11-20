@@ -337,6 +337,7 @@ export interface AtelierCatalogRow {
   notes: string | null;
   default_execution_mode?: AtelierExecutionMode | null;
   default_contractor_id?: string | null;
+  prep_business_days?: number | null;
   created_at: string;
   technical_sheets?: {
     id: string;
@@ -376,7 +377,7 @@ export function useAtelierCatalog(sector?: AtelierSector | null) {
       let q = supabase
         .from('atelier_complex_references' as never)
         .select(
-          'id, reference_id, sector, active, notes, created_at, default_execution_mode, default_contractor_id, technical_sheets(id, code, model, name)',
+          'id, reference_id, sector, active, notes, created_at, default_execution_mode, default_contractor_id, prep_business_days, technical_sheets(id, code, model, name)',
         )
         .eq('active', true)
         .order('created_at', { ascending: false });
@@ -430,6 +431,27 @@ export function useAddAtelierReference() {
       toast.success('Referência adicionada ao Ateliê');
     },
     onError: (e: Error) => toast.error(e.message || 'Falha ao adicionar'),
+  });
+}
+
+export function useSetAtelierPrepDays() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; prepBusinessDays: number | null }) => {
+      const { error } = await supabase
+        .from('atelier_complex_references' as never)
+        .update({
+          prep_business_days: input.prepBusinessDays,
+          updated_at: new Date().toISOString(),
+        } as never)
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: atelierKeys.all });
+      toast.success('Preparo do cabedal atualizado');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Falha ao salvar o preparo'),
   });
 }
 
