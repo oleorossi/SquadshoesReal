@@ -331,7 +331,8 @@ export type SaleOrderFormData = {
   brand?: string;
   /** Tipo/natureza comercial do pedido. Default 'carteira'. Valores batem com o
    *  CHECK de sale_orders.order_type (carteira, programado, make_to_order,
-   *  pronta_entrega, amostra, bonificacao, troca, exportacao). Paridade Tutor32. */
+   *  pronta_entrega, amostra, bonificacao, troca, exportacao, urgente).
+   *  Urgente é exceção do motor de cabedal, não um campo separado. */
   order_type?: string;
   /** TRUE quando a NF deste PV é emitida por OUTRA empresa (NF externa). Nesse
    *  caso external_nfe_number guarda o número informado manualmente. */
@@ -356,6 +357,7 @@ export const ORDER_TYPES = [
   { value: 'bonificacao', label: 'Bonificação' },
   { value: 'troca', label: 'Troca' },
   { value: 'exportacao', label: 'Exportação' },
+  { value: 'urgente', label: 'Urgente' },
 ] as const;
 
 export const ORDER_TYPE_LABELS: Record<string, string> =

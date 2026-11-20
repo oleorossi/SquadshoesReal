@@ -1262,7 +1262,12 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           reason: `Entrada OC ${order.order_number} — ${order.supplier_name}`,
           ...(invoiceId ? { invoice_id: invoiceId } : {}),
         },
-        logicalKey: purchaseOrderLogicalKey('receive-all', orderId, invoiceId ?? 'sem-nf'),
+        logicalKey: purchaseOrderLogicalKey(
+          'receive-selected',
+          orderId,
+          invoiceId ?? 'sem-nf',
+          receipts.map((line) => `${line.itemId}:${line.quantity}`).sort().join('|'),
+        ),
       });
       qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       qc.invalidateQueries({ queryKey: ['purchase_order_items'] });
@@ -1706,7 +1711,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
               <Button variant="outline" className="gap-1" onClick={() => setReceiveAllOpen(true)} disabled={receiving}>
                 {receiving
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> Processando...</>
-                  : <><CheckCircle2 className="h-4 w-4" /> Dar entrada em tudo</>}
+                  : <><CheckCircle2 className="h-4 w-4" /> Dar entrada</>}
               </Button>
               <Button variant="default" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleFinalize} disabled={receiving}>
                 {receiving

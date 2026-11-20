@@ -1111,9 +1111,9 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                               {groupSuppliers.slice(0, 3).map((supplier) => (
                                 <li key={supplier.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                                   <span className="font-medium text-foreground">{supplier.supplier_name}</span>
-                                  {supplier.lead_time_days > 0 && (
-                                    <span className="text-muted-foreground">{supplier.lead_time_days} dias</span>
-                                  )}
+                                  <span className="text-muted-foreground">
+                                    {supplier.lead_time_days > 0 ? `${supplier.lead_time_days} dias` : 'padrão 10 dias'}
+                                  </span>
                                   {supplier.payment_terms && (
                                     <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{supplier.payment_terms}</Badge>
                                   )}

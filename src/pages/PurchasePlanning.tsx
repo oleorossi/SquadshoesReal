@@ -7,6 +7,7 @@ import {
   FlowArrow as Workflow,
   Info,
   PaperPlaneTilt,
+  ShoppingBag,
 } from '@phosphor-icons/react';
 import { lazy, Suspense, useEffect, useMemo } from 'react';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
@@ -24,6 +25,9 @@ const ProductionScheduleTimeline = lazy(
 const PurchaseDispatchQueuePanel = lazy(
   () => import('@/components/financial/PurchaseDispatchQueuePanel'),
 );
+const PurchaseGeneratePanel = lazy(
+  () => import('@/components/financial/PurchaseGeneratePanel').then((mod) => ({ default: mod.PurchaseGeneratePanel })),
+);
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-12">
@@ -37,8 +41,8 @@ const TabLoader = () => (
 //
 // URLs legadas (?tab=plano|projecoes|mrp|weekly|…) → projeção.
 
-type MainTab = 'fila-envio' | 'projecao' | 'cronograma' | 'saldo-analytics';
-const MAIN_TABS: MainTab[] = ['fila-envio', 'projecao', 'cronograma', 'saldo-analytics'];
+type MainTab = 'fila-envio' | 'gerar-oc' | 'projecao' | 'cronograma' | 'saldo-analytics';
+const MAIN_TABS: MainTab[] = ['fila-envio', 'gerar-oc', 'projecao', 'cronograma', 'saldo-analytics'];
 
 const LEGACY_TO_PROJECAO = new Set([
   'plano',
@@ -61,6 +65,7 @@ const LEGACY_TAB_MAP: Record<string, { tab: MainTab; view?: string }> = {
 
 const DEFAULT_VIEW: Record<MainTab, string | undefined> = {
   'fila-envio': undefined,
+  'gerar-oc': 'fornecedor',
   projecao: undefined,
   cronograma: undefined,
   'saldo-analytics': 'saldo',
@@ -174,6 +179,7 @@ export default function PurchasePlanning() {
         <HubTabsList
           tabs={[
             { value: 'fila-envio', label: 'Fila de envio', icon: PaperPlaneTilt },
+            { value: 'gerar-oc', label: 'Gerar OC', icon: ShoppingBag },
             { value: 'projecao', label: 'Projeção', icon: CalendarBlank },
             { value: 'cronograma', label: 'Cronograma', icon: Workflow },
             { value: 'saldo-analytics', label: 'Saldo & Custos', icon: Calculator },
@@ -192,6 +198,22 @@ export default function PurchasePlanning() {
             </p>
           </CardContent>
         </Card>
+
+        <TabsContent value="gerar-oc">
+          <div className="space-y-4">
+            <SubToggle
+              value={activeView === 'pedido' ? 'pedido' : 'fornecedor'}
+              onChange={handleViewChange}
+              options={[
+                { value: 'fornecedor', label: 'Por fornecedor', hint: 'Necessidades de todos os pedidos, por fornecedor' },
+                { value: 'pedido', label: 'Por pedido', hint: 'Cada PV com os fornecedores dentro' },
+              ]}
+            />
+            <Suspense fallback={<TabLoader />}>
+              <PurchaseGeneratePanel mode={activeView === 'pedido' ? 'pedido' : 'fornecedor'} />
+            </Suspense>
+          </div>
+        </TabsContent>
 
         <TabsContent value="fila-envio">
           <Suspense fallback={<TabLoader />}>

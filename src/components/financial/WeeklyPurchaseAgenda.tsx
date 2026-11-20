@@ -110,6 +110,7 @@ interface MaterialDeficit {
   supplier_id: string | null;
   supplier_name: string | null;
   supplier_lead_time_days: number;
+  lead_is_default?: boolean;
   total_needed: number;
   to_buy: number;             // necessario - estoque (>= 0)
   data_limite_compra: string; // a mais cedo entre as projeções
@@ -148,6 +149,7 @@ export default function WeeklyPurchaseAgenda() {
           supplier_id: p.supplier_id,
           supplier_name: p.supplier_name,
           supplier_lead_time_days: Number(p.supplier_lead_time_days) || 10,
+          lead_is_default: !(Number(p.supplier_lead_time_days) > 0),
           total_needed: Number(p.quantidade_necessaria) || 0,
           to_buy: 0,
           data_limite_compra: p.data_limite_compra,
@@ -379,7 +381,9 @@ export default function WeeklyPurchaseAgenda() {
                                 {m.to_buy.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {m.unidade}
                               </TableCell>
                               <TableCell className="text-right text-xs">
-                                <Badge variant="secondary" className="text-xs">{m.supplier_lead_time_days}d</Badge>
+                                <Badge variant="secondary" className="text-xs">
+                                  {m.lead_is_default ? 'padrão 10 dias' : `${m.supplier_lead_time_days}d`}
+                                </Badge>
                               </TableCell>
                               <TableCell className="text-right font-mono">
                                 {price > 0 ? fmt(cost) : <span className="text-muted-foreground">—</span>}

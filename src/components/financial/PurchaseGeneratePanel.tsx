@@ -1,0 +1,134 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { PurchaseGenerateBoard } from '@/components/financial/PurchaseGenerateBoard';
+import {
+  allocateStock,
+  DEFAULT_MOTOR_SETTINGS,
+  suggestPurchases,
+  type MotorSettings,
+  type PlanDemand,
+  type StockPool,
+} from '@/lib/cabedalPlanningMotor';
+
+interface SnapshotMaterial {
+  product_id: string;
+  product_name: string;
+  unit: string | null;
+  required: number;
+  unit_price: number | null;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  supplier_lead_days: number | null;
+}
+
+interface SnapshotItem {
+  sale_order_id: string;
+  order_number: string;
+  order_type: string | null;
+  billing_week: string | null;
+  item_id: string;
+  reference_code: string;
+  color: string | null;
+  pairs: number;
+  assembly_capacity_per_day: number | null;
+  prep_business_days: number | null;
+  explicit_complex: boolean;
+  materials: SnapshotMaterial[];
+}
+
+interface Snapshot {
+  motor_enabled?: boolean;
+  urgent_release_without_material?: boolean;
+  purchase_horizon_business_days?: number;
+  weekly_purchase_cap_brl?: number | null;
+  buffer_business_days?: number;
+  ready_before_billing_days?: number;
+  items?: SnapshotItem[];
+  stock?: { product_id: string; free: number }[];
+}
+
+function todayIso(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+export function PurchaseGeneratePanel({ mode }: { mode: 'fornecedor' | 'pedido' }) {
+  const query = useQuery({
+    queryKey: ['cabedal-motor-purchase-snapshot'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('list_cabedal_motor_purchase_snapshot' as never);
+      if (error) throw error;
+      return (data ?? {}) as Snapshot;
+    },
+  });
+
+  if (query.isLoading) {
+    return <p className="text-sm text-muted-foreground">Lendo pedidos aprovados…</p>;
+  }
+  if (query.isError) {
+    return (
+      <p className="text-sm text-destructive">
+        Não foi possível montar a simulação de compras. {query.error instanceof Error ? query.error.message : ''}
+      </p>
+    );
+  }
+
+  const snapshot = query.data ?? {};
+  const settings: MotorSettings = {
+    ...DEFAULT_MOTOR_SETTINGS,
+    enabled: snapshot.motor_enabled === true,
+    urgentMayReleaseWithoutMaterial: snapshot.urgent_release_without_material === true,
+    purchaseHorizonBusinessDays: snapshot.purchase_horizon_business_days ?? DEFAULT_MOTOR_SETTINGS.purchaseHorizonBusinessDays,
+    weeklyPurchaseCapBrl: snapshot.weekly_purchase_cap_brl ?? null,
+    bufferBusinessDays: snapshot.buffer_business_days ?? DEFAULT_MOTOR_SETTINGS.bufferBusinessDays,
+    readyBeforeBillingDays: snapshot.ready_before_billing_days ?? DEFAULT_MOTOR_SETTINGS.readyBeforeBillingDays,
+  };
+  const items: PlanDemand[] = (snapshot.items ?? []).map((item) => ({
+    saleOrderId: item.sale_order_id,
+    orderNumber: item.order_number,
+    orderType: item.order_type,
+    billingWeek: item.billing_week,
+    itemId: item.item_id,
+    referenceCode: item.reference_code,
+    color: item.color,
+    pairs: Number(item.pairs) || 0,
+    assemblyCapacityPerDay: item.assembly_capacity_per_day,
+    prepBusinessDays: item.prep_business_days,
+    explicitComplex: item.explicit_complex === true,
+    cabedalReceived: false,
+    closeScore: 0,
+    isPinned: false,
+    isFrozen: false,
+    pinnedPosition: null,
+    frozenPosition: null,
+    protected: false,
+    materials: (item.materials ?? []).map((row) => ({
+      productId: row.product_id,
+      productName: row.product_name,
+      unit: row.unit,
+      required: Number(row.required) || 0,
+      unitPrice: row.unit_price,
+      supplierId: row.supplier_id,
+      supplierName: row.supplier_name || 'Sem fornecedor',
+      supplierLeadDays: row.supplier_lead_days,
+      protectedHeld: 0,
+    })),
+  }));
+  const stock: StockPool[] = (snapshot.stock ?? []).map((row) => ({
+    productId: row.product_id,
+    free: Number(row.free) || 0,
+  }));
+  const today = todayIso();
+  const allocation = allocateStock(items, stock, settings);
+  const lines = suggestPurchases(items, allocation, settings, today);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Mesma base nas duas visões. Urgente no topo, depois quem precisa comprar antes; empate fica com o cabedal complexo.
+        Pedido sem semana de faturamento não ganha data inventada.
+      </p>
+      <PurchaseGenerateBoard lines={lines} today={today} motorEnabled={settings.enabled} mode={mode} />
+    </div>
+  );
+}

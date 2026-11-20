@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { gradeReceiptIsValid } from '@/lib/purchaseReceipt';
@@ -46,10 +47,18 @@ export function PurchaseOrderReceiveDialog({
     }),
     [items],
   );
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [qty, setQty] = useState<Record<string, string>>({});
   const [grades, setGrades] = useState<Record<string, Record<string, string>>>({});
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelected(new Set(openItems.map((item) => item.id)));
+    setQty({});
+    setError(null);
+  }, [open, openItems]);
 
   const draftQty = (item: PurchaseOrderItem) => {
     if (qty[item.id] != null) return qty[item.id];
@@ -60,7 +69,12 @@ export function PurchaseOrderReceiveDialog({
   const confirm = async () => {
     setError(null);
     const receipts: ReceiveLineDraft[] = [];
-    for (const item of openItems) {
+    const chosen = openItems.filter((item) => selected.has(item.id));
+    if (chosen.length === 0) {
+      setError('Selecione ao menos um item.');
+      return;
+    }
+    for (const item of chosen) {
       const remaining = Number(item.quantity) - Number(item.received_quantity ?? 0);
       const quantity = Number(String(draftQty(item)).replace(',', '.'));
       if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -124,18 +138,40 @@ export function PurchaseOrderReceiveDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Dar entrada em tudo</DialogTitle>
+          <DialogTitle>Dar entrada nos selecionados</DialogTitle>
           <DialogDescription>
-            OC {orderNumber}. Ajuste a quantidade recebida de cada item. A nota fiscal é opcional e pode ser ligada depois.
+            OC {orderNumber}. A quantidade começa no saldo pendente e pode ser menor, para recebimento parcial. O que não for marcado continua na OC.
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+          <label className="flex items-center gap-2 text-xs">
+            <Checkbox
+              checked={openItems.length > 0 && openItems.every((item) => selected.has(item.id))}
+              onCheckedChange={(value) => {
+                setSelected(value === true ? new Set(openItems.map((item) => item.id)) : new Set());
+              }}
+            />
+            Selecionar todos
+          </label>
           {openItems.map((item) => {
             const grade = openGrade(item);
             return (
               <div key={item.id} className="space-y-2 rounded-md border border-border p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium">{item.product?.name || 'Item'}</span>
+                  <label className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                    <Checkbox
+                      checked={selected.has(item.id)}
+                      onCheckedChange={(value) => {
+                        setSelected((current) => {
+                          const next = new Set(current);
+                          if (value === true) next.add(item.id);
+                          else next.delete(item.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    {item.product?.name || 'Item'}
+                  </label>
                   <Input
                     className="h-8 w-28 text-right"
                     value={draftQty(item)}
@@ -177,7 +213,7 @@ export function PurchaseOrderReceiveDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancelar</Button>
           <Button onClick={() => void confirm()} disabled={busy}>
-            {busy ? 'Dando entrada…' : 'Dar entrada em tudo'}
+            {busy ? 'Dando entrada…' : 'Dar entrada nos selecionados'}
           </Button>
         </DialogFooter>
       </DialogContent>

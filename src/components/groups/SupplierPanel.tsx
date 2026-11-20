@@ -195,7 +195,7 @@ export default function SupplierPanel({ groupId, embedded = false, hideHeader = 
                         {s.supplier_cnpj && <span>{s.supplier_cnpj}</span>}
                         {s.supplier_phone && <span>{s.supplier_phone}</span>}
                         {s.payment_terms && <Badge variant="outline" className="text-xs h-4">{s.payment_terms}</Badge>}
-                        {s.lead_time_days > 0 && <span>{s.lead_time_days} dias</span>}
+                        <span>{s.lead_time_days > 0 ? `${s.lead_time_days} dias` : 'padrão 10 dias'}</span>
                       </div>
                     </div>
                   </div>

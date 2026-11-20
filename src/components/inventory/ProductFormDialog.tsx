@@ -1965,9 +1965,8 @@ export function ProductFormDialog({ open, onOpenChange, onSubmit, onSubmitMultip
               <Label>Lead Time Fornecedor (dias)</Label>
               <NumberInput value={form.supplier_lead_time_days ?? 10} onChange={v => update('supplier_lead_time_days', v)} min={0} step="1" className="mt-1" placeholder="10" />
               <p className="text-xs text-muted-foreground mt-0.5">
-                Prazo do fornecedor (em dias). Usado na projeção de compras.
-                Quando o fornecedor tem lead time cadastrado, ele tem prioridade
-                e este valor é ignorado.
+                Prazo do fornecedor (em dias). Vazio ou zero = padrão 10 dias.
+                Quando o fornecedor do grupo tem lead cadastrado, ele tem prioridade.
               </p>
             </div>
 
