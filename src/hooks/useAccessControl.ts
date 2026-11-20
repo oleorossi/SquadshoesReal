@@ -133,6 +133,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   // antigas continua com acesso.
   '/terceirizados': 'terceirizados',
   '/terceirizados?tab=os-ativas': 'terceirizados',
+  '/terceirizados?tab=gestao': 'terceirizados',
   '/ordens-servico': 'terceirizados',       // atalho no menu Compras → aba OS do hub
   '/terceiros': 'terceirizados',            // nome canônico anterior → redireciona pro hub
   '/terceiros-na-rua': 'terceirizados',     // legado → redireciona pro hub

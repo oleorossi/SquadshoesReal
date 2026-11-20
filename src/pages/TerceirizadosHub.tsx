@@ -36,6 +36,7 @@ import {
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
+import { OsPrestadorGestao } from '@/components/contractors/OsPrestadorGestao';
 import ContractorReportsPage from './ContractorReports';
 import ContractorsPage from './Contractors';
 import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
@@ -50,7 +51,7 @@ const GROUP_LABEL = 'flex h-11 shrink-0 items-center px-2 font-mono text-[9px] f
 // Abas servidas pelo componente Contractors (uma única instância controlada).
 // Prep. cabedal saiu do hub → /atelie (spec atelie-cabedal-complexo).
 const CONTRACTOR_TABS = ['orders', 'planning', 'contractors'];
-const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio', 'os-ativas']);
+const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio', 'os-ativas', 'gestao']);
 const DEFAULT_TAB = 'orders';
 
 export default function TerceirizadosHub() {
@@ -129,6 +130,9 @@ export default function TerceirizadosHub() {
           <TabsTrigger value="planning" className={TRIGGER} aria-label="Planejamento de terceirização" title="Planejamento de terceirização">
             <ChartLineUp className="h-3.5 w-3.5" /> Planejar
           </TabsTrigger>
+          <TabsTrigger value="gestao" className={TRIGGER} aria-label="Gestão de OS e relatórios" title="Gestão de OS / Relatórios">
+            <ClipboardList className="h-3.5 w-3.5" /> Gestão
+          </TabsTrigger>
           <TabsTrigger value="relatorio" className={TRIGGER} aria-label="Relatório de terceirizados">
             <BarChart3 className="h-3.5 w-3.5" /> Relatório
           </TabsTrigger>
@@ -147,6 +151,9 @@ export default function TerceirizadosHub() {
         </TabsContent>
         <TabsContent value="os-ativas">
           <OsAtivasPanel />
+        </TabsContent>
+        <TabsContent value="gestao">
+          <OsPrestadorGestao />
         </TabsContent>
         <TabsContent value="relatorio" className="space-y-3">
           <OsRedistribuicaoHistorico />

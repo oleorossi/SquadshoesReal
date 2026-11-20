@@ -91,6 +91,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/imprimir-fichas', label: 'Fichas de OP', group: 'Produção', icon: Printer, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PrintWorkSheets') },
   { path: '/producao/analises', label: 'Análises', group: 'Produção', icon: BarChart3, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoAnalises') },
   { path: '/producao/produtividade', label: 'Produtividade por Modelo', group: 'Produção', icon: Gauge, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/ProdutividadeModelos') },
+  { path: '/terceirizados?tab=gestao', label: 'OS prestadores', group: 'Produção', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
   // Ordens não ocupa a sidebar por decisão do dono, mas é aberta pela FAB e
   // por cards; o mesmo recurso governa ação rápida, busca e permissão granular.
   { path: '/orders', label: 'Ordens de Produção', group: 'Produção', icon: ClipboardCheck, surfaces: ['command', 'quick-action'], preload: () => import('@/pages/Orders') },
