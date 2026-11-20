@@ -152,6 +152,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/rh', label: 'Pessoas', group: 'RH', icon: UsersThree, surfaces: ['hub', 'command'], preload: () => import('@/pages/RHHub') },
   { path: '/fichas-montadores', label: 'Montadores', group: 'RH', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/FichaMontadoresPage') },
   { path: '/terceirizados', label: 'Terceirizados', group: 'RH', icon: Truck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
+  { path: '/terceirizados?tab=os-ativas', label: 'OS ativas', group: 'Produção', icon: Kanban, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/TerceirizadosHub') },
   // Ajuste de batidas/ausências (workspace único do Ponto). Sem resolver,
   // o dia não desconta nem paga — risco de pagar quem ainda deve horas.
   // Destino final (não o redirect legado /rh/pendencias-ponto).

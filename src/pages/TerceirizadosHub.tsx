@@ -31,7 +31,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   ChartBar as BarChart3, ClipboardText as ClipboardList,
-  ChartLineUp, Users, Tag, Scissors,
+  ChartLineUp, Kanban, Users, Tag, Scissors,
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,7 @@ import { Panel } from '@/components/ui/panel';
 import ContractorReportsPage from './ContractorReports';
 import ContractorsPage from './Contractors';
 import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
+import { OsAtivasPanel, OsRedistribuicaoHistorico } from '@/components/contractors/OsAtivasPanel';
 import { Link } from 'react-router-dom';
 
 // Uma única régua, com alvos de toque de 44px e labels curtos. O nome completo
@@ -49,7 +50,7 @@ const GROUP_LABEL = 'flex h-11 shrink-0 items-center px-2 font-mono text-[9px] f
 // Abas servidas pelo componente Contractors (uma única instância controlada).
 // Prep. cabedal saiu do hub → /atelie (spec atelie-cabedal-complexo).
 const CONTRACTOR_TABS = ['orders', 'planning', 'contractors'];
-const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio']);
+const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio', 'os-ativas']);
 const DEFAULT_TAB = 'orders';
 
 export default function TerceirizadosHub() {
@@ -122,6 +123,9 @@ export default function TerceirizadosHub() {
           <TabsTrigger value="orders" className={TRIGGER} aria-label="Ordens de Serviço" title="Ordens de Serviço">
             <ClipboardList className="h-3.5 w-3.5" /> Ordens
           </TabsTrigger>
+          <TabsTrigger value="os-ativas" className={TRIGGER} aria-label="OS ativas" title="OS ativas">
+            <Kanban className="h-3.5 w-3.5" /> OS ativas
+          </TabsTrigger>
           <TabsTrigger value="planning" className={TRIGGER} aria-label="Planejamento de terceirização" title="Planejamento de terceirização">
             <ChartLineUp className="h-3.5 w-3.5" /> Planejar
           </TabsTrigger>
@@ -141,7 +145,11 @@ export default function TerceirizadosHub() {
         <TabsContent value="cobertura">
           <TerceirizacaoCoberturaPanel />
         </TabsContent>
+        <TabsContent value="os-ativas">
+          <OsAtivasPanel />
+        </TabsContent>
         <TabsContent value="relatorio" className="space-y-3">
+          <OsRedistribuicaoHistorico />
           <Panel className="p-3 flex flex-wrap items-center justify-between gap-2 border border-border/60 bg-muted/20 rounded-lg">
             <p className="text-sm text-muted-foreground">
               Cabedal complexo: fila, débito e envio no{' '}
