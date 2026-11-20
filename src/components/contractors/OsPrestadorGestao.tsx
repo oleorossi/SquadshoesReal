@@ -4,6 +4,7 @@ import { CircleNotch as Loader2, FileXls, Printer } from '@phosphor-icons/react'
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   aggregateOs,
   buildLedger,
@@ -237,22 +238,31 @@ export function OsPrestadorGestao() {
         <Input className="h-9 w-36" placeholder="Pedido" value={saleOrder} onChange={(e) => setSaleOrder(e.target.value)} aria-label="Filtrar pedido" />
         <Input className="h-9 w-36" placeholder="Referência" value={reference} onChange={(e) => setReference(e.target.value)} aria-label="Filtrar referência" />
         <Input className="h-9 w-32" placeholder="Cor" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Filtrar cor" />
-        <select className="h-9 rounded-md border border-border bg-card px-2 text-sm" value={contractorId} onChange={(e) => setContractorId(e.target.value)} aria-label="Filtrar prestador">
-          <option value="">Todos os prestadores</option>
-          {contractors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-        </select>
-        <select className="h-9 rounded-md border border-border bg-card px-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value as '' | OsStreetStatus)} aria-label="Filtrar status">
-          <option value="">Todos os status</option>
-          <option value="na_rua">Na rua</option>
-          <option value="recebido">Recebido</option>
-          <option value="atrasado">Atrasado</option>
-        </select>
-        <select className="h-9 rounded-md border border-border bg-card px-2 text-sm" value={groupBy} onChange={(e) => setGroupBy(e.target.value as OsGroupBy)} aria-label="Agrupar relatório">
-          <option value="referencia_cor_prestador">Referência × cor × prestador</option>
-          <option value="prestador">Por prestador</option>
-          <option value="pedido">Por pedido</option>
-          <option value="referencia">Por referência</option>
-        </select>
+        <Select value={contractorId || '__all__'} onValueChange={(value) => setContractorId(value === '__all__' ? '' : value)}>
+          <SelectTrigger className="h-9 w-52" aria-label="Filtrar prestador"><SelectValue placeholder="Todos os prestadores" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos os prestadores</SelectItem>
+            {contractors.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={status || '__all__'} onValueChange={(value) => setStatus(value === '__all__' ? '' : value as OsStreetStatus)}>
+          <SelectTrigger className="h-9 w-44" aria-label="Filtrar status"><SelectValue placeholder="Todos os status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos os status</SelectItem>
+            <SelectItem value="na_rua">Na rua</SelectItem>
+            <SelectItem value="recebido">Recebido</SelectItem>
+            <SelectItem value="atrasado">Atrasado</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={groupBy} onValueChange={(value) => setGroupBy(value as OsGroupBy)}>
+          <SelectTrigger className="h-9 w-64" aria-label="Agrupar relatório"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="referencia_cor_prestador">Referência × cor × prestador</SelectItem>
+            <SelectItem value="prestador">Por prestador</SelectItem>
+            <SelectItem value="pedido">Por pedido</SelectItem>
+            <SelectItem value="referencia">Por referência</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="sm" variant="outline" className="h-8" disabled={rows.length === 0} onClick={downloadCsv}>CSV</Button>
