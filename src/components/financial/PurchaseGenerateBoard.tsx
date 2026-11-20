@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   buildPurchaseBoard,
   purchaseLineKey,
@@ -89,24 +90,20 @@ export function PurchaseGenerateBoard({ lines, today, motorEnabled, mode }: Prop
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <select
-          className="h-9 rounded-md border border-border bg-card px-2 text-sm"
-          value={filters.supplierId}
-          onChange={(event) => setFilters((current) => ({ ...current, supplierId: event.target.value }))}
-          aria-label="Filtrar fornecedor"
-        >
-          <option value="">Todos os fornecedores</option>
-          {suppliers.map(([id, name]) => <option key={id || name} value={id}>{name}</option>)}
-        </select>
-        <select
-          className="h-9 rounded-md border border-border bg-card px-2 text-sm"
-          value={filters.saleOrderId}
-          onChange={(event) => setFilters((current) => ({ ...current, saleOrderId: event.target.value }))}
-          aria-label="Filtrar pedido"
-        >
-          <option value="">Todos os pedidos</option>
-          {orders.map(([id, number]) => <option key={id} value={id}>{number}</option>)}
-        </select>
+        <Select value={filters.supplierId || '__all__'} onValueChange={(value) => setFilters((current) => ({ ...current, supplierId: value === '__all__' ? '' : value }))}>
+          <SelectTrigger className="h-9 w-52" aria-label="Filtrar fornecedor"><SelectValue placeholder="Todos os fornecedores" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos os fornecedores</SelectItem>
+            {suppliers.filter(([id]) => id).map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.saleOrderId || '__all__'} onValueChange={(value) => setFilters((current) => ({ ...current, saleOrderId: value === '__all__' ? '' : value }))}>
+          <SelectTrigger className="h-9 w-44" aria-label="Filtrar pedido"><SelectValue placeholder="Todos os pedidos" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos os pedidos</SelectItem>
+            {orders.map(([id, number]) => <SelectItem key={id} value={id}>{number}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <input
           className="h-9 w-36 rounded-md border border-border bg-card px-2 text-sm"
           placeholder="Semana ou mês"
