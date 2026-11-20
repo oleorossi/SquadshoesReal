@@ -95,10 +95,13 @@ BEGIN
     IF r.def ILIKE '%urgente%' THEN
       CONTINUE;
     END IF;
-    IF r.def !~* 'order_type' THEN
-      CONTINUE;
+    IF position('ARRAY[' IN r.def) > 0 AND r.def ~ '\]\s*\)' THEN
+      v_def := regexp_replace(r.def, '\]\s*\)', ', ' || quote_literal('urgente') || '])');
+    ELSIF r.def ~ '\)\s*$' THEN
+      v_def := regexp_replace(r.def, '\)\s*$', ', ' || quote_literal('urgente') || ')');
+    ELSE
+      RAISE EXCEPTION 'CHECK de order_type em formato inesperado: %', r.def;
     END IF;
-    v_def := regexp_replace(r.def, '\)\s*$', ', ''urgente'')');
     IF v_def = r.def THEN
       RAISE EXCEPTION 'CHECK de order_type em formato inesperado: %', r.def;
     END IF;
