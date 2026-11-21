@@ -2,8 +2,9 @@
  * Quem entra na Central de Etiquetagem.
  *
  * A fila (`production_queue`) e as ondas legadas são a porta histórica. Um PV
- * já em `Em Produção` também entra: a OP pode existir e a página da fila
- * (sem ordem estável) deixar o pedido de fora — foi o caso do PV-00255.
+ * já em `Em Produção` também entra, mesmo com zero linhas na fila — o PV-00255
+ * entrou em produção sem registro em `production_queue` (a tabela inteira
+ * tinha 10 linhas). A fila é recolocada no banco; esta tela não depende dela.
  */
 export function saleOrderEligibleForLabels(input: {
   saleOrderId: string | null | undefined;
