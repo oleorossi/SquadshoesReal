@@ -28,6 +28,9 @@ const PurchaseDispatchQueuePanel = lazy(
 const PurchaseGeneratePanel = lazy(
   () => import('@/components/financial/PurchaseGeneratePanel').then((mod) => ({ default: mod.PurchaseGeneratePanel })),
 );
+const PurchaseMaterialCoverage = lazy(
+  () => import('@/components/financial/PurchaseMaterialCoverage').then((mod) => ({ default: mod.PurchaseMaterialCoverage })),
+);
 
 const TabLoader = () => (
   <div className="flex items-center justify-center py-12">
@@ -210,6 +213,7 @@ export default function PurchasePlanning() {
               ]}
             />
             <Suspense fallback={<TabLoader />}>
+              <PurchaseMaterialCoverage mode={activeView === 'pedido' ? 'pedido' : 'fornecedor'} />
               <PurchaseGeneratePanel mode={activeView === 'pedido' ? 'pedido' : 'fornecedor'} />
             </Suspense>
           </div>

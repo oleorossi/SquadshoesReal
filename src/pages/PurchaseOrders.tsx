@@ -226,6 +226,10 @@ export default function PurchaseOrders() {
   // q=busca, status=csv (vazio=todos), supplier, from/to=período, basis=base de
   // data (vencimento|criacao). Substituem o antigo localStorage por-filtro.
   const [searchParams, setSearchParams] = useSearchParams();
+  const openFromLink = searchParams.get('open');
+  useEffect(() => {
+    if (openFromLink) setSelectedId(openFromLink);
+  }, [openFromLink]);
   const search = searchParams.get('q') ?? '';
   const supplierFilter = searchParams.get('supplier') ?? 'all';
   const itemFilter = searchParams.get('item') ?? '';
