@@ -369,7 +369,9 @@ describe('Tiras artesanais — contrato do frontend canônico', () => {
     // Grill 19/10: rendimento por medida × bobina (não mais “material” a material).
     expect(hub).toContain('Tipo, medida e rendimento');
     expect(hub).toContain('MeasureGeometryFillSheet');
-    expect(hub).toContain('Origem, cor e estoque');
+    expect(hub).toContain('Cores herdadas do material');
+    expect(hub).toContain('registeredBaseMaterialColorsForGroup');
+    expect(hub).not.toContain('crie a cor somente quando houver necessidade real');
     expect(hub).toContain("type ConfigurationView = 'cadastro' | 'variantes' | 'ferramentas'");
     expect(hub).toContain('Histórico e simulação');
     expect(hub).toMatch(/configurationView === 'ferramentas'[\s\S]*<RecipesTab[\s\S]*<CalculatorTab/);

@@ -75,6 +75,7 @@ import { useContractors } from '@/hooks/useContractors';
 import { useIsAdmin } from '@/hooks/useUserManagement';
 import { cn } from '@/lib/utils';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
+import { registeredBaseMaterialColorsForGroup } from '@/lib/officialStrapColors';
 import {
   type ArtisanalStrapCatalog,
   type ArtisanalStrapCatalogDiagnostic,
@@ -1100,7 +1101,7 @@ function ConfigurationRail({
           <h2 id="strap-configuration-flow" className="mt-0.5 text-base font-bold text-foreground">Configure em duas etapas</h2>
         </div>
         <p className="max-w-xl text-xs text-muted-foreground">
-          O rendimento é único por tipo e material. Cor e SKU entram somente quando a tira pronta realmente existir no estoque.
+          A tira artesanal é família, medida, material base e rendimento. As cores saem do material e aparecem só para leitura.
         </p>
       </div>
       <ol className="grid items-stretch gap-px bg-border md:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)]">
@@ -1134,11 +1135,11 @@ function ConfigurationRail({
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted font-mono text-xs font-bold text-foreground">2</span>
             <span>
-              <span className="block text-sm font-semibold text-foreground">Origem, cor e estoque</span>
+              <span className="block text-sm font-semibold text-foreground">Cores herdadas do material</span>
               <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                Escolha Prestador ou Comprar pronto e crie a cor somente quando houver necessidade real.
+                Somente leitura. Prestador usa as cores ativas da napa. Comprar pronto (Strass) continua com SKU próprio.
               </span>
-              <span className="mt-2 block text-xs font-semibold text-primary group-hover:underline">Abrir variante de estoque</span>
+              <span className="mt-2 block text-xs font-semibold text-primary group-hover:underline">Abrir SKU comprado pronto</span>
             </span>
           </button>
         </li>
@@ -1288,7 +1289,7 @@ function CatalogTab({
       <Panel
         eyebrow="RENDIMENTO"
         title="Tipos de tira × geometria da bobina"
-        subtitle="Um rendimento por medida e bobina (ex.: 1370×1000 mm) cobre Soft, Glow, Sudani… — 1000×1370 conta igual. Cores vêm do cadastro de cada napa no PV."
+        subtitle="Família, medida, material base e rendimento. As cores ativas de cada napa aparecem abaixo, só para leitura — o pedido não pede cadastro de tira cor a cor."
       >
         {boardQuery.isLoading ? (
           <TableSkeleton rows={5} />
@@ -1419,9 +1420,28 @@ function CatalogMeasureCard({
               : 'Tira sem napa (ex.: strass).'}
           </p>
         ) : (
-          <p className="mt-1 text-sm text-foreground">
-            {families.join(' · ')}
-          </p>
+          <ul className="mt-2 space-y-2">
+            {row.families.map((family) => {
+              const colors = registeredBaseMaterialColorsForGroup(catalog, family.napa_group_id);
+              return (
+                <li key={family.napa_group_id} className="rounded-md border border-border/70 px-3 py-2">
+                  <p className="text-sm font-semibold text-foreground">{family.napa_group_name}</p>
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                    Cores herdadas
+                  </p>
+                  {colors.length === 0 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">Nenhuma cor ativa neste material.</p>
+                  ) : (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {colors.map((color) => (
+                        <Badge key={color.id} variant="secondary">{color.name}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 
