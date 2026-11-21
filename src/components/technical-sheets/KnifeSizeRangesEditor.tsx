@@ -150,15 +150,15 @@ export function KnifeSizeRangesEditor({ sheetSizes, value, onChange }: Props) {
   );
 
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
+    <div id="facas-de-corte" className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-start gap-2">
         <Knife className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
         <div className="min-w-0">
           <h4 className="text-sm font-semibold">Facas de Corte Cabedal</h4>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Agrupa numerações por faca (P/M/G) no relatório de Corte Cabedal — ex.: <strong>P</strong> = 34/35/36 →
-            soma as quantidades. Defina a <strong>faixa</strong> que cada faca cobre. O <strong>padrão global</strong> é
-            herdado por todas as referências; personalize só onde mudar.
+            Corte Cabedal e Costura Cabedal lançam por estas faixas (P/M/G). Personalize e salve
+            nesta ficha: <strong>herdar o padrão</strong> ou <strong>sem faca</strong> deixa a coluna vazia,
+            e o chão lança pelo total, com aviso. Numeração fora das faixas entra com o próprio número.
           </p>
         </div>
       </div>

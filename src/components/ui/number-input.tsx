@@ -27,9 +27,9 @@ interface NumberInputProps {
   inputMode?: 'decimal' | 'numeric';
   /** Nome acessível quando o rótulo visível não está amarrado ao campo. */
   'aria-label'?: string;
-  /** Teto inclusivo. Acima dele o campo volta para o máximo e avisa `onClamp`. */
+  /** Teto inclusivo. Acima dele o campo volta para o máximo e avisa `onClamp` com o valor tentado. */
   max?: number;
-  onClamp?: () => void;
+  onClamp?: (attempted: number) => void;
 }
 
 export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled, unit, autoFocus, inputMode = 'decimal', 'aria-label': ariaLabel, max, onClamp }: NumberInputProps) {
@@ -82,7 +82,7 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
         prevValueRef.current = capped;
         setDisplayValue(formatValue(capped));
         onChange(capped);
-        onClamp?.();
+        onClamp?.(parsed);
         return;
       }
       prevValueRef.current = parsed;

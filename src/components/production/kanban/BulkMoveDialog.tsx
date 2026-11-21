@@ -13,6 +13,7 @@ import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
 import { useSectorSettings } from '@/hooks/useProductionEngine';
 import { SizePointingLaunch, type SizeLaunchState } from '@/components/production/SizePointingFields';
 import { sameStage } from '@/lib/production/stageFlow';
+import { sectorPointingMode } from '@/lib/production/sizePointing';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import {
@@ -162,12 +163,10 @@ export function BulkMoveDialog({
     setSizeLaunch({ mode: 'off', quantity: 0, breakdown: null });
   }
   const pointedName = current?.plan.pointedStage?.stage_name ?? '';
-  const pointBySize = !!pointedName && sectorSettings.some(
-    sector => !!sector.point_by_size && sameStage(sector.sector, pointedName),
-  );
+  const pointBySize = !!pointedName && sectorPointingMode(sectorSettings, pointedName, sameStage) != null;
   const usingGrid = pointBySize && sizeLaunch.mode === 'grid';
   const effectiveQty = usingGrid ? sizeLaunch.quantity : qty;
-  const sizePending = pointBySize && sizeLaunch.mode !== 'grid' && sizeLaunch.mode !== 'fallback';
+  const sizePending = pointBySize && sizeLaunch.mode !== 'grid' && sizeLaunch.mode !== 'fallback' && sizeLaunch.mode !== 'total';
 
   const confirmStep = async (confirmed?: string[], shortageConfirmed: boolean = shortageAck) => {
     if (!current || sizePending) return;
@@ -469,7 +468,7 @@ export function BulkMoveDialog({
                     onState={setSizeLaunch}
                   />
                 )}
-                {(!pointBySize || sizeLaunch.mode === 'fallback') && <div>
+                {(!pointBySize || sizeLaunch.mode === 'fallback' || sizeLaunch.mode === 'total') && <div>
                   <Label htmlFor="bulk-move-quantity" className="text-xs">
                     {current.plan.isBackward ? 'Pares a estornar' : 'Quantidade executada (pares)'}
                   </Label>

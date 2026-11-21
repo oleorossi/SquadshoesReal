@@ -8,8 +8,12 @@ import { useSectorSettings } from '@/hooks/useProductionEngine';
 import { sameStage } from '@/lib/production/stageFlow';
 import {
   clampSizeQuantity,
+  KNIFE_RANGE_MISSING,
+  knifeOverMessage,
+  knifeRangePlan,
   knownSizesFromPointings,
   pointingSizeBalance,
+  sectorPointingMode,
   sizeBreakdownFromEntries,
   sizeLaunchMeter,
   sumSizes,
@@ -18,12 +22,16 @@ import {
 } from '@/lib/production/sizePointing';
 
 export interface SizeLaunchState {
-  /** off = setor comum; loading = ainda lendo a grade; grid = por numeração; fallback = sem grade, fica o total. */
-  mode: 'off' | 'loading' | 'grid' | 'fallback';
+  /** off = setor comum; loading = ainda lendo; grid = faixa ou numeração; total = ficha sem faixa; fallback = sem grade. */
+  mode: 'off' | 'loading' | 'grid' | 'fallback' | 'total';
   /** Pares deste lançamento (sempre ≥ 0; o estorno troca o sinal na gravação). */
   quantity: number;
-  /** Numeração deste lançamento, valores positivos. null quando não é grade. */
+  /** Numeração ou faixa deste lançamento, valores positivos. null quando o total é digitado à mão. */
   breakdown: SizeMap | null;
+}
+
+export function pointingShowsManualQuantity(mode: SizeLaunchState['mode']): boolean {
+  return mode === 'off' || mode === 'fallback' || mode === 'total';
 }
 
 interface FieldsProps {
@@ -31,6 +39,8 @@ interface FieldsProps {
   backward: boolean;
   value: SizeMap;
   readOnly?: boolean;
+  kind?: 'size' | 'knife';
+  hints?: Record<string, string>;
   onChange: (size: string, quantity: number, blocked: boolean) => void;
 }
 
@@ -38,9 +48,11 @@ interface FieldsProps {
  * Uma célula por numeração. O operador vê, enquanto digita, "lançado/falta":
  * a falta vai em âmbar; zerou, o número fica verde como concluído.
  */
-export function SizePointingFields({ balance, backward, value, readOnly = false, onChange }: FieldsProps) {
+export function SizePointingFields({
+  balance, backward, value, readOnly = false, kind = 'size', hints, onChange,
+}: FieldsProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const [blockedSize, setBlockedSize] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<{ label: string; attempted: number } | null>(null);
   const caps = backward ? balance.known : balance.pending;
   const sizes = balance.sizes.filter(size => (backward ? (balance.known[size] || 0) : true));
   const totalCap = sumSizes(caps);
@@ -61,7 +73,9 @@ export function SizePointingFields({ balance, backward, value, readOnly = false,
     <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-xs font-medium text-foreground">
-          {backward ? 'Estorno por numeração' : 'Lançamento por numeração'}
+          {backward
+            ? (kind === 'knife' ? 'Estorno por faixa' : 'Estorno por numeração')
+            : (kind === 'knife' ? 'Lançamento por faixa' : 'Lançamento por numeração')}
         </p>
         <p className="font-mono text-xs text-muted-foreground">
           {totalTyped}/{Math.max(0, totalCap - totalTyped)} neste lançamento
@@ -81,19 +95,22 @@ export function SizePointingFields({ balance, backward, value, readOnly = false,
           const finishedSize = !backward && cap === 0 && stillOwed === 0;
           const heldForLater = !backward && cap === 0 && stillOwed > 0;
           return (
-            <div key={size} className="flex w-[4.75rem] shrink-0 flex-col gap-1">
+            <div key={size} className={`flex shrink-0 flex-col gap-1 ${kind === 'knife' ? 'w-[5.5rem]' : 'w-[4.75rem]'}`}>
               <span className="text-center font-mono text-sm font-semibold text-foreground">{size}</span>
+              {hints?.[size] && (
+                <span className="text-center text-[10px] leading-tight text-muted-foreground">{hints[size]}</span>
+              )}
               <NumberInput
-                aria-label={`Numeração ${size}`}
+                aria-label={kind === 'knife' ? `Faixa ${size}` : `Numeração ${size}`}
                 inputMode="numeric"
                 decimals={0}
                 min={0}
                 value={typed}
                 disabled={readOnly || cap === 0}
                 max={cap}
-                onClamp={() => setBlockedSize(size)}
+                onClamp={attempted => setBlocked({ label: size, attempted })}
                 onChange={next => {
-                  setBlockedSize(current => (current === size ? null : current));
+                  setBlocked(current => (current?.label === size ? null : current));
                   onChange(size, next, false);
                 }}
                 className="h-11 px-1 text-center md:h-10"
@@ -124,9 +141,11 @@ export function SizePointingFields({ balance, backward, value, readOnly = false,
           );
         })}
       </div>
-      {blockedSize && (caps[blockedSize] || 0) > 0 && (
+      {blocked && (caps[blocked.label] || 0) > 0 && (
         <p role="alert" className="text-xs font-medium text-destructive">
-          O {blockedSize} só tem {caps[blockedSize]} pares neste saldo. O campo voltou para {caps[blockedSize]}.
+          {kind === 'knife'
+            ? knifeOverMessage(blocked.label, blocked.attempted, caps[blocked.label] || 0)
+            : `O ${blocked.label} só tem ${caps[blocked.label]} pares neste saldo. O campo voltou para ${caps[blocked.label]}.`}
         </p>
       )}
       {balance.legacyUnallocated > 0 && (
@@ -165,25 +184,76 @@ export function SizePointingLaunch({
   onState,
 }: LaunchProps) {
   const { data: sectors = [], isLoading: sectorsLoading } = useSectorSettings();
-  const pointBySize = sectors.some(sector => sector.point_by_size && sameStage(sector.sector, stageName));
-  const enabled = pointBySize && !!orderId;
+  const detailMode = sectorPointingMode(sectors, stageName, sameStage);
+  const enabled = detailMode != null && !!orderId;
   const gradeQuery = useQuery({
-    queryKey: ['order-size-grade', orderId],
+    queryKey: ['order-size-grade', orderId, detailMode],
     enabled,
     staleTime: 30_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('grade, quantity')
+        .select('grade, quantity, reference_id')
         .eq('id', orderId)
         .maybeSingle();
       if (error) throw error;
-      return data as { grade: SizeMap | null; quantity: number } | null;
+      const order = data as { grade: SizeMap | null; quantity: number; reference_id: string | null } | null;
+      let ranges: unknown = null;
+      let stages: { stage_name: string; quantity_processed: number }[] = [];
+      if (detailMode === 'knife_range') {
+        if (order?.reference_id) {
+          const sheet = await supabase
+            .from('technical_sheets')
+            .select('knife_size_ranges')
+            .eq('id', order.reference_id)
+            .maybeSingle();
+          if (sheet.error) throw sheet.error;
+          ranges = sheet.data?.knife_size_ranges ?? null;
+        }
+        const stageRows = await supabase
+          .from('order_stages')
+          .select('stage_name, quantity_processed')
+          .eq('order_id', orderId);
+        if (stageRows.error) throw stageRows.error;
+        stages = (stageRows.data ?? []) as { stage_name: string; quantity_processed: number }[];
+      }
+      return { grade: order?.grade ?? null, ranges, stages };
     },
   });
   const pointings = useOrderPointings(enabled ? orderId : null);
+  const knife = useMemo(() => {
+    if (detailMode !== 'knife_range' || !gradeQuery.data) return null;
+    const me = sectors.find(sector => sameStage(sector.sector, stageName) && sector.point_by_size_mode === 'knife_range');
+    const onOrder = (sectorName: string) => (gradeQuery.data?.stages ?? []).some(stage => sameStage(stage.stage_name, sectorName));
+    const upstream = me && me.check_prev_sector_limit !== false
+      ? (sameStage(stageName, 'Costura Cabedal')
+        ? sectors.find(sector => sameStage(sector.sector, 'Corte Cabedal') && onOrder(sector.sector))
+        : sectors
+          .filter(sector => sector.point_by_size_mode === 'knife_range'
+            && sector.flow_order < me.flow_order
+            && onOrder(sector.sector))
+          .sort((a, b) => b.flow_order - a.flow_order)[0])
+      : undefined;
+    let upstreamKnown: SizeMap | null = null;
+    if (upstream) {
+      const known = knownSizesFromPointings(pointings.data ?? [], upstream.sector, sameStage);
+      const processed = (gradeQuery.data.stages ?? [])
+        .find(stage => sameStage(stage.stage_name, upstream.sector))?.quantity_processed ?? 0;
+      upstreamKnown = sumSizes(known) === 0 && processed > 0 ? null : known;
+    }
+    return knifeRangePlan({
+      grade: gradeQuery.data.grade,
+      rangesRaw: gradeQuery.data.ranges,
+      quantityTotal,
+      quantityProcessed,
+      known: knownSizesFromPointings(pointings.data ?? [], stageName, sameStage),
+      launchablePairs,
+      upstreamKnown,
+    });
+  }, [detailMode, gradeQuery.data, sectors, stageName, pointings.data, quantityTotal, quantityProcessed, launchablePairs]);
   const balance = useMemo(() => {
-    if (!pointBySize) return null;
+    if (detailMode === 'knife_range') return knife?.balance ?? null;
+    if (detailMode !== 'size') return null;
     return pointingSizeBalance({
       grade: (gradeQuery.data?.grade as SizeMap | null) ?? null,
       quantityTotal,
@@ -191,7 +261,7 @@ export function SizePointingLaunch({
       known: knownSizesFromPointings(pointings.data ?? [], stageName, sameStage),
       launchablePairs,
     });
-  }, [pointBySize, gradeQuery.data, quantityTotal, quantityProcessed, pointings.data, stageName, launchablePairs]);
+  }, [detailMode, knife, gradeQuery.data, quantityTotal, quantityProcessed, pointings.data, stageName, launchablePairs]);
 
   const caps = useMemo(
     () => (balance ? (backward ? balance.known : balance.pending) : {}),
@@ -228,13 +298,16 @@ export function SizePointingLaunch({
     [balance, entries, caps],
   );
   const quantity = sumSizes(breakdown);
-  const mode: SizeLaunchState['mode'] = !pointBySize
+  const loading = detailMode != null && (sectorsLoading || gradeQuery.isLoading || pointings.isLoading);
+  const mode: SizeLaunchState['mode'] = detailMode == null
     ? 'off'
-    : (sectorsLoading || gradeQuery.isLoading || pointings.isLoading)
+    : loading
       ? 'loading'
-      : balance && balance.sizes.length > 0
-        ? 'grid'
-        : 'fallback';
+      : detailMode === 'knife_range' && knife?.warning
+        ? 'total'
+        : balance && balance.sizes.length > 0
+          ? 'grid'
+          : 'fallback';
   const reported = useRef('');
 
   useEffect(() => {
@@ -249,7 +322,7 @@ export function SizePointingLaunch({
     onState(payload);
   }, [onState, mode, quantity, breakdown]);
 
-  if (!pointBySize) return null;
+  if (!detailMode) return null;
   if (mode === 'loading') {
     return (
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -258,24 +331,37 @@ export function SizePointingLaunch({
       </p>
     );
   }
-  if (mode === 'fallback' || !balance) {
+  if (mode === 'total') {
     return (
-      <p className="text-[11px] leading-snug text-muted-foreground">
-        Este setor lança por numeração, mas esta OP não tem grade. O lançamento segue pelo total de pares.
+      <p role="status" className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+        {KNIFE_RANGE_MISSING}. O lançamento segue pelo total de pares.
       </p>
     );
   }
+  if (mode === 'fallback' || !balance) {
+    return (
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        {detailMode === 'knife_range'
+          ? 'Esta OP não tem grade para distribuir nas faixas. O lançamento segue pelo total de pares.'
+          : 'Este setor lança por numeração, mas esta OP não tem grade. O lançamento segue pelo total de pares.'}
+      </p>
+    );
+  }
+
+  const hints = Object.fromEntries((knife?.ranges ?? []).map(range => [range.label, range.sizes.join('·')]));
 
   return (
     <SizePointingFields
       balance={balance}
       backward={backward}
       readOnly={readOnly}
+      kind={detailMode === 'knife_range' ? 'knife' : 'size'}
+      hints={detailMode === 'knife_range' ? hints : undefined}
       value={entries}
-      onChange={(size, next, blocked) => {
+      onChange={(size, next) => {
         dirty.current = true;
         const cap = caps[size] || 0;
-        setEntries(prev => ({ ...prev, [size]: blocked ? cap : clampSizeQuantity(next, cap) }));
+        setEntries(prev => ({ ...prev, [size]: clampSizeQuantity(next, cap) }));
       }}
     />
   );

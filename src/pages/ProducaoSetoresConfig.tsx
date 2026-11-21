@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -234,13 +235,31 @@ export default function ProducaoSetoresConfig() {
                       />
                       Material reservado
                     </label>
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-                      <Switch
-                        checked={!!s.point_by_size}
-                        onCheckedChange={v => update.mutate({ sector: s.sector, point_by_size: v })}
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="shrink-0">Lançamento</span>
+                      <Select
+                        value={s.point_by_size_mode === 'knife_range'
+                          ? 'knife_range'
+                          : (s.point_by_size_mode === 'size' || s.point_by_size) ? 'size' : 'total'}
+                        onValueChange={value => {
+                          const mode = value === 'knife_range' || value === 'size' ? value : 'total';
+                          update.mutate({
+                            sector: s.sector,
+                            point_by_size_mode: mode,
+                            point_by_size: mode === 'size',
+                          });
+                        }}
                         disabled={!canEdit}
-                      />
-                      Lançamento por numeração
+                      >
+                        <SelectTrigger className="h-8 w-[9.5rem] text-xs" aria-label={`Lançamento de ${s.sector}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="total">Total de pares</SelectItem>
+                          <SelectItem value="size">Por numeração</SelectItem>
+                          <SelectItem value="knife_range">Faixa P/M/G</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </label>
                     {/* Liga/desliga do fluxo global (R1.5: ficha com override mantém o setor) */}
                     <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
