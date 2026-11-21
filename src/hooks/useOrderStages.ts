@@ -395,10 +395,9 @@ export function useApontarProducao() {
         p_client_request_id: p.clientRequestId,
         p_skip_stage_names: p.skipStageNames?.length ? p.skipStageNames : null,
       };
-      const { data, error } = await callRpc(
-        p.sizeBreakdown ? 'execute_production_pointing_by_size' : 'execute_production_pointing_command',
-        p.sizeBreakdown ? { ...args, p_size_breakdown: p.sizeBreakdown } : args,
-      );
+      const { data, error } = p.sizeBreakdown
+        ? await callRpc('execute_production_pointing_by_size', { ...args, p_size_breakdown: p.sizeBreakdown })
+        : await callRpc('execute_production_pointing_command', args);
       if (error) throw error;
       return data as unknown as ApontarResult;
     },

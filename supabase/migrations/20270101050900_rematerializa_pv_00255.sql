@@ -70,6 +70,9 @@ BEGIN
     EXECUTE replace(v_def, v_needle, v_insert);
 
     BEGIN
+      -- psql do CI não tem JWT. is_approved_user() já aceita service_role
+      -- por este claim; sem ele a migration aborta e trava o db push.
+      PERFORM pg_catalog.set_config('request.jwt.claim.role', 'service_role', true);
       PERFORM pg_catalog.set_config('app.sale_order_command_internal', '1', true);
       PERFORM pg_catalog.set_config('app.rematerialize_pv_00255', '1', true);
       PERFORM public.promote_sale_order_atomic_internal(
