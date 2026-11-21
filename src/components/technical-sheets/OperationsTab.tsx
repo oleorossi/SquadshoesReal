@@ -333,6 +333,12 @@ export function OperationsTab({
 
   return (
     <div className="space-y-6">
+      <KnifeSizeRangesEditor
+        sheetSizes={sheetSizes}
+        value={knifeRanges}
+        onChange={(v) => { setKnifeRanges(v); onKnifeSizeRangesChange?.(v); }}
+      />
+
       {/* Card "Configuração de Capacidade & Lead Times" (Tempo de Montagem /
           Dificuldade / Tempo Efetivo) foi removido — era redundante com os
           cards "Setores produtivos" abaixo, onde a capacidade já é informada
@@ -447,13 +453,6 @@ export function OperationsTab({
         </div>
         <NumberInput value={ltBuffer} onChange={setLtBuffer} className="h-9 text-sm font-mono w-24" min={0} step="1" />
       </div>
-
-      {/* ── Facas de Corte Cabedal (P/M/G/...) ── */}
-      <KnifeSizeRangesEditor
-        sheetSizes={sheetSizes}
-        value={knifeRanges}
-        onChange={(v) => { setKnifeRanges(v); onKnifeSizeRangesChange?.(v); }}
-      />
 
       {/* ── Capacity Cards: Pares/Dia em destaque (origem do cálculo)
             + Semana/Mês como derivados visualmente conectados.

@@ -31,6 +31,8 @@ export interface SectorSetting {
   start_offset_days?: number;
   /** Lançamento do chão pede a grade. Ausente até a migration 52000. */
   point_by_size?: boolean;
+  /** total | size | knife_range. Ausente até a migration 52100. */
+  point_by_size_mode?: 'total' | 'size' | 'knife_range' | string | null;
   updated_at: string;
 }
 

@@ -11,7 +11,7 @@ import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
 import { useOrderPointings } from '@/hooks/useOrderPointings';
 import { useSectorSettings } from '@/hooks/useProductionEngine';
 import { SizePointingLaunch, type SizeLaunchState } from '@/components/production/SizePointingFields';
-import { formatSizeBreakdown, negateSizeBreakdown } from '@/lib/production/sizePointing';
+import { formatSizeBreakdown, negateSizeBreakdown, sectorPointingMode } from '@/lib/production/sizePointing';
 import { sameStage } from '@/lib/production/stageFlow';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
@@ -91,9 +91,7 @@ export function DropApontarDialog({
   const [qty, setQty] = useState<number>(() => (isBackward ? 0 : Math.max(0, remaining)));
   const [sizeLaunch, setSizeLaunch] = useState<SizeLaunchState>({ mode: 'off', quantity: 0, breakdown: null });
   const { data: sectorSettings = [] } = useSectorSettings();
-  const pointBySize = !!pointedStage && sectorSettings.some(
-    sector => !!sector.point_by_size && sameStage(sector.sector, pointedStage.stage_name),
-  );
+  const pointBySize = !!pointedStage && sectorPointingMode(sectorSettings, pointedStage.stage_name, sameStage) != null;
   const sizeKey = `${pointedStage?.id ?? ''}:${isBackward}`;
   const [seenSizeKey, setSeenSizeKey] = useState(sizeKey);
   if (seenSizeKey !== sizeKey) {
@@ -102,7 +100,7 @@ export function DropApontarDialog({
   }
   const usingGrid = pointBySize && sizeLaunch.mode === 'grid';
   const effectiveQty = usingGrid ? sizeLaunch.quantity : qty;
-  const sizePending = pointBySize && sizeLaunch.mode !== 'grid' && sizeLaunch.mode !== 'fallback';
+  const sizePending = pointBySize && sizeLaunch.mode !== 'grid' && sizeLaunch.mode !== 'fallback' && sizeLaunch.mode !== 'total';
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
   // Aceite explícito do pulo de setor (decisão do dono 06/08/2026).
   const [skipOk, setSkipOk] = useState(false);
@@ -418,7 +416,7 @@ export function DropApontarDialog({
               />
             )}
 
-            {!readOnly && (!pointBySize || sizeLaunch.mode === 'fallback') && <div>
+            {!readOnly && (!pointBySize || sizeLaunch.mode === 'fallback' || sizeLaunch.mode === 'total') && <div>
               <Label htmlFor="kanban-pointing-quantity" className="text-xs">
                 {isBackward ? 'Pares a estornar' : 'Quantidade executada (pares)'}
               </Label>

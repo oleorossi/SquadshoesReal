@@ -45,6 +45,40 @@ describe('contador ao vivo da numeração', () => {
     expect(screen.getByText('15').className).toMatch(/amber/);
   });
 
+  it('na faixa P mostra 40/12 e bloqueia com a mensagem da faixa', () => {
+    function KnifeHarness() {
+      const [value, setValue] = useState<SizeMap>({ P: 0 });
+      return (
+        <SizePointingFields
+          kind="knife"
+          hints={{ P: '34·35' }}
+          balance={{
+            sizes: ['P'],
+            target: { P: 52 },
+            known: {},
+            pending: { P: 52 },
+            legacyUnallocated: 0,
+            pairRemaining: 52,
+            launchable: 52,
+          }}
+          backward={false}
+          value={value}
+          onChange={(size, next) => {
+            setValue(prev => ({ ...prev, [size]: clampSizeQuantity(next, 52) }));
+          }}
+        />
+      );
+    }
+    render(<KnifeHarness />);
+    expect(screen.getByText('34·35')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Faixa P'), { target: { value: '40' } });
+    expect(screen.getByText('40')).toBeInTheDocument();
+    expect(screen.getByText('12').className).toMatch(/amber/);
+    fireEvent.change(screen.getByLabelText('Faixa P'), { target: { value: '60' } });
+    expect(screen.getByLabelText('Faixa P')).toHaveValue('52');
+    expect(screen.getByRole('alert')).toHaveTextContent('Faixa P: 60 passa o saldo de 52 pares.');
+  });
+
   it('não deixa passar do saldo', () => {
     render(<Harness />);
     fireEvent.change(screen.getByLabelText('Numeração 34'), { target: { value: '80' } });

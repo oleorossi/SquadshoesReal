@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   clampSizeQuantity,
   formatSizeBreakdown,
+  knifeOverMessage,
+  knifeRangePlan,
+  knifeRangesForGrade,
   knownSizesFromPointings,
   negateSizeBreakdown,
   pointingSizeBalance,
   scaleSizesToTotal,
+  sectorPointingMode,
   sizeBreakdownFromEntries,
   sizeLaunchMeter,
+  KNIFE_RANGE_MISSING,
 } from '../sizePointing';
 
 describe('lançamento por numeração', () => {
@@ -90,6 +95,112 @@ describe('lançamento por numeração', () => {
   it('escala a grade da ficha para o total da OP sem perder par no arredondamento', () => {
     const scaled = scaleSizesToTotal({ '34': 2, '35': 1 }, 10);
     expect(sum(scaled)).toBe(10);
+  });
+});
+
+const RANGES = [
+  { label: 'P', sizes: ['34', '35'] },
+  { label: 'M', sizes: ['36', '37'] },
+  { label: 'G', sizes: ['38', '39', '40'] },
+];
+const GRADE = { '34': 6, '35': 8, '36': 10, '37': 12, '38': 8, '39': 4, '40': 2, '41': 3 };
+
+describe('lançamento por faixa de faca', () => {
+  it('soma a grade da faixa e trata o número de fora como faixa extra', () => {
+    const ranges = knifeRangesForGrade(RANGES, GRADE);
+    expect(ranges?.map(range => range.label)).toEqual(['P', 'M', 'G', '41']);
+    expect(ranges?.find(range => range.label === '41')?.extra).toBe(true);
+    const plan = knifeRangePlan({
+      grade: GRADE,
+      rangesRaw: RANGES,
+      quantityTotal: 53,
+      quantityProcessed: 0,
+      known: {},
+      launchablePairs: 53,
+      upstreamKnown: null,
+    });
+    expect(plan.mode).toBe('grid');
+    expect(plan.balance?.target).toEqual({ P: 14, M: 22, G: 14, '41': 3 });
+  });
+
+  it('parcial P 4 deixa 10 e o fechamento zera a faixa', () => {
+    const open = knifeRangePlan({
+      grade: GRADE,
+      rangesRaw: RANGES,
+      quantityTotal: 53,
+      quantityProcessed: 4,
+      known: { P: 4 },
+      launchablePairs: 49,
+      upstreamKnown: null,
+    });
+    expect(open.balance?.pending.P).toBe(10);
+    expect(open.balance?.known.P).toBe(4);
+    const closed = knifeRangePlan({
+      grade: GRADE,
+      rangesRaw: RANGES,
+      quantityTotal: 53,
+      quantityProcessed: 14,
+      known: { P: 14 },
+      launchablePairs: 39,
+      upstreamKnown: null,
+    });
+    expect(closed.balance?.pending.P).toBeUndefined();
+    expect(closed.balance?.target.P).toBe(14);
+  });
+
+  it('bloqueia a mensagem quando a faixa passa do saldo', () => {
+    expect(knifeOverMessage('P', 15, 12)).toBe('Faixa P: 15 passa o saldo de 12 pares.');
+  });
+
+  it('ficha sem faixa não monta grade', () => {
+    for (const raw of [null, undefined, [], {}]) {
+      const plan = knifeRangePlan({
+        grade: GRADE,
+        rangesRaw: raw,
+        quantityTotal: 53,
+        quantityProcessed: 0,
+        known: {},
+        launchablePairs: 53,
+        upstreamKnown: null,
+      });
+      expect(plan.mode).toBe('total');
+      expect(plan.warning).toBe(KNIFE_RANGE_MISSING);
+    }
+  });
+
+  it('a costura não passa do que o corte já lançou na faixa', () => {
+    const plan = knifeRangePlan({
+      grade: GRADE,
+      rangesRaw: RANGES,
+      quantityTotal: 53,
+      quantityProcessed: 0,
+      known: {},
+      launchablePairs: 53,
+      upstreamKnown: { P: 4, M: 0 },
+    });
+    expect(plan.balance?.pending.P).toBe(4);
+    expect(plan.balance?.pending.M).toBeUndefined();
+    expect(plan.balance?.pending.G).toBeUndefined();
+  });
+
+  it('corte lançado só pelo total não trava a faixa da costura', () => {
+    const plan = knifeRangePlan({
+      grade: GRADE,
+      rangesRaw: RANGES,
+      quantityTotal: 53,
+      quantityProcessed: 0,
+      known: {},
+      launchablePairs: 53,
+      upstreamKnown: null,
+    });
+    expect(plan.balance?.pending.P).toBe(14);
+  });
+
+  it('o modo do setor distingue faixa e numeração', () => {
+    const same = (a: string, b: string) => a === b;
+    expect(sectorPointingMode([{ sector: 'Corte Cabedal', point_by_size_mode: 'knife_range' }], 'Corte Cabedal', same)).toBe('knife_range');
+    expect(sectorPointingMode([{ sector: 'Palmilha · Fibra', point_by_size: true, point_by_size_mode: 'size' }], 'Palmilha · Fibra', same)).toBe('size');
+    expect(sectorPointingMode([{ sector: 'Montagem', point_by_size_mode: 'total' }], 'Montagem', same)).toBeNull();
   });
 });
 

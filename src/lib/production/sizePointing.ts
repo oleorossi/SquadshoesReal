@@ -179,6 +179,175 @@ interface PointingSizeRow {
   size_breakdown?: SizeMap | null;
 }
 
+export type PointingDetailMode = 'size' | 'knife_range';
+
+/** Setor lança por numeração ou por faixa de faca. `total` fica de fora. */
+export function sectorPointingMode(
+  sectors: readonly {
+    sector: string;
+    point_by_size?: boolean | null;
+    point_by_size_mode?: string | null;
+  }[],
+  stageName: string,
+  sameStage: (a: string, b: string) => boolean,
+): PointingDetailMode | null {
+  const hits = sectors.filter(sector => sameStage(sector.sector, stageName));
+  if (hits.some(sector => sector.point_by_size_mode === 'knife_range')) return 'knife_range';
+  if (hits.some(sector => sector.point_by_size_mode === 'size' || sector.point_by_size)) return 'size';
+  return null;
+}
+
+export const KNIFE_RANGE_MISSING = 'Ficha sem faixas P/M/G cadastradas';
+
+export interface KnifeRange {
+  label: string;
+  sizes: string[];
+  extra: boolean;
+}
+
+export interface KnifeRangePlan {
+  mode: 'grid' | 'total';
+  warning: string | null;
+  ranges: KnifeRange[];
+  balance: SizeBalance | null;
+}
+
+interface KnifeBucketInput {
+  label?: unknown;
+  sizes?: unknown;
+}
+
+/** Faixas gravadas na ficha. Vazio, nulo ou inválido = sem faixa. */
+export function parseKnifeRangeBuckets(raw: unknown): KnifeBucketInput[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const buckets = raw.filter((item): item is KnifeBucketInput => !!item && typeof item === 'object');
+  return buckets.length > 0 ? buckets : null;
+}
+
+/**
+ * Faixas da ficha contra a grade da OP. Numeração fora de toda faixa vira
+ * uma faixa com o próprio número, para o par não ficar sem caminho.
+ */
+export function knifeRangesForGrade(raw: unknown, grade: SizeMap | null | undefined): KnifeRange[] | null {
+  const buckets = parseKnifeRangeBuckets(raw);
+  if (!buckets) return null;
+  const positive = positiveSizes(grade);
+  const used = new Set<string>();
+  const ranges: KnifeRange[] = [];
+  const byLabel = new Map<string, KnifeRange>();
+
+  for (const bucket of buckets) {
+    const label = String(bucket.label ?? '').trim();
+    if (!label || label.startsWith('_')) continue;
+    const listed = Array.isArray(bucket.sizes) ? bucket.sizes : [];
+    const sizes: string[] = [];
+    for (const item of listed) {
+      const size = String(item ?? '').trim();
+      if (!size || used.has(size) || !(positive[size] > 0)) continue;
+      used.add(size);
+      sizes.push(size);
+    }
+    if (sizes.length === 0) continue;
+    const existing = byLabel.get(label);
+    if (existing) {
+      existing.sizes.push(...sizes);
+      continue;
+    }
+    const range: KnifeRange = { label, sizes, extra: false };
+    byLabel.set(label, range);
+    ranges.push(range);
+  }
+
+  for (const size of Object.keys(positive).sort(sizeSort)) {
+    if (used.has(size)) continue;
+    ranges.push({ label: size, sizes: [size], extra: true });
+  }
+  return ranges.length > 0 ? ranges : null;
+}
+
+export function rangeTargetMap(ranges: readonly KnifeRange[], grade: SizeMap | null | undefined): SizeMap {
+  const positive = positiveSizes(grade);
+  const out: SizeMap = {};
+  for (const range of ranges) {
+    const total = range.sizes.reduce((sum, size) => sum + (positive[size] || 0), 0);
+    if (total > 0) out[range.label] = total;
+  }
+  return out;
+}
+
+/**
+ * Teto da Costura = o que o Corte já lançou naquela faixa, menos o que a
+ * Costura já lançou. `upstreamKnown` nulo = sem teto (Corte lançou só o
+ * total, ou não há setor de faixa anterior).
+ */
+export function capPendingByUpstream(
+  pending: SizeMap,
+  known: SizeMap,
+  upstreamKnown: SizeMap | null,
+): SizeMap {
+  if (!upstreamKnown) return pending;
+  const out: SizeMap = {};
+  for (const [label, qty] of Object.entries(positiveSizes(pending))) {
+    const room = Math.max(0, (upstreamKnown[label] || 0) - (known[label] || 0));
+    const next = Math.min(qty, room);
+    if (next > 0) out[label] = next;
+  }
+  return out;
+}
+
+export function knifeRangePlan(input: {
+  grade: SizeMap | null | undefined;
+  rangesRaw: unknown;
+  quantityTotal: number;
+  quantityProcessed: number;
+  known: SizeMap | null | undefined;
+  launchablePairs: number;
+  upstreamKnown: SizeMap | null;
+}): KnifeRangePlan {
+  if (!parseKnifeRangeBuckets(input.rangesRaw)) {
+    return { mode: 'total', warning: KNIFE_RANGE_MISSING, ranges: [], balance: null };
+  }
+  const ranges = knifeRangesForGrade(input.rangesRaw, input.grade);
+  if (!ranges) {
+    return { mode: 'total', warning: null, ranges: [], balance: null };
+  }
+  const target = rangeTargetMap(ranges, input.grade);
+  const known = positiveSizes(input.known);
+  const total = Math.max(0, Math.trunc(Number(input.quantityTotal) || 0));
+  const processed = Math.max(0, Math.trunc(Number(input.quantityProcessed) || 0));
+  const knownSum = sumSizes(known);
+  const pairRemaining = Math.max(0, total - processed);
+  const launchable = Math.max(0, Math.min(Math.trunc(Number(input.launchablePairs) || 0), pairRemaining));
+  const raw: SizeMap = {};
+  for (const [label, qty] of Object.entries(target)) {
+    const left = qty - (known[label] || 0);
+    if (left > 0) raw[label] = left;
+  }
+  const pending = capPendingByUpstream(
+    sumSizes(raw) > launchable ? scaleSizesToTotal(raw, launchable) : raw,
+    known,
+    input.upstreamKnown,
+  );
+  return {
+    mode: 'grid',
+    warning: null,
+    ranges,
+    balance: {
+      sizes: ranges.map(range => range.label),
+      target,
+      known,
+      pending,
+      legacyUnallocated: Math.max(0, processed - knownSum),
+      pairRemaining,
+      launchable,
+    },
+  };
+}
+
+export function knifeOverMessage(label: string, attempted: number, cap: number): string {
+  return `Faixa ${label}: ${attempted} passa o saldo de ${cap} pares.`;
+}
+
 /** Soma líquida dos lançamentos que gravaram numeração neste setor. */
 export function knownSizesFromPointings(
   rows: readonly PointingSizeRow[],

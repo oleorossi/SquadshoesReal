@@ -14,8 +14,8 @@ import type { Icon as LucideIcon } from '@phosphor-icons/react';
 import { OrderStage, useUpdateOrderStage, useOrderStages, useApontarProducao, ApontarResult, PointingWarning } from '@/hooks/useOrderStages';
 import { useSectorSettings } from '@/hooks/useProductionEngine';
 import { SizePointingLaunch, type SizeLaunchState } from '@/components/production/SizePointingFields';
-import { sameStage } from '@/lib/production/stageFlow';
-import { findBlockingStage, inboundAvailability } from '@/lib/production/stageFlow';
+import { sectorPointingMode } from '@/lib/production/sizePointing';
+import { findBlockingStage, inboundAvailability, sameStage } from '@/lib/production/stageFlow';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -147,9 +147,7 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
 
   if (!stage) return null;
 
-  const pointBySize = sectorSettings.some(
-    sector => !!sector.point_by_size && sameStage(sector.sector, stage.stage_name),
-  );
+  const pointBySize = sectorPointingMode(sectorSettings, stage.stage_name, sameStage) != null;
   const usingGrid = pointBySize && sizeLaunch.mode === 'grid';
   const addedNow = usingGrid
     ? sizeLaunch.quantity
@@ -391,7 +389,7 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
           />
 
           {/* Quantity processed — setores sem grade, ou OP sem numeração */}
-          {(!pointBySize || sizeLaunch.mode === 'fallback') && (
+          {(!pointBySize || sizeLaunch.mode === 'fallback' || sizeLaunch.mode === 'total') && (
           <div>
             <Label>Quantidade Processada</Label>
             <div className="flex items-center gap-3 mt-1">

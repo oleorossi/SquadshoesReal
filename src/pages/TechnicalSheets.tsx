@@ -4696,7 +4696,7 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
              <div>
                <div className="text-sm font-bold">Fluxo de Produção</div>
                <div className="text-xs text-muted-foreground">
-                 Setores ativos + capacidades por dia + lead times. Define como a ficha entra no sistema de ondas.
+                 Setores ativos + capacidades por dia + lead times. As faixas P/M/G do cabedal ficam em Facas de Corte, logo abaixo da rota.
                </div>
              </div>
            </div>
