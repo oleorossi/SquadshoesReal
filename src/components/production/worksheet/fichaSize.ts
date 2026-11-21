@@ -133,3 +133,62 @@ export function resolveFicha(
     exact: false,
   };
 }
+
+function gradeText(grid: Record<string, number>): string {
+  const keys = Object.keys(grid).sort((a, b) => {
+    const na = Number(a.split('/')[0]);
+    const nb = Number(b.split('/')[0]);
+    if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+    return a.localeCompare(b, 'pt-BR');
+  });
+  return keys.map((key) => `${key}:${grid[key]}`).join(' ');
+}
+
+function pairsToClose(total: number): { add: number; corrugado: number } | null {
+  if (total <= 0) return null;
+  let best: { add: number; corrugado: number } | null = null;
+  for (const corrugado of CORRUGADOS) {
+    const rest = total % corrugado;
+    const add = rest === 0 ? 0 : corrugado - rest;
+    if (add === 0) continue;
+    if (!best || add < best.add || (add === best.add && corrugado < best.corrugado)) {
+      best = { add, corrugado };
+    }
+  }
+  return best;
+}
+
+/**
+ * NULL quando a grade fecha em fichas inteiras de 12, 15 ou 18.
+ * Grade vazia com quantidade zero não é pedido ainda. Qualquer `exact: false`
+ * de resolveFicha é inválido.
+ */
+export function fichaGradeBlockMessage(input: {
+  totalPairs: number;
+  grade: Record<string, number> | null | undefined;
+  label?: string;
+}): string | null {
+  const total = Number(input.totalPairs) || 0;
+  const grid = cleanGrid(input.grade);
+  const sum = Object.values(grid).reduce((acc, value) => acc + value, 0);
+  if (total <= 0 && sum <= 0) return null;
+  const resolved = resolveFicha(total, grid);
+  if (resolved.exact) return null;
+
+  const who = input.label ? ` de ${input.label}` : '';
+  const curve = sum > 0 ? ` Grade ${gradeText(grid)}.` : ' Sem grade por numeração.';
+  const dividing = CORRUGADOS.filter((size) => total > 0 && total % size === 0 && total / size >= 1);
+  if (dividing.length > 0 && sum > 0) {
+    const corrugado = dividing[0];
+    const fichas = total / corrugado;
+    const broken = Object.entries(grid)
+      .filter(([, qty]) => qty % fichas !== 0)
+      .map(([size, qty]) => `${size} (${qty})`);
+    return `A grade${who} soma ${total} pares e caberia em ${fichas} fichas de ${corrugado}, mas a numeração ${broken.join(', ') || 'informada'} não fecha ficha inteira.${curve}`;
+  }
+  const next = pairsToClose(total);
+  const gap = next
+    ? ` Faltam ${next.add} pares para fechar em ${next.corrugado}.`
+    : '';
+  return `A grade${who} não fecha em ficha de 12, 15 ou 18. Total ${total} pares.${curve}${gap}`;
+}

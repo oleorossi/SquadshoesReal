@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveFicha, CORRUGADOS } from '../fichaSize';
+import { resolveFicha, CORRUGADOS, fichaGradeBlockMessage } from '../fichaSize';
 
 describe('resolveFicha', () => {
   it('exporta os três corrugados físicos canônicos', () => {
@@ -166,6 +166,28 @@ describe('resolveFicha', () => {
     expect(r.fichas).toBe(10);
     expect(r.exact).toBe(true);
     expect(r.baseCurve).toEqual({ '35': 1, '36': 3, '37': 4, '38': 2, '39': 2 });
+  });
+
+  it('grade que não fecha explica o que falta e a que fecha passa', () => {
+    expect(fichaGradeBlockMessage({
+      totalPairs: 13,
+      grade: { '34': 2, '35': 3, '36': 4, '37': 4 },
+      label: 'PRETO',
+    })).toMatch(/PRETO/);
+    expect(fichaGradeBlockMessage({
+      totalPairs: 13,
+      grade: { '34': 2, '35': 3, '36': 4, '37': 4 },
+    })).toMatch(/Faltam 2 pares para fechar em 15/);
+    expect(fichaGradeBlockMessage({
+      totalPairs: 120,
+      grade: { '35': 11, '36': 29, '37': 40, '38': 20, '39': 20 },
+      label: 'OFF WHITE',
+    })).toMatch(/35 \(11\)/);
+    expect(fichaGradeBlockMessage({
+      totalPairs: 120,
+      grade: { '35': 10, '36': 30, '37': 40, '38': 20, '39': 20 },
+    })).toBeNull();
+    expect(fichaGradeBlockMessage({ totalPairs: 0, grade: {} })).toBeNull();
   });
 
   it('chaves conjugadas ("33/34") passam intactas na curva', () => {

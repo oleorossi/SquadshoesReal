@@ -5,6 +5,7 @@ import { ArrowLeft, FileMagnifyingGlass as FileSearch, ArrowCounterClockwise as 
 // `newISO` é date-only: `new Date(iso)` parseia UTC e o toast confirmava o dia
 // ANTERIOR ao que era gravado em `delivery_deadline`.
 import { formatDateBR } from '@/lib/dateOnly';
+import { fichaGradeBlockMessage } from '@/components/production/worksheet/fichaSize';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -1801,6 +1802,19 @@ export default function SaleOrderForm() {
     if (productionItems.some(i => i.quantity <= 0)) {
       toast.error('A quantidade dos itens deve ser maior que zero.');
       return;
+    }
+    {
+      const broken = productionItems
+        .map((item) => fichaGradeBlockMessage({
+          totalPairs: item.quantity,
+          grade: item.grade as Record<string, number>,
+          label: item.color?.trim() || 'item sem cor',
+        }))
+        .find(Boolean);
+      if (broken) {
+        toast.error(broken, { duration: 9000 });
+        return;
+      }
     }
     // Audit visual: factoring marcado sem config selecionada criava registro
     // inválido (is_factoring=true, factoring_config_id='') que quebrava o

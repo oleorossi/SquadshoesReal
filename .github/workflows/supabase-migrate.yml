@@ -215,7 +215,7 @@ jobs:
           # schema_migrations. Bootstrap via psql (conexão direta) + repair —
           # padrão do stamp 19900.
           # 50600 via psql para o NOTICE do PV-00255 aparecer no log do Actions.
-          for stamp in 20270101022600 20270101050600 20270101050700 20270101050800 20270101050900 20270101052100 20270101052200 20270101052300 20270101052400; do
+          for stamp in 20270101022600 20270101050600 20270101050700 20270101050800 20270101050900 20270101052100 20270101052200 20270101052300 20270101052400 20270101052600; do
             shopt -s nullglob
             matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
             shopt -u nullglob
@@ -243,7 +243,7 @@ jobs:
           # Stamps já aplicados no banco mas sem registro sob o carimbo local
           # (ou 46900 ainda pendente). Registro via psql — NÃO usar
           # `migration repair` (exige link/PAT; run 43770073904).
-          for stamp in 20270101019200 20270101019900 20270101022600 20270101046900 20270101050600 20270101050700 20270101050800 20270101050900 20270101052100 20270101052200 20270101052300 20270101052400; do
+          for stamp in 20270101019200 20270101019900 20270101022600 20270101046900 20270101050600 20270101050700 20270101050800 20270101050900 20270101052100 20270101052200 20270101052300 20270101052400 20270101052600; do
             shopt -s nullglob
             matches=("${SUPABASE_MIGRATION_WORKDIR}/supabase/migrations/${stamp}_"*.sql)
             shopt -u nullglob
