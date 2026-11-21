@@ -1277,6 +1277,8 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
       toast.success(invoiceId
         ? 'Entrada feita e nota ligada à ordem.'
         : 'Entrada feita. A nota pode ser ligada depois.');
+      const { refreshCabedalMotorAfterInbound } = await import('@/lib/cabedalMotorApplyClient');
+      void refreshCabedalMotorAfterInbound().catch(() => undefined);
       setReceiveAllOpen(false);
       void openInboundAllocationReview({
         productIds: items.map((it) => it.product_id).filter((id): id is string => !!id),

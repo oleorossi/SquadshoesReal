@@ -1,14 +1,20 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { PurchaseGenerateBoard } from '@/components/financial/PurchaseGenerateBoard';
 import {
   allocateStock,
   DEFAULT_MOTOR_SETTINGS,
+  purchaseLineKey,
   suggestPurchases,
   type MotorSettings,
   type PlanDemand,
+  type PurchaseSuggestion,
   type StockPool,
 } from '@/lib/cabedalPlanningMotor';
+import { planFromMotorSnapshot, planMotorApply } from '@/lib/cabedalMotorApply';
+import { persistCabedalMotorPlan } from '@/lib/cabedalMotorApplyClient';
+import { toast } from 'sonner';
 
 interface SnapshotMaterial {
   product_id: string;
@@ -61,6 +67,11 @@ export function PurchaseGeneratePanel({ mode }: { mode: 'fornecedor' | 'pedido' 
       return (data ?? {}) as Snapshot;
     },
   });
+
+  useEffect(() => {
+    if (query.data?.motor_enabled !== true) return;
+    void persistCabedalMotorPlan(planFromMotorSnapshot(query.data, todayIso())).catch(() => undefined);
+  }, [query.data]);
 
   if (query.isLoading) {
     return <p className="text-sm text-muted-foreground">Lendo pedidos aprovados…</p>;
@@ -121,6 +132,46 @@ export function PurchaseGeneratePanel({ mode }: { mode: 'fornecedor' | 'pedido' 
   const today = todayIso();
   const allocation = allocateStock(items, stock, settings);
   const lines = suggestPurchases(items, allocation, settings, today);
+  const plan = planMotorApply({
+    enabled: settings.enabled,
+    items,
+    allocation,
+    purchases: lines,
+    settings,
+    todayIso: today,
+  });
+
+  const generate = async (picked: PurchaseSuggestion[]) => {
+    if (!settings.enabled) return;
+    const pickedKeys = new Set(picked.map(purchaseLineKey));
+    const groups = plan.purchases
+      .map((group) => ({ ...group, lines: group.lines.filter((line) => pickedKeys.has(purchaseLineKey(line))) }))
+      .filter((group) => group.lines.length > 0);
+    const { data, error } = await supabase.rpc('create_cabedal_motor_purchase_orders' as never, {
+      p_groups: groups.map((group) => ({
+        supplier_id: group.supplierId,
+        supplier_name: group.supplierName,
+        group_key: group.groupKey,
+        lines: group.lines.map((line) => ({
+          product_id: line.productId,
+          quantity: line.quantity,
+          unit: line.unit,
+          unit_price: line.unitPrice,
+          sale_order_id: line.saleOrderId,
+          need_date: line.needDate,
+          buy_by: line.buyBy,
+          urgent: line.urgent,
+        })),
+      })),
+    } as never);
+    if (error) throw error;
+    const result = data as { applied?: boolean; created?: number; reason?: string } | null;
+    if (!result?.applied) {
+      toast.message(result?.reason || 'Motor desligado. Nenhuma OC foi gravada.');
+      return;
+    }
+    toast.success(result.created ? `${result.created} OC gerada pelo motor.` : 'Nenhuma OC nova nesta seleção.');
+  };
 
   return (
     <div className="space-y-3">
@@ -128,7 +179,13 @@ export function PurchaseGeneratePanel({ mode }: { mode: 'fornecedor' | 'pedido' 
         Mesma base nas duas visões. Urgente no topo, depois quem precisa comprar antes; empate fica com o cabedal complexo.
         Pedido sem semana de faturamento não ganha data inventada.
       </p>
-      <PurchaseGenerateBoard lines={lines} today={today} motorEnabled={settings.enabled} mode={mode} />
+      <PurchaseGenerateBoard
+        lines={lines}
+        today={today}
+        motorEnabled={settings.enabled}
+        mode={mode}
+        onGenerate={settings.enabled ? generate : undefined}
+      />
     </div>
   );
 }

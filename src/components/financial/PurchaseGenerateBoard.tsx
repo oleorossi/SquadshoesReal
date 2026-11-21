@@ -18,6 +18,7 @@ interface Props {
   today: string;
   motorEnabled: boolean;
   mode: PurchaseBoardMode;
+  onGenerate?: (lines: PurchaseSuggestion[]) => Promise<void>;
 }
 
 const EMPTY_FILTERS = {
@@ -28,7 +29,7 @@ const EMPTY_FILTERS = {
   week: '',
 };
 
-export function PurchaseGenerateBoard({ lines, today, motorEnabled, mode }: Props) {
+export function PurchaseGenerateBoard({ lines, today, motorEnabled, mode, onGenerate }: Props) {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -76,7 +77,13 @@ export function PurchaseGenerateBoard({ lines, today, motorEnabled, mode }: Prop
       toast.message('Motor desligado. Nenhuma OC foi gravada. A seleção cabe numa OC deste fornecedor.');
       return;
     }
-    toast.message('A gravação da OC pelo motor ainda não está ativada. Nada foi criado.');
+    if (!onGenerate) {
+      toast.message('A gravação da OC pelo motor ainda não está ativada. Nada foi criado.');
+      return;
+    }
+    void onGenerate(picked).catch((error: Error) => {
+      toast.error(error.message || 'Não foi possível gerar a OC.');
+    });
   };
 
   return (
