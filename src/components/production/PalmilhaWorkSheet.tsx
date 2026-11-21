@@ -192,9 +192,6 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             const tallyPerCard = grpBgs > 0 ? grpBgs : pairsPerCard;
             const cards = grpNf > 0 ? grpNf : Math.max(1, Math.ceil(group.totalPairs / tallyPerCard));
             const tallyTitle = group.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : undefined;
-            const fichaBlocks = !group.mixedGrades && group.baseGrade && grpNf > 0
-              ? splitFichasIntoBlocks({ fichas: grpNf, curve: group.baseGrade, sizes: groupSizes })
-              : [];
             const alerts: SectorAlert[] = [];
             if (group.readyMade) {
               alerts.push({ text: 'Palmilha PRONTA NA COR — não cortar, separar da ficha técnica.', variant: 'info' });
@@ -205,6 +202,9 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             // deles entra. Reduz colunas vazias e economiza largura
             // horizontal (especialmente importante em fichas com 3+ cores).
             const groupSizes = palmilhaGroupSizes(allSizes, group);
+            const fichaBlocks = !group.mixedGrades && group.baseGrade && grpNf > 0
+              ? splitFichasIntoBlocks({ fichas: grpNf, curve: group.baseGrade, sizes: groupSizes })
+              : [];
             // Fontes adaptativas pela qtd de colunas (2026-06-12) — grades
             // densas (mista infantil+adulto) cortavam com fonte fixa.
             const ft = gradeTableFont(groupSizes, false);
