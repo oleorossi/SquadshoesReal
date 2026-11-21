@@ -25,9 +25,14 @@ interface NumberInputProps {
   autoFocus?: boolean;
   /** Teclado virtual: `numeric` pra inteiros (grade), `decimal` pro resto. */
   inputMode?: 'decimal' | 'numeric';
+  /** Nome acessível quando o rótulo visível não está amarrado ao campo. */
+  'aria-label'?: string;
+  /** Teto inclusivo. Acima dele o campo volta para o máximo e avisa `onClamp`. */
+  max?: number;
+  onClamp?: () => void;
 }
 
-export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled, unit, autoFocus, inputMode = 'decimal' }: NumberInputProps) {
+export function NumberInput({ value, onChange, id, className, required, min = 0, step = "0.0001", placeholder, decimals = 6, disabled, unit, autoFocus, inputMode = 'decimal', 'aria-label': ariaLabel, max, onClamp }: NumberInputProps) {
   const [displayValue, setDisplayValue] = React.useState("");
 
   const formatValue = (num: number | string | null | undefined): string => {
@@ -72,6 +77,14 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
     setDisplayValue(raw);
     const parsed = parseFloat(raw);
     if (Number.isFinite(parsed)) {
+      if (max != null && parsed > max) {
+        const capped = max;
+        prevValueRef.current = capped;
+        setDisplayValue(formatValue(capped));
+        onChange(capped);
+        onClamp?.();
+        return;
+      }
       prevValueRef.current = parsed;
       onChange(parsed);
     } else {
@@ -95,6 +108,7 @@ export function NumberInput({ value, onChange, id, className, required, min = 0,
     <input
       id={id}
       type="text"
+      aria-label={ariaLabel}
       inputMode={inputMode}
       value={displayValue}
       onChange={handleChange}

@@ -234,6 +234,14 @@ export default function ProducaoSetoresConfig() {
                       />
                       Material reservado
                     </label>
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                      <Switch
+                        checked={!!s.point_by_size}
+                        onCheckedChange={v => update.mutate({ sector: s.sector, point_by_size: v })}
+                        disabled={!canEdit}
+                      />
+                      Lançamento por numeração
+                    </label>
                     {/* Liga/desliga do fluxo global (R1.5: ficha com override mantém o setor) */}
                     <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
                       <Switch
@@ -267,7 +275,9 @@ export default function ProducaoSetoresConfig() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        Setores marcados com ‖ rodam em paralelo (preparação). A ordem daqui define o fluxo
+        “Lançamento por numeração” pede a grade na janela de apontamento (fibra, forração
+        e acabamento de palmilha). O total de pares continua sendo a soma. Setores
+        marcados com ‖ rodam em paralelo (preparação). A ordem daqui define o fluxo
         de toda OP cuja ficha técnica não tem a parte de setores preenchida — quando tem,
         vale a ficha (badge "ficha" no Planejamento e no Kanban). “Dias antes” antecipa o
         setor no planejamento (Aviamento e Costura Cabedal saem antes do PV entrar em

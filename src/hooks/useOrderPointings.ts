@@ -30,6 +30,8 @@ export interface OrderPointing {
   confirmed_warnings: string[] | null;
   /** Nome de quem lançou, resolvido de `profiles` (pode faltar em linha antiga). */
   author_name: string | null;
+  /** Pares deste lançamento por numeração. null = só o total. */
+  size_breakdown: Record<string, number> | null;
 }
 
 export function useOrderPointings(orderId: string | null | undefined) {
@@ -42,7 +44,7 @@ export function useOrderPointings(orderId: string | null | undefined) {
     queryFn: async (): Promise<OrderPointing[]> => {
       const { data, error } = await supabase
         .from('production_pointings')
-        .select('id, order_id, order_stage_id, stage_name, quantity, note, created_at, created_by, confirmed_warnings')
+        .select('id, order_id, order_stage_id, stage_name, quantity, note, created_at, created_by, confirmed_warnings, size_breakdown')
         .eq('order_id', orderId!)
         .order('created_at', { ascending: false });
       if (error) throw error;
