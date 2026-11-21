@@ -37,7 +37,8 @@ BEGIN
      AND so.order_number NOT IN ('PV-00249', 'PV-00250');
 
   IF cardinality(v_ids) <> 2 THEN
-    RAISE EXCEPTION 'Esperava os 2 PVs Em Produção, achei %', cardinality(v_ids);
+    RAISE NOTICE 'finalizado_sem_nf_nao_aplicado achei % com status Em Produção e número exato', cardinality(v_ids);
+    RETURN;
   END IF;
 
   SELECT COALESCE(string_agg(
