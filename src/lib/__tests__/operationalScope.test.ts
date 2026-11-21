@@ -41,6 +41,25 @@ describe('telas operacionais não mostram PV terminal', () => {
     }
   });
 
+  it('PV apagado some do aviso, da etiquetagem, da Gestão e do chão', () => {
+    expect(saleOrderEligibleForLabels({
+      saleOrderId: 'pv-142',
+      scheduled: true,
+      saleOrderStatus: 'Em Produção',
+      saleOrderDeletedAt: '2026-09-07T00:00:00Z',
+    })).toBe(false);
+    expect(productionOrderVisibleOperationally({
+      orderStatus: 'Cancelada',
+      saleOrderStatus: 'Em Produção',
+      saleOrderDeletedAt: '2026-09-07T00:00:00Z',
+    })).toBe(false);
+    expect(queueRowVisibleOperationally({
+      orderStatus: 'Em Produção',
+      saleOrderStatus: 'Em Produção',
+      saleOrderDeletedAt: '2026-09-07T00:00:00Z',
+    })).toBe(false);
+  });
+
   it('Em Produção com OP viva continua na etiquetagem e na Gestão', () => {
     expect(saleOrderEligibleForLabels({
       saleOrderId: 'pv-255',

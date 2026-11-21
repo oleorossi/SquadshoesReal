@@ -122,6 +122,7 @@ export function LabelManualTab() {
       const { data } = await supabase
         .from('sale_orders')
         .select('id, order_number, client_name, status, billing_week, delivery_deadline')
+        .is('deleted_at', null)
         .in('status', ['Aprovado', 'Em Produção', 'Pendente'])
         .order('created_at', { ascending: false })
         .limit(200);

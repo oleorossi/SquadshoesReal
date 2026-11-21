@@ -298,24 +298,25 @@ export function useProductionQueueDetail() {
         }
       }
 
-      const saleOrderStatus = new Map<string, string | null>();
+      const saleOrderStatus = new Map<string, { status: string | null; deletedAt: string | null }>();
       const saleOrderIds = [...new Set(rows.map((r) => r.sale_order_id).filter(Boolean))] as string[];
       for (let i = 0; i < saleOrderIds.length; i += CHUNK) {
         const chunk = saleOrderIds.slice(i, i + CHUNK);
         const { data: saleRows, error: saleErr } = await supabase
           .from('sale_orders')
-          .select('id, status')
+          .select('id, status, deleted_at')
           .in('id', chunk);
         if (saleErr) throw saleErr;
         for (const row of saleRows || []) {
-          saleOrderStatus.set(row.id, row.status);
+          saleOrderStatus.set(row.id, { status: row.status, deletedAt: row.deleted_at });
         }
       }
 
       return rows
         .filter((r) => queueRowVisibleOperationally({
           orderStatus: r.order_status,
-          saleOrderStatus: r.sale_order_id ? saleOrderStatus.get(r.sale_order_id) : null,
+          saleOrderStatus: r.sale_order_id ? saleOrderStatus.get(r.sale_order_id)?.status : null,
+          saleOrderDeletedAt: r.sale_order_id ? saleOrderStatus.get(r.sale_order_id)?.deletedAt : null,
         }))
         .map((r) => ({
           ...r,

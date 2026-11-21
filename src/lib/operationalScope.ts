@@ -25,17 +25,28 @@ export function isTerminalSaleOrderStatus(status: unknown): boolean {
   return TERMINAL_SALE_ORDER_SET.has(String(status ?? '').trim().toLowerCase());
 }
 
-export function isDeletedProductionOrder(deletedAt: unknown): boolean {
+export function isSoftDeleted(deletedAt: unknown): boolean {
   return deletedAt != null && String(deletedAt).trim() !== '';
 }
 
-/** OP que ainda é trabalho de fábrica. PV terminal, cancelada ou apagada sai. */
+export function isDeletedProductionOrder(deletedAt: unknown): boolean {
+  return isSoftDeleted(deletedAt);
+}
+
+/** PV com deleted_at saiu das telas. O status pode continuar Em Produção. */
+export function isDeletedSaleOrder(deletedAt: unknown): boolean {
+  return isSoftDeleted(deletedAt);
+}
+
+/** OP que ainda é trabalho de fábrica. PV terminal, apagado, ou OP cancelada/apagada sai. */
 export function productionOrderVisibleOperationally(input: {
   orderStatus: unknown;
   deletedAt?: unknown;
   saleOrderStatus?: unknown;
+  saleOrderDeletedAt?: unknown;
 }): boolean {
   if (isDeletedProductionOrder(input.deletedAt)) return false;
+  if (isDeletedSaleOrder(input.saleOrderDeletedAt)) return false;
   if (isCancelledOrDraftOrder(input.orderStatus)) return false;
   if (isTerminalSaleOrderStatus(input.saleOrderStatus)) return false;
   return true;
@@ -45,9 +56,11 @@ export function productionOrderVisibleOperationally(input: {
 export function queueRowVisibleOperationally(input: {
   orderStatus: unknown;
   saleOrderStatus?: unknown;
+  saleOrderDeletedAt?: unknown;
 }): boolean {
   return productionOrderVisibleOperationally({
     orderStatus: input.orderStatus,
     saleOrderStatus: input.saleOrderStatus,
+    saleOrderDeletedAt: input.saleOrderDeletedAt,
   });
 }

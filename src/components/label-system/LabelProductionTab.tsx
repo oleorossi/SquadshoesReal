@@ -1185,6 +1185,7 @@ export function LabelProductionTab() {
       saleOrderId: o.sale_order_id,
       scheduled: scheduledSaleOrderIds.has(o.sale_order_id),
       saleOrderStatus: saleOrdersMap.get(o.sale_order_id)?.status,
+      saleOrderDeletedAt: saleOrdersMap.get(o.sale_order_id)?.deleted_at,
     }),
   );
 
@@ -1208,6 +1209,7 @@ export function LabelProductionTab() {
       orderStatus: o.status,
       deletedAt: o.deleted_at,
       saleOrderStatus: saleOrdersMap.get(o.sale_order_id)?.status,
+      saleOrderDeletedAt: saleOrdersMap.get(o.sale_order_id)?.deleted_at,
     }),
   );
   const clearSaleOrderFilter = () => {
