@@ -4,6 +4,8 @@ import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { A4_CONTENT_WIDTH_PX, gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
+import { FichaBlocks } from './worksheet/FichaBlocks';
+import { splitFichasIntoBlocks } from './worksheet/fichaBlocks';
 import { TALLY_SIZE, STEP_CHECKBOX_PX, STEP_ROW_PAD_Y } from './worksheet/density';
 import { fitBesideGrade, thumbRowWidthPx } from './worksheet/sideBySide';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
@@ -190,6 +192,9 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             const tallyPerCard = grpBgs > 0 ? grpBgs : pairsPerCard;
             const cards = grpNf > 0 ? grpNf : Math.max(1, Math.ceil(group.totalPairs / tallyPerCard));
             const tallyTitle = group.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : undefined;
+            const fichaBlocks = !group.mixedGrades && group.baseGrade && grpNf > 0
+              ? splitFichasIntoBlocks({ fichas: grpNf, curve: group.baseGrade, sizes: groupSizes })
+              : [];
             const alerts: SectorAlert[] = [];
             if (group.readyMade) {
               alerts.push({ text: 'Palmilha PRONTA NA COR — não cortar, separar da ficha técnica.', variant: 'info' });
@@ -489,6 +494,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                 <div className="px-2 pb-1 pt-1 border-t border-black">
                   <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
                 </div>
+                <FichaBlocks blocks={fichaBlocks} sizes={groupSizes} pairsPerFicha={tallyPerCard} />
               </div>
             );
             return [

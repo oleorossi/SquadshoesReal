@@ -2,6 +2,8 @@ import React from 'react';
 import { Scissors } from '@phosphor-icons/react';
 import { gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { TallyBox } from './worksheet/TallyBox';
+import { FichaBlocks } from './worksheet/FichaBlocks';
+import { splitFichasIntoBlocks } from './worksheet/fichaBlocks';
 import {
   TALLY_SIZE,
   STEP_CHECKBOX_PX,
@@ -547,6 +549,13 @@ export function PalmilhaUnifiedWorkSheet({
               title={card.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : 'Controle de Fichas'}
             />
           </div>
+          {!card.mixedGrades && card.baseGrade && grpNf > 0 && (
+            <FichaBlocks
+              blocks={splitFichasIntoBlocks({ fichas: grpNf, curve: card.baseGrade, sizes: groupSizes })}
+              sizes={groupSizes}
+              pairsPerFicha={tallyPerCard}
+            />
+          )}
         </div>
       );
 
