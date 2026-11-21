@@ -1,6 +1,6 @@
 -- Teste do lançamento por faixa de faca (Corte Cabedal / Costura Cabedal).
 --
--- Rode no banco DEPOIS da migration 20270101052100, como superusuário:
+-- Rode no banco DEPOIS da migration 20270101052500, como superusuário:
 --   psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f scripts/teste-lancamento-faixa.sql
 --
 -- O bloco cria ficha, PV e OP só dentro da própria transação e termina com

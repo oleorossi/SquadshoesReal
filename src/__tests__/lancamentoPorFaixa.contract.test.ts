@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const migration = readFileSync(resolve(
   __dirname,
-  '../../supabase/migrations/20270101052100_lancamento_por_faixa_de_faca.sql',
+  '../../supabase/migrations/20270101052500_lancamento_por_faixa_de_faca.sql',
 ), 'utf8');
 
 describe('lançamento por faixa de faca — migration aditiva', () => {
