@@ -26,6 +26,7 @@ import {
   type ClientHistory,
 } from '@/lib/mobile/clientContext';
 import { searchMatchesAllTerms, searchNormOrFilter } from '@/lib/searchUtils';
+import { fichaGradeBlockMessage } from '@/components/production/worksheet/fichaSize';
 import { SearchInput } from '@/components/ui/search-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ZoomableImage } from '@/components/ui/image-lightbox';
@@ -1979,6 +1980,22 @@ export default function MobileNewOrder() {
     if (items.length === 0 || totalPairs === 0) {
       toast.error('Adicione ao menos 1 item com quantidade');
       return;
+    }
+    {
+      const broken = items
+        .map((item) => {
+          const total = Object.values(item.grade).reduce((sum, value) => sum + (value || 0), 0);
+          return fichaGradeBlockMessage({
+            totalPairs: total,
+            grade: item.grade,
+            label: `${item.reference_name || 'item'} ${item.color || ''}`.trim(),
+          });
+        })
+        .find(Boolean);
+      if (broken) {
+        toast.error(broken, { duration: 9000 });
+        return;
+      }
     }
     if (priceLookupLoading) {
       toast.error('Aguarde a tabela de preços do cliente terminar de carregar.');
