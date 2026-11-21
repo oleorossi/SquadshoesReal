@@ -13,6 +13,7 @@ import {
   type StockPool,
 } from '@/lib/cabedalPlanningMotor';
 import { planFromMotorSnapshot, planMotorApply } from '@/lib/cabedalMotorApply';
+import { pendingByOrderProduct, subtractOpenPurchasePending } from '@/lib/purchaseCoverage';
 import { persistCabedalMotorPlan } from '@/lib/cabedalMotorApplyClient';
 import { toast } from 'sonner';
 
@@ -59,6 +60,18 @@ function todayIso(): string {
 }
 
 export function PurchaseGeneratePanel({ mode }: { mode: 'fornecedor' | 'pedido' }) {
+  const coverage = useQuery({
+    queryKey: ['pv-material-coverage'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('list_pv_material_coverage' as never);
+      if (error) throw error;
+      return (Array.isArray(data) ? data : []) as Array<{
+        sale_order_id: string;
+        product_id: string;
+        open_pending: number;
+      }>;
+    },
+  });
   const query = useQuery({
     queryKey: ['cabedal-motor-purchase-snapshot'],
     queryFn: async () => {
@@ -131,7 +144,15 @@ export function PurchaseGeneratePanel({ mode }: { mode: 'fornecedor' | 'pedido' 
   }));
   const today = todayIso();
   const allocation = allocateStock(items, stock, settings);
-  const lines = suggestPurchases(items, allocation, settings, today);
+  const pending = pendingByOrderProduct((coverage.data ?? []).map((row) => ({
+    saleOrderId: row.sale_order_id,
+    productId: row.product_id,
+    pending: Number(row.open_pending) || 0,
+  })));
+  const lines = subtractOpenPurchasePending(
+    suggestPurchases(items, allocation, settings, today),
+    pending,
+  );
   const plan = planMotorApply({
     enabled: settings.enabled,
     items,
