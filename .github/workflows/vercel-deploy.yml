@@ -162,6 +162,10 @@ jobs:
 
       - name: Build for production
         if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
+        # O build (npm run build dentro do vercel build) estourou o heap
+        # no ec0afde3, depois do tsc já ter 4 GB. O subprocesso herda isto.
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       # Tip sem supabase/migrations/** = só frontend. O migrate continua
