@@ -150,6 +150,10 @@ jobs:
       - name: TypeScript gate (bloqueia deploy se houver erro)
         if: ${{ github.event_name != 'workflow_run' || steps.tip.outputs.stale != 'true' }}
         # ⚠ -p tsconfig.app.json obrigatório: a raiz é solution file e não checa nada.
+        # O runner do deploy estourou o heap padrão (exit 134) no 7d0288f7,
+        # com o typecheck do CI verde. 4 GB cabe no runner e não muda o gate.
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: bunx tsc -p tsconfig.app.json --noEmit
 
       - name: Pull Vercel config
