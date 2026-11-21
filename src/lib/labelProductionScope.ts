@@ -1,10 +1,11 @@
+import { isTerminalSaleOrderStatus } from '@/lib/operationalScope';
+
 /**
  * Quem entra na Central de Etiquetagem.
  *
- * A fila (`production_queue`) e as ondas legadas são a porta histórica. Um PV
- * já em `Em Produção` também entra, mesmo com zero linhas na fila — o PV-00255
- * entrou em produção sem registro em `production_queue` (a tabela inteira
- * tinha 10 linhas). A fila é recolocada no banco; esta tela não depende dela.
+ * A fila e as ondas legadas são a porta histórica. Um PV em `Em Produção`
+ * também entra, mesmo sem linha na fila. PV terminal (Faturado, Concluído,
+ * Finalizado s/ NF, Cancelado, Expedido) não entra nem pela onda.
  */
 export function saleOrderEligibleForLabels(input: {
   saleOrderId: string | null | undefined;
@@ -12,6 +13,7 @@ export function saleOrderEligibleForLabels(input: {
   saleOrderStatus: unknown;
 }): boolean {
   if (!input.saleOrderId) return false;
+  if (isTerminalSaleOrderStatus(input.saleOrderStatus)) return false;
   if (input.scheduled) return true;
   return String(input.saleOrderStatus ?? '').trim() === 'Em Produção';
 }

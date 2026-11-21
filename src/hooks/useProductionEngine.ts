@@ -10,6 +10,7 @@
 import { useQuery, useMutation, useQueryClient, QueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { queueRowVisibleOperationally } from '@/lib/operationalScope';
 import { toast } from 'sonner';
 import { shouldRetryProductionQueue } from '@/lib/productionLoading';
 
@@ -295,10 +296,29 @@ export function useProductionQueueDetail() {
         }
       }
 
-      return rows.map((r) => ({
-        ...r,
-        is_ahead_of_schedule: aheadById.get(r.order_id) ?? false,
-      }));
+      const saleOrderStatus = new Map<string, string | null>();
+      const saleOrderIds = [...new Set(rows.map((r) => r.sale_order_id).filter(Boolean))] as string[];
+      for (let i = 0; i < saleOrderIds.length; i += CHUNK) {
+        const chunk = saleOrderIds.slice(i, i + CHUNK);
+        const { data: saleRows, error: saleErr } = await supabase
+          .from('sale_orders')
+          .select('id, status')
+          .in('id', chunk);
+        if (saleErr) throw saleErr;
+        for (const row of saleRows || []) {
+          saleOrderStatus.set(row.id, row.status);
+        }
+      }
+
+      return rows
+        .filter((r) => queueRowVisibleOperationally({
+          orderStatus: r.order_status,
+          saleOrderStatus: r.sale_order_id ? saleOrderStatus.get(r.sale_order_id) : null,
+        }))
+        .map((r) => ({
+          ...r,
+          is_ahead_of_schedule: aheadById.get(r.order_id) ?? false,
+        }));
     },
   });
 }

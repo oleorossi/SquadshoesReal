@@ -68,6 +68,7 @@ import { resolveColmeiaByGrade } from '@/lib/resolveColmeiaByGrade';
 import { DEFAULT_MANUFACTURER_NAME, DEFAULT_MANUFACTURER_CNPJ } from '@/lib/companySender';
 import { cn } from '@/lib/utils';
 import { isCancelledOrDraftOrder } from '@/lib/orderStatus';
+import { productionOrderVisibleOperationally } from '@/lib/operationalScope';
 import { labelStrapSequence } from '@/lib/labelStrapSequence';
 import { packSaleOrderItem, packSaleOrderItemBySize } from '@/lib/boxPacking';
 import { toast } from 'sonner';
@@ -670,6 +671,7 @@ export function LabelProductionTab() {
     queryFn: () => fetchAllLabelPages((from, to) => supabase
       .from('orders')
       .select('*, technical_sheets(name, code, image_url, reference_color_variants(color, image_url))')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
       .range(from, to)),
@@ -1201,6 +1203,13 @@ export function LabelProductionTab() {
     const filteredIds = new Set(saleOrderFilters);
     productionOrders = ordersWithResolvedColor.filter((o: any) => filteredIds.has(o.sale_order_id));
   }
+  productionOrders = productionOrders.filter((o: any) =>
+    productionOrderVisibleOperationally({
+      orderStatus: o.status,
+      deletedAt: o.deleted_at,
+      saleOrderStatus: saleOrdersMap.get(o.sale_order_id)?.status,
+    }),
+  );
   const clearSaleOrderFilter = () => {
     const next = new URLSearchParams(searchParams);
     next.delete('sale_order');
