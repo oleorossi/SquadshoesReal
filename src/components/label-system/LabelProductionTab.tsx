@@ -35,6 +35,7 @@ import logoImg from '@/assets/logo-squad-shoes.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveProductImageWithSource } from '@/lib/imageFallback';
 import { resolveMaterialLabels, materialLabelKey, materialNameFromCommercialSnapshot, type MaterialLabelInput } from '@/lib/labelUtils';
+import { productionOrdersMissingFromLabels, saleOrderEligibleForLabels } from '@/lib/labelProductionScope';
 import { buildBoxIdentificationHtml, buildThermalLabelsHtml, buildHangtagHtml, buildThermalLabelsZpl, buildThermalLabelsPdf, zplPhotoBoxDots, type BoxIdentificationData, type ThermalLabelConfig, DEFAULT_THERMAL_CONFIG, THERMAL_LABEL_WIDTH_MM, THERMAL_LABEL_HEIGHT_MM, THERMAL_SAFE_EDGE_MM, THERMAL_ART_OFFSET_X_MM } from '@/lib/printLabels';
 import { loadImageAsMonochrome, type MonoBitmap } from '@/lib/zplImage';
 import {
@@ -781,9 +782,12 @@ export function LabelProductionTab() {
     queryFn: async () => {
       const [waves, queue] = await Promise.all([
         fetchAllLabelPages<any>((from, to) => (supabase as any)
-          .from('v_wave_orders').select('sale_order_id').range(from, to)),
+          .from('v_wave_orders').select('sale_order_id').order('sale_order_id').range(from, to)),
         fetchAllLabelPages<any>((from, to) => (supabase as any)
-          .from('production_queue').select('order_id, orders!inner(sale_order_id)').range(from, to)),
+          .from('production_queue')
+          .select('order_id, orders!inner(sale_order_id)')
+          .order('order_id')
+          .range(from, to)),
       ]);
       const set = new Set<string>();
       for (const row of waves) {
@@ -1172,11 +1176,14 @@ export function LabelProductionTab() {
 
   const currentSize = LABEL_SIZES.find(s => s.id === labelSize) || LABEL_SIZES[0];
 
-  // Gate de programação: só ordens cujo PV está programado (production_queue
-  // do motor novo, ou onda legada pré-cutover) podem ser impressas. User pediu
-  // (15/05/2026): "Quando pedido entrar em onda eu passa a poder ser impresso".
+  // Gate de programação: fila do motor, onda legada, ou PV já em Em Produção.
+  // A fila paginada sem ordem estável omitia o PV-00255 mesmo com OP aberta.
   let productionOrders = ordersWithResolvedColor.filter((o: any) =>
-    !!o.sale_order_id && scheduledSaleOrderIds.has(o.sale_order_id),
+    saleOrderEligibleForLabels({
+      saleOrderId: o.sale_order_id,
+      scheduled: scheduledSaleOrderIds.has(o.sale_order_id),
+      saleOrderStatus: saleOrdersMap.get(o.sale_order_id)?.status,
+    }),
   );
 
   // Deep-link via querystring: um ou mais `sale_order=<PV_ID>` filtram a aba
@@ -1223,6 +1230,13 @@ export function LabelProductionTab() {
     && (o.status === 'Finalizado' || finishedSaleOrderIds.has(o.sale_order_id))
   );
   const labelScopeReady = !ordersPending && !saleOrdersPending && !printedOrdersPending;
+  const missingProductionLabels = useMemo(
+    () => productionOrdersMissingFromLabels(
+      saleOrders,
+      new Set(productionOrders.map((order: { sale_order_id?: string }) => order.sale_order_id).filter(Boolean) as string[]),
+    ),
+    [productionOrders, saleOrders],
+  );
 
   // O deep-link pode apontar também para um PV já impresso ou finalizado. Abre
   // a aba que realmente contém trabalho; do contrário a seleção automática
@@ -2672,6 +2686,14 @@ export function LabelProductionTab() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {missingProductionLabels.length > 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+          {missingProductionLabels.length === 1
+            ? `${missingProductionLabels[0]} está em produção e não tem OP visível nesta tela.`
+            : `${missingProductionLabels.length} pedidos em produção não têm OP visível nesta tela: ${missingProductionLabels.slice(0, 8).join(', ')}.`}
+        </div>
       )}
 
       {/* Print Mode + Period Filter */}
