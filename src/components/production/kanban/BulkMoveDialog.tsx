@@ -10,6 +10,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ArrowRight, CheckCircle, SkipForward, Warning as AlertTriangle, UserCircle } from '@phosphor-icons/react';
 import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
+import { useSectorSettings } from '@/hooks/useProductionEngine';
+import { SizePointingLaunch, type SizeLaunchState } from '@/components/production/SizePointingFields';
+import { sameStage } from '@/lib/production/stageFlow';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import {
@@ -94,6 +97,8 @@ export function BulkMoveDialog({
   const [started, setStarted] = useState(false);
   const [idx, setIdx] = useState(0);
   const [qty, setQty] = useState(0);
+  const [sizeLaunch, setSizeLaunch] = useState<SizeLaunchState>({ mode: 'off', quantity: 0, breakdown: null });
+  const { data: sectorSettings = [] } = useSectorSettings();
   const [results, setResults] = useState<StepResult[]>([]);
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
   const [stepError, setStepError] = useState<string | null>(null);
@@ -148,17 +153,34 @@ export function BulkMoveDialog({
     setIdx(i => i + 1);
   };
 
+  const stepKey = current
+    ? `${current.card.key}:${current.plan.pointedStage?.id ?? ''}:${current.plan.isBackward}`
+    : '';
+  const [seenStep, setSeenStep] = useState(stepKey);
+  if (seenStep !== stepKey) {
+    setSeenStep(stepKey);
+    setSizeLaunch({ mode: 'off', quantity: 0, breakdown: null });
+  }
+  const pointedName = current?.plan.pointedStage?.stage_name ?? '';
+  const pointBySize = !!pointedName && sectorSettings.some(
+    sector => !!sector.point_by_size && sameStage(sector.sector, pointedName),
+  );
+  const usingGrid = pointBySize && sizeLaunch.mode === 'grid';
+  const effectiveQty = usingGrid ? sizeLaunch.quantity : qty;
+  const sizePending = pointBySize && sizeLaunch.mode !== 'grid' && sizeLaunch.mode !== 'fallback';
+
   const confirmStep = async (confirmed?: string[], shortageConfirmed: boolean = shortageAck) => {
-    if (!current) return;
+    if (!current || sizePending) return;
     const { card, plan } = current;
-    if (qty === 0) {
+    if (effectiveQty === 0) {
       advance({ orderNumber: card.q.order_number, status: 'pulada', quantity: 0 });
       return;
     }
     setStepError(null);
     try {
       const res = await applyPointing({
-        card, plan, target, qty, apontar,
+        card, plan, target, qty: effectiveQty, apontar,
+        sizeBreakdown: usingGrid ? sizeLaunch.breakdown : undefined,
         confirmedWarnings: confirmed, skipAcknowledged: skipOk,
         // O OK da falta de material é aviso do cliente: vai na nota, não
         // nos `confirmedWarnings` do servidor.
@@ -190,7 +212,7 @@ export function BulkMoveDialog({
 
   // Estorno não consome material — só o avanço pergunta pela falta.
   const requestConfirmStep = () => {
-    if (current && !current.plan.isBackward && qty > 0
+    if (current && !current.plan.isBackward && effectiveQty > 0
       && currentShortageWarnings.length > 0 && !shortageAck) {
       setShortagePromptOpen(true);
       return;
@@ -200,7 +222,7 @@ export function BulkMoveDialog({
 
   // Mesma trava do diálogo de um card só: pular exige fechar a origem.
   // O aceite reseta a cada OP do lote — confirmar uma não confirma as outras.
-  const stepSkipBlocked = !!current && skipBlockedByPartial(current.plan, qty);
+  const stepSkipBlocked = !!current && skipBlockedByPartial(current.plan, effectiveQty);
 
   const totalOk = results.filter(r => r.status === 'ok').length;
   const totalPares = results.reduce((s, r) => s + r.quantity, 0);
@@ -421,8 +443,8 @@ export function BulkMoveDialog({
                 {stepSkipBlocked && (
                   <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2.5 text-xs text-destructive">
                     <strong>Pra pular setor, {current.plan.pointedStage?.stage_name} tem que fechar.</strong>{' '}
-                    Com {qty} de {current.plan.stageRemaining} pares, os{' '}
-                    <strong>{current.plan.stageRemaining - qty} restantes</strong> ficariam sem passar por{' '}
+                    Com {effectiveQty} de {current.plan.stageRemaining} pares, os{' '}
+                    <strong>{current.plan.stageRemaining - effectiveQty} restantes</strong> ficariam sem passar por{' '}
                     {current.plan.skipped.join(', ')}. Aponte o saldo cheio ou pule esta OP do lote.
                   </div>
                 )}
@@ -433,7 +455,21 @@ export function BulkMoveDialog({
                   </div>
                 )}
 
-                <div>
+                {current.plan.pointedStage && (
+                  <SizePointingLaunch
+                    key={`${current.card.q.order_id}:${current.plan.pointedStage.id}:${current.plan.isBackward}`}
+                    orderId={current.card.q.order_id}
+                    stageName={current.plan.pointedStage.stage_name}
+                    quantityTotal={current.plan.pointedStage.quantity_total}
+                    quantityProcessed={current.plan.pointedStage.quantity_processed}
+                    launchablePairs={current.plan.isBackward
+                      ? current.plan.pointedStage.quantity_processed
+                      : current.plan.remaining}
+                    backward={current.plan.isBackward}
+                    onState={setSizeLaunch}
+                  />
+                )}
+                {(!pointBySize || sizeLaunch.mode === 'fallback') && <div>
                   <Label htmlFor="bulk-move-quantity" className="text-xs">
                     {current.plan.isBackward ? 'Pares a estornar' : 'Quantidade executada (pares)'}
                   </Label>
@@ -456,7 +492,7 @@ export function BulkMoveDialog({
                   <p className="text-[10px] text-muted-foreground mt-1">
                     Zerar a quantidade pula esta OP sem gravar nada.
                   </p>
-                </div>
+                </div>}
 
                 {stepError && (
                   <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs text-destructive">
@@ -483,7 +519,7 @@ export function BulkMoveDialog({
                     <Button variant="outline" className="h-11 md:h-10" onClick={requestClose} disabled={apontar.isPending}>
                       {totalOk > 0 ? 'Encerrar lote' : 'Cancelar lote'}
                     </Button>
-                    <Button className="h-11 md:h-10" onClick={requestConfirmStep} disabled={apontar.isPending || stepSkipBlocked || (current.plan.skipped.length > 0 && !skipOk)}>
+                    <Button className="h-11 md:h-10" onClick={requestConfirmStep} disabled={apontar.isPending || sizePending || stepSkipBlocked || (current.plan.skipped.length > 0 && !skipOk)}>
                       {idx + 1 === steps.length ? 'Confirmar e finalizar' : 'Confirmar e seguir'}
                     </Button>
                   </div>
@@ -515,7 +551,7 @@ export function BulkMoveDialog({
         open={shortagePromptOpen && currentShortageWarnings.length > 0}
         warnings={currentShortageWarnings}
         contextLabel={current
-          ? `${current.card.q.order_number} → ${target}, +${qty} pares · ${
+          ? `${current.card.q.order_number} → ${target}, +${effectiveQty} pares · ${
             currentShortageUnavailable
               ? `${current.card.q.sale_order_number || 'PV'} com falta de material`
               : 'material em falta para este setor'
@@ -534,7 +570,7 @@ export function BulkMoveDialog({
       <ConfirmPointingWarnings
         open={!!pendingWarnings}
         warnings={pendingWarnings || []}
-        contextLabel={current ? `${current.card.q.order_number} → ${target}, ${current.plan.isBackward ? '-' : '+'}${qty} pares` : ''}
+        contextLabel={current ? `${current.card.q.order_number} → ${target}, ${current.plan.isBackward ? '-' : '+'}${effectiveQty} pares` : ''}
         onConfirm={() => {
           const codes = (pendingWarnings || []).map(w => w.code);
           setPendingWarnings(null);

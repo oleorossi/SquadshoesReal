@@ -29,6 +29,8 @@ export interface SectorSetting {
   ficha_capacity_column: string | null;
   /** Dias úteis de antecipação. Ausente até a migration 14100. */
   start_offset_days?: number;
+  /** Lançamento do chão pede a grade. Ausente até a migration 52000. */
+  point_by_size?: boolean;
   updated_at: string;
 }
 

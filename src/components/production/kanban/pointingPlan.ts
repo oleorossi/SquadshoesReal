@@ -368,8 +368,10 @@ export async function applyPointing(params: {
   confirmedWarnings?: string[];
   skipAcknowledged?: boolean;
   origin?: string;
+  /** Grade positiva deste lançamento. O sinal acompanha o estorno. */
+  sizeBreakdown?: Record<string, number> | null;
 }): Promise<ApplyResult> {
-  const { card, plan, target, qty, apontar, confirmedWarnings, skipAcknowledged, origin = 'Via Kanban' } = params;
+  const { card, plan, target, qty, apontar, confirmedWarnings, skipAcknowledged, origin = 'Via Kanban', sizeBreakdown } = params;
   const { pointedStage, isBackward, skipped } = plan;
   // Defesa central: drag, lote e diálogo touch/teclado chegam todos aqui. A UI
   // pode ficar com um snapshot antigo, então plano indisponível nunca escreve,
@@ -418,10 +420,20 @@ export async function applyPointing(params: {
     }
   }
 
+  const signedBreakdown = sizeBreakdown
+    ? Object.fromEntries(
+      Object.entries(sizeBreakdown).map(([size, value]) => {
+        const pairs = Math.abs(Math.trunc(Number(value) || 0));
+        return [size, isBackward ? -pairs : pairs];
+      }),
+    )
+    : undefined;
+
   const res = await apontar.mutateAsync({
     orderId: card.q.order_id,
     stageName: pointedStage.stage_name,
     quantity,
+    sizeBreakdown: signedBreakdown,
     note: isBackward
       ? `Estorno ${origin} (${card.column} → ${target})`
       : (skipped.length ? `${origin}, pulando: ${skipped.join(', ')}` : origin),

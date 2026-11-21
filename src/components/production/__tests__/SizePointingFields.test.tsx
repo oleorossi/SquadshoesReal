@@ -1,0 +1,54 @@
+import { useState } from 'react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { SizePointingFields } from '../SizePointingFields';
+import { clampSizeQuantity, type SizeMap } from '@/lib/production/sizePointing';
+
+const balance = {
+  sizes: ['34', '35'],
+  target: { '34': 75, '35': 12 },
+  known: {},
+  pending: { '34': 75, '35': 12 },
+  legacyUnallocated: 0,
+  pairRemaining: 87,
+  launchable: 87,
+};
+
+function Harness() {
+  const [value, setValue] = useState<SizeMap>({ '34': 75, '35': 12 });
+  return (
+    <SizePointingFields
+      balance={balance}
+      backward={false}
+      value={value}
+      onChange={(size, next, blocked) => {
+        const cap = balance.pending[size] || 0;
+        setValue(prev => ({ ...prev, [size]: blocked ? cap : clampSizeQuantity(next, cap) }));
+      }}
+    />
+  );
+}
+
+describe('contador ao vivo da numeração', () => {
+  it('abre preenchido com o saldo e mostra concluído', () => {
+    render(<Harness />);
+    expect(screen.getByLabelText('Numeração 34')).toHaveValue('75');
+    expect(screen.getAllByText('concluído').length).toBeGreaterThan(0);
+  });
+
+  it('ao digitar 60 no 34 mostra 60/15 com a falta em destaque', () => {
+    render(<Harness />);
+    fireEvent.change(screen.getByLabelText('Numeração 34'), { target: { value: '60' } });
+    expect(screen.getByLabelText('Numeração 34')).toHaveValue('60');
+    expect(screen.getByText('60')).toBeInTheDocument();
+    expect(screen.getByText('15')).toBeInTheDocument();
+    expect(screen.getByText('15').className).toMatch(/amber/);
+  });
+
+  it('não deixa passar do saldo', () => {
+    render(<Harness />);
+    fireEvent.change(screen.getByLabelText('Numeração 34'), { target: { value: '80' } });
+    expect(screen.getByLabelText('Numeração 34')).toHaveValue('75');
+    expect(screen.getByRole('alert')).toHaveTextContent('O 34 só tem 75 pares');
+  });
+});

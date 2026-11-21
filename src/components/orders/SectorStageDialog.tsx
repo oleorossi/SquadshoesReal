@@ -12,6 +12,9 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Clock, Play, CheckCircle as CheckCircle2, Warning as AlertTriangle, Timer, CurrencyDollar as DollarSign, Lock, Scissors, Stack as Layers, Diamond as Gem, Printer, Flame, Hammer, Footprints, Hand, Sparkle as Sparkles, Cube as Box, MagnifyingGlass as ScanSearch, PencilLine as PenLine, ClipboardText as ClipboardList, Wind, GridFour as LayoutGrid, PaintBrush as Paintbrush, Truck } from '@phosphor-icons/react';
 import type { Icon as LucideIcon } from '@phosphor-icons/react';
 import { OrderStage, useUpdateOrderStage, useOrderStages, useApontarProducao, ApontarResult, PointingWarning } from '@/hooks/useOrderStages';
+import { useSectorSettings } from '@/hooks/useProductionEngine';
+import { SizePointingLaunch, type SizeLaunchState } from '@/components/production/SizePointingFields';
+import { sameStage } from '@/lib/production/stageFlow';
 import { findBlockingStage, inboundAvailability } from '@/lib/production/stageFlow';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import { supabase } from '@/integrations/supabase/client';
@@ -100,6 +103,8 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
   // depois recebe a etapa; declarar o hook após o return condicional muda a
   // contagem de hooks entre renders e dispara "Rendered more hooks…" (auditoria P04).
   type ApontarParams = Parameters<typeof apontar.mutateAsync>[0];
+  const [sizeLaunch, setSizeLaunch] = useState<SizeLaunchState>({ mode: 'off', quantity: 0, breakdown: null });
+  const { data: sectorSettings = [] } = useSectorSettings();
   const [pendingConfirm, setPendingConfirm] = useState<{
     params: ApontarParams;
     warnings: PointingWarning[];
@@ -142,9 +147,18 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
 
   if (!stage) return null;
 
+  const pointBySize = sectorSettings.some(
+    sector => !!sector.point_by_size && sameStage(sector.sector, stage.stage_name),
+  );
+  const usingGrid = pointBySize && sizeLaunch.mode === 'grid';
+  const addedNow = usingGrid
+    ? sizeLaunch.quantity
+    : Math.max(0, form.quantity_processed - serverProcessed);
+  const shownProcessed = usingGrid ? serverProcessed + addedNow : form.quantity_processed;
+
   const config = STAGE_CONFIGS[stage.stage_name] || { color: '', icon: ClipboardList, hints: '' };
   const StageIcon = config.icon;
-  const pct = stage.quantity_total > 0 ? Math.round((form.quantity_processed / stage.quantity_total) * 100) : 0;
+  const pct = stage.quantity_total > 0 ? Math.round((shownProcessed / stage.quantity_total) * 100) : 0;
 
   const standardTime = Number(stage.standard_time_minutes) || 0;
   const costPerHour = Number(stage.cost_per_hour) || 0;
@@ -218,7 +232,8 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
       await apontarComAvisos({
         orderId: stage.order_id,
         stageName: stage.stage_name,
-        quantity: Math.max(0, form.quantity_processed - serverProcessed),
+        quantity: addedNow,
+        sizeBreakdown: usingGrid ? sizeLaunch.breakdown : undefined,
         operatorEmployeeId: operatorEmployeeId || null,
       }, () => toast.success('Setor iniciado!'));
     } catch {
@@ -229,14 +244,15 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
   const handleSaveProgress = async () => {
     try {
       await saveFields();
-      const delta = form.quantity_processed - serverProcessed;
+      const delta = addedNow;
       if (delta !== 0) {
         await apontarComAvisos({
           orderId: stage.order_id,
           stageName: stage.stage_name,
           quantity: delta,
+          sizeBreakdown: usingGrid ? sizeLaunch.breakdown : undefined,
           operatorEmployeeId: operatorEmployeeId || null,
-        }, () => toast.success(`Apontado: ${delta > 0 ? '+' : ''}${delta} pares (${form.quantity_processed}/${stage.quantity_total}).`));
+        }, () => toast.success(`Apontado: ${delta > 0 ? '+' : ''}${delta} pares (${serverProcessed + delta}/${stage.quantity_total}).`));
       }
     } catch {
       // toasts de erro já emitidos pelas mutations
@@ -249,15 +265,17 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
       return;
     }
     // Persiste pra próxima OP no mesmo terminal não precisar reescolher
-    try { localStorage.setItem('sector_operator_employee_id', operatorEmployeeId); } catch {}
+    try { localStorage.setItem('sector_operator_employee_id', operatorEmployeeId); } catch { /* storage indisponível */ }
     try {
       await saveFields();
       // Sem nenhum apontamento, finalizar = a OP inteira passou (paridade com
       // o bulk "Finalizar selecionadas"); com apontamento, respeita o valor
       // informado (parcial consciente fica registrado como refugo/saldo).
-      const target = form.quantity_processed > 0
-        ? form.quantity_processed
-        : (serverProcessed > 0 ? serverProcessed : stage.quantity_total);
+      const target = usingGrid
+        ? serverProcessed + sizeLaunch.quantity
+        : form.quantity_processed > 0
+          ? form.quantity_processed
+          : (serverProcessed > 0 ? serverProcessed : stage.quantity_total);
       // A RPC finaliza o setor, resolve/inicia o PRÓXIMO (paralelismo prep +
       // blocked_until), atualiza orders.production_step e finaliza a OP quando
       // era o último setor — substitui o antigo hack do Acabamento.
@@ -265,6 +283,7 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
         orderId: stage.order_id,
         stageName: stage.stage_name,
         quantity: target - serverProcessed,
+        sizeBreakdown: usingGrid ? sizeLaunch.breakdown : undefined,
         operatorEmployeeId,
         finalize: true,
       }, () => {
@@ -357,7 +376,22 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
             <strong>Orientações:</strong> {config.hints}
           </div>
 
-          {/* Quantity processed */}
+          <SizePointingLaunch
+            key={`${stage.id}:${stage.quantity_processed}`}
+            orderId={stage.order_id}
+            stageName={stage.stage_name}
+            quantityTotal={stage.quantity_total}
+            quantityProcessed={serverProcessed}
+            launchablePairs={inbound != null
+              ? Math.max(0, Math.min(stage.quantity_total - serverProcessed, inbound - serverProcessed))
+              : Math.max(0, stage.quantity_total - serverProcessed)}
+            backward={false}
+            readOnly={stage.status === 'concluido'}
+            onState={setSizeLaunch}
+          />
+
+          {/* Quantity processed — setores sem grade, ou OP sem numeração */}
+          {(!pointBySize || sizeLaunch.mode === 'fallback') && (
           <div>
             <Label>Quantidade Processada</Label>
             <div className="flex items-center gap-3 mt-1">
@@ -378,6 +412,12 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
             <Progress value={pct} className="mt-2 h-2" />
             <p className="text-xs text-muted-foreground mt-1">{pct}% concluído</p>
           </div>
+          )}
+          {usingGrid && (
+            <p className="text-xs text-muted-foreground">
+              {shownProcessed}/{stage.quantity_total} pares no setor · {pct}% concluído
+            </p>
+          )}
 
           {/* Actual time input */}
           {hasWipData && stage.status !== 'pendente' && (
@@ -491,7 +531,7 @@ export default function SectorStageDialog({ stage, open, onOpenChange, orderNumb
             {(liveStage ?? stage).status === 'pendente' && (
               <Button onClick={handleStart} className="gap-2" disabled={!!blockingStage || apontar.isPending || update.isPending}>
                 {blockingStage ? <Lock className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                {blockingStage ? `Aguardando ${blockingStage.stage_name}` : 'Iniciar Etapa'}
+                {blockingStage ? `Aguardando ${blockingStage.stage_name}` : (usingGrid ? 'Lançar e iniciar' : 'Iniciar Etapa')}
               </Button>
             )}
             {(liveStage ?? stage).status === 'em_andamento' && (

@@ -17021,6 +17021,7 @@ export type Database = {
           order_id: string
           order_stage_id: string | null
           quantity: number
+          size_breakdown: Json | null
           stage_name: string
         }
         Insert: {
@@ -17034,6 +17035,7 @@ export type Database = {
           order_id: string
           order_stage_id?: string | null
           quantity: number
+          size_breakdown?: Json | null
           stage_name: string
         }
         Update: {
@@ -17047,6 +17049,7 @@ export type Database = {
           order_id?: string
           order_stage_id?: string | null
           quantity?: number
+          size_breakdown?: Json | null
           stage_name?: string
         }
         Relationships: [
@@ -24058,6 +24061,7 @@ export type Database = {
           parallel_group: string | null
           pays_by_difficulty: boolean
           pays_by_pair: boolean
+          point_by_size: boolean
           sector: string
           start_offset_days: number
           team_notes: string | null
@@ -24076,6 +24080,7 @@ export type Database = {
           parallel_group?: string | null
           pays_by_difficulty?: boolean
           pays_by_pair?: boolean
+          point_by_size?: boolean
           sector: string
           start_offset_days?: number
           team_notes?: string | null
@@ -24094,6 +24099,7 @@ export type Database = {
           parallel_group?: string | null
           pays_by_difficulty?: boolean
           pays_by_pair?: boolean
+          point_by_size?: boolean
           sector?: string
           start_offset_days?: number
           team_notes?: string | null

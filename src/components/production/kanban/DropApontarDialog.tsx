@@ -9,6 +9,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Info, UserCircle, ClockCounterClockwise } from '@phosphor-icons/react';
 import { useApontarProducao, PointingWarning } from '@/hooks/useOrderStages';
 import { useOrderPointings } from '@/hooks/useOrderPointings';
+import { useSectorSettings } from '@/hooks/useProductionEngine';
+import { SizePointingLaunch, type SizeLaunchState } from '@/components/production/SizePointingFields';
+import { formatSizeBreakdown, negateSizeBreakdown } from '@/lib/production/sizePointing';
+import { sameStage } from '@/lib/production/stageFlow';
 import { useCurrentProfile } from '@/hooks/useUserManagement';
 import ConfirmPointingWarnings from '@/components/production/ConfirmPointingWarnings';
 import {
@@ -85,6 +89,20 @@ export function DropApontarDialog({
   const showMove = !readOnly && target === null && (fwdOptions.length > 0 || backOption !== null);
 
   const [qty, setQty] = useState<number>(() => (isBackward ? 0 : Math.max(0, remaining)));
+  const [sizeLaunch, setSizeLaunch] = useState<SizeLaunchState>({ mode: 'off', quantity: 0, breakdown: null });
+  const { data: sectorSettings = [] } = useSectorSettings();
+  const pointBySize = !!pointedStage && sectorSettings.some(
+    sector => !!sector.point_by_size && sameStage(sector.sector, pointedStage.stage_name),
+  );
+  const sizeKey = `${pointedStage?.id ?? ''}:${isBackward}`;
+  const [seenSizeKey, setSeenSizeKey] = useState(sizeKey);
+  if (seenSizeKey !== sizeKey) {
+    setSeenSizeKey(sizeKey);
+    setSizeLaunch({ mode: 'off', quantity: 0, breakdown: null });
+  }
+  const usingGrid = pointBySize && sizeLaunch.mode === 'grid';
+  const effectiveQty = usingGrid ? sizeLaunch.quantity : qty;
+  const sizePending = pointBySize && sizeLaunch.mode !== 'grid' && sizeLaunch.mode !== 'fallback';
   const [pendingWarnings, setPendingWarnings] = useState<PointingWarning[] | null>(null);
   // Aceite explícito do pulo de setor (decisão do dono 06/08/2026).
   const [skipOk, setSkipOk] = useState(false);
@@ -127,20 +145,21 @@ export function DropApontarDialog({
   // Entrega incompleta = o setor recebe menos do que o total da OP. É o que
   // faz o card nascer ÂMBAR no destino, mostrando "84/120" (R5.3).
   const willBePartial = !isBackward && !!pointedStage
-    && qty > 0
-    && pointedStage.quantity_processed + qty < pointedStage.quantity_total;
+    && effectiveQty > 0
+    && pointedStage.quantity_processed + effectiveQty < pointedStage.quantity_total;
 
   // Acima do saldo: o servidor aceita (com confirmação) mas os dois lados
   // DIVERGEM — o estágio é clampado no total da OP e o ledger grava o valor
   // digitado. Sem dizer isso aqui, o operador confirma um aviso genérico e
   // fica com 300/300 na tela e 350 no histórico de produção.
-  const excess = !isBackward && !!pointedStage
-    ? Math.max(0, pointedStage.quantity_processed + qty - pointedStage.quantity_total)
+  // Na grade o teto é por número e o excesso nem chega a ser enviado.
+  const excess = !isBackward && !!pointedStage && !usingGrid
+    ? Math.max(0, pointedStage.quantity_processed + effectiveQty - pointedStage.quantity_total)
     : 0;
 
   // Pular setor com a origem ABERTA deixa saldo órfão atrás do card e desarma
   // as travas de quantidade do resto da rota. Ver `skipBlockedByPartial`.
-  const skipBlocked = skipBlockedByPartial(plan, qty);
+  const skipBlocked = skipBlockedByPartial(plan, effectiveQty);
 
   const handleMoveChange = (v: string) => {
     const t = v === MOVE_ATUAL ? '' : v;
@@ -150,6 +169,7 @@ export function DropApontarDialog({
     // mais pares do que estavam disponíveis.
     const nextPlan = buildPointingPlan(card, t || null, flowOrder, levelOf, planOptions);
     setQty(nextPlan.isBackward ? 0 : Math.max(0, nextPlan.remaining));
+    setSizeLaunch({ mode: 'off', quantity: 0, breakdown: null });
     // O aceite de pulo vale pro conjunto de setores do destino ANTERIOR: trocar
     // o destino tem que exigir novo aceite, senão confirmar o pulo de 1 setor
     // autoriza silenciosamente o de 5.
@@ -176,11 +196,13 @@ export function DropApontarDialog({
   }
 
   const doApontar = async (confirmed?: string[], shortageConfirmed: boolean = shortageAck) => {
-    if (readOnly) return;
-    if (qty === 0) { onClose(); return; }
+    if (readOnly || sizePending) return;
+    if (effectiveQty === 0) { onClose(); return; }
+    const breakdownNow = usingGrid ? sizeLaunch.breakdown : null;
     try {
       const res = await applyPointing({
-        card, plan, target: effTarget, qty, apontar,
+        card, plan, target: effTarget, qty: effectiveQty, apontar,
+        sizeBreakdown: breakdownNow,
         confirmedWarnings: confirmed, skipAcknowledged: skipOk,
         // O OK da falta não é aviso do servidor: fica na nota do lançamento.
         origin: shortageConfirmed && !isBackward ? ORIGIN_CIENTE_FALTA : undefined,
@@ -195,6 +217,7 @@ export function DropApontarDialog({
       }
       if (res.status === 'ok') {
         const gravado = res.quantity;
+        const desfazerGrade = breakdownNow;
         const canUndo = !isBackward && skipped.length === 0;
         toast.success(
           isBackward
@@ -214,6 +237,7 @@ export function DropApontarDialog({
                     orderId: q.order_id,
                     stageName: pointedStage.stage_name,
                     quantity: -gravado,
+                    sizeBreakdown: desfazerGrade ? negateSizeBreakdown(desfazerGrade) : undefined,
                     note: `Desfeito pelo operador (lançamento de ${gravado > 0 ? '+' : ''}${gravado} pares)`,
                   });
                   toast.success(`Desfeito: ${pointedStage.stage_name} voltou ${Math.abs(gravado)} pares.`);
@@ -235,7 +259,7 @@ export function DropApontarDialog({
 
   // Estorno não consome material — só o avanço pergunta.
   const requestApontar = () => {
-    if (!readOnly && !isBackward && qty > 0 && shortageWarnings.length > 0 && !shortageAck) {
+    if (!readOnly && !isBackward && effectiveQty > 0 && shortageWarnings.length > 0 && !shortageAck) {
       setShortagePromptOpen(true);
       return;
     }
@@ -245,7 +269,7 @@ export function DropApontarDialog({
   return (
     <>
       <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className={usingGrid ? 'sm:max-w-xl' : 'sm:max-w-md'}>
           <DialogHeader>
             <DialogTitle className="text-base">
               {readOnly
@@ -367,8 +391,8 @@ export function DropApontarDialog({
             {!readOnly && skipBlocked && (
               <div className="rounded-md border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-700 dark:text-red-300">
                 <strong>Pra pular setor, {pointedStage.stage_name} tem que fechar.</strong>{' '}
-                Você está apontando {qty} de {stageRemaining} pares — os{' '}
-                <strong>{stageRemaining - qty} restantes</strong> ficariam sem passar por{' '}
+                Você está apontando {effectiveQty} de {stageRemaining} pares — os{' '}
+                <strong>{stageRemaining - effectiveQty} restantes</strong> ficariam sem passar por{' '}
                 {skipped.join(', ')}, e sem aparecer como pendência em lugar nenhum do quadro.
                 <br />
                 Aponte os {stageRemaining} pares pra pular, ou mande a OP pro próximo setor da rota.
@@ -381,7 +405,20 @@ export function DropApontarDialog({
               </div>
             )}
 
-            {!readOnly && <div>
+            {!readOnly && (
+              <SizePointingLaunch
+                key={sizeKey}
+                orderId={q.order_id}
+                stageName={pointedStage.stage_name}
+                quantityTotal={pointedStage.quantity_total}
+                quantityProcessed={pointedStage.quantity_processed}
+                launchablePairs={isBackward ? pointedStage.quantity_processed : remaining}
+                backward={isBackward}
+                onState={setSizeLaunch}
+              />
+            )}
+
+            {!readOnly && (!pointBySize || sizeLaunch.mode === 'fallback') && <div>
               <Label htmlFor="kanban-pointing-quantity" className="text-xs">
                 {isBackward ? 'Pares a estornar' : 'Quantidade executada (pares)'}
               </Label>
@@ -412,7 +449,7 @@ export function DropApontarDialog({
                 <p className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] leading-snug text-amber-700 dark:text-amber-300">
                   <strong>{excess} {excess === 1 ? 'par acima' : 'pares acima'} do total da OP.</strong>{' '}
                   O setor vai fechar em {pointedStage.quantity_total}/{pointedStage.quantity_total},
-                  mas o histórico de produção registra os {pointedStage.quantity_processed + qty} digitados —
+                  mas o histórico de produção registra os {pointedStage.quantity_processed + effectiveQty} digitados —
                   os dois números deixam de bater. Se produziu a mais de verdade, ajuste a quantidade da OP;
                   se foi engano, corrija aqui.
                 </p>
@@ -432,15 +469,15 @@ export function DropApontarDialog({
               >
                 <span className="font-mono text-xl font-bold leading-none">
                   <span className={willBePartial ? 'text-amber-600 dark:text-amber-400' : ''}>
-                    {Math.min(pointedStage.quantity_processed + qty, pointedStage.quantity_total)}
+                    {Math.min(pointedStage.quantity_processed + effectiveQty, pointedStage.quantity_total)}
                   </span>
                   <span className="font-normal opacity-60">/{pointedStage.quantity_total}</span>
                 </span>
                 <span className="text-[11px] leading-snug text-muted-foreground">
-                  {qty <= 0
+                  {effectiveQty <= 0
                     ? 'Nada será apontado com 0 pares.'
                     : willBePartial
-                      ? <>Chega em <strong className="text-amber-600 dark:text-amber-400">{norm(effTarget || pointedStage.stage_name)}</strong> marcada como <strong className="text-amber-600 dark:text-amber-400">PARCIAL</strong> — faltam {pointedStage.quantity_total - pointedStage.quantity_processed - qty} pares pra fechar.</>
+                      ? <>Chega em <strong className="text-amber-600 dark:text-amber-400">{norm(effTarget || pointedStage.stage_name)}</strong> marcada como <strong className="text-amber-600 dark:text-amber-400">PARCIAL</strong> — faltam {pointedStage.quantity_total - pointedStage.quantity_processed - effectiveQty} pares pra fechar.</>
                       : <>Entrega completa. O card chega em <strong className="text-foreground">{norm(effTarget || pointedStage.stage_name)}</strong> sem marcação.</>}
                 </span>
               </div>
@@ -521,6 +558,11 @@ export function DropApontarDialog({
                             {new Date(p.created_at).toLocaleString('pt-BR')}
                             {p.author_name ? ` · ${p.author_name}` : ''}
                           </div>
+                          {p.size_breakdown && formatSizeBreakdown(p.size_breakdown) && (
+                            <p className="font-mono text-[10px] text-muted-foreground">
+                              {formatSizeBreakdown(p.size_breakdown)}
+                            </p>
+                          )}
                           {p.note && <p className="text-[10px] italic text-muted-foreground">{p.note}</p>}
                           {p.confirmed_warnings?.length ? (
                             <p className="text-[10px] text-amber-600 dark:text-amber-400">
@@ -543,7 +585,7 @@ export function DropApontarDialog({
                 <Button
                   className="h-11 md:h-10"
                   onClick={requestApontar}
-                  disabled={!plan.available || apontar.isPending || qty === 0 || skipBlocked || (skipped.length > 0 && !skipOk)}
+                  disabled={!plan.available || apontar.isPending || effectiveQty === 0 || sizePending || skipBlocked || (skipped.length > 0 && !skipOk)}
                 >
                   {isBackward ? 'Estornar' : 'Apontar'}
                 </Button>
@@ -558,7 +600,7 @@ export function DropApontarDialog({
         <ConfirmPointingWarnings
           open={shortagePromptOpen}
           warnings={shortageWarnings}
-          contextLabel={`${pointedStage.stage_name} — ${q.order_number}, +${qty} pares · ${
+          contextLabel={`${pointedStage.stage_name} — ${q.order_number}, +${effectiveQty} pares · ${
             sectorShortageUnavailable
               ? `${q.sale_order_number || 'PV'} com falta de material`
               : 'material em falta para este setor'
@@ -578,7 +620,7 @@ export function DropApontarDialog({
         <ConfirmPointingWarnings
           open={!!pendingWarnings}
           warnings={pendingWarnings || []}
-          contextLabel={`${pointedStage.stage_name} — ${q.order_number}, ${isBackward ? '-' : '+'}${qty} pares`}
+          contextLabel={`${pointedStage.stage_name} — ${q.order_number}, ${isBackward ? '-' : '+'}${effectiveQty} pares`}
           onConfirm={() => {
             const codes = (pendingWarnings || []).map(w => w.code);
             setPendingWarnings(null);

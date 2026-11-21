@@ -88,6 +88,11 @@ interface ProductionPointingInput {
   expectedStageUpdatedAt?: string;
   /** Setores pulados (qty 0 / finalize) na mesma transação da origem. */
   skipStageNames?: string[];
+  /**
+   * Pares deste lançamento por numeração. A soma tem que ser `quantity`
+   * (negativa no estorno). Sem isto o apontamento segue só pelo total.
+   */
+  sizeBreakdown?: Record<string, number> | null;
 }
 
 async function readPointingStageSnapshot(
@@ -378,7 +383,7 @@ export function useApontarProducao() {
         functionName: string,
         args: Record<string, unknown>,
       ) => PromiseLike<StageCommandRpcResult>;
-      const { data, error } = await callRpc('execute_production_pointing_command', {
+      const args = {
         p_order_id: p.orderId,
         p_stage_name: p.stageName,
         p_quantity: p.quantity,
@@ -389,7 +394,11 @@ export function useApontarProducao() {
         p_expected_stage_updated_at: p.expectedStageUpdatedAt,
         p_client_request_id: p.clientRequestId,
         p_skip_stage_names: p.skipStageNames?.length ? p.skipStageNames : null,
-      });
+      };
+      const { data, error } = await callRpc(
+        p.sizeBreakdown ? 'execute_production_pointing_by_size' : 'execute_production_pointing_command',
+        p.sizeBreakdown ? { ...args, p_size_breakdown: p.sizeBreakdown } : args,
+      );
       if (error) throw error;
       return data as unknown as ApontarResult;
     },
