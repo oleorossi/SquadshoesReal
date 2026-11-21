@@ -41,4 +41,17 @@ describe('etiquetagem — PV em produção', () => {
       { id: 'pv-2', order_number: 'PV-00002', status: 'Aprovado' },
     ], new Set(['pv-1']))).toEqual(['PV-00255']);
   });
+
+  it('PV apagado não entra no aviso nem pela onda', () => {
+    expect(productionOrdersMissingFromLabels([
+      { id: 'pv-142', order_number: 'PV-00142', status: 'Em Produção', deleted_at: '2026-09-07T00:00:00Z' },
+      { id: 'pv-236', order_number: 'PV-00236', status: 'Em Produção', deleted_at: '2026-10-17T00:00:00Z' },
+    ], new Set())).toEqual([]);
+    expect(saleOrderEligibleForLabels({
+      saleOrderId: 'pv-142',
+      scheduled: true,
+      saleOrderStatus: 'Em Produção',
+      saleOrderDeletedAt: '2026-09-07T00:00:00Z',
+    })).toBe(false);
+  });
 });
