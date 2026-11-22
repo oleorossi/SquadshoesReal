@@ -207,6 +207,34 @@ export function providerColorLines(colors: readonly LaunchColor[]): ProviderColo
     || a.color.localeCompare(b.color, 'pt-BR'));
 }
 
+export type LaunchPriceSource = 'referencia' | 'setor' | 'ficha';
+
+/**
+ * A mesma ordem de atelier_suggested_pair_price:
+ * tarifa da ficha com o prestador, depois a tarifa do serviço,
+ * e só então a sugestão gravada na ficha de ateliê.
+ * Nenhuma delas é regravada quando o pedido negocia outro valor.
+ */
+export function resolveLaunchPairPrice(input: {
+  referencePrice: number | null | undefined;
+  sectorPrice: number | null | undefined;
+  sheetPrice: number | null | undefined;
+}): { price: number | null; source: LaunchPriceSource | null } {
+  const reference = Number(input.referencePrice);
+  if (Number.isFinite(reference) && reference > 0) return { price: reference, source: 'referencia' };
+  const sector = Number(input.sectorPrice);
+  if (Number.isFinite(sector) && sector > 0) return { price: sector, source: 'setor' };
+  const sheet = Number(input.sheetPrice);
+  if (Number.isFinite(sheet) && sheet > 0) return { price: sheet, source: 'ficha' };
+  return { price: null, source: null };
+}
+
+export function launchPriceSourceLabel(source: LaunchPriceSource): string {
+  if (source === 'referencia') return 'tarifa da ficha com este prestador';
+  if (source === 'setor') return 'tarifa do serviço';
+  return 'sugestão da ficha de ateliê';
+}
+
 export function positiveGrade(grade: SizeGrade): SizeGrade {
   const out: SizeGrade = {};
   for (const key of gradeSizeKeys(grade)) {

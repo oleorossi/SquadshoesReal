@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   colorSizeMeters,
+  launchPriceSourceLabel,
   parseLaunchPayload,
   positiveGrade,
   providerColorLines,
   providerFichaWarning,
+  resolveLaunchPairPrice,
   rowSizeCap,
 } from '@/lib/atelierLancamento';
 
@@ -66,6 +68,17 @@ describe('lançamento do ateliê por cor', () => {
     expect(meters.find((row) => row.size === '36')).toMatchObject({ launched: 6, falta: 0, done: true });
     expect(rowSizeCap(remaining, drafts, 1, '35')).toBe(2);
     expect(positiveGrade({ '35': 0, '36': 6, _nota: 3 })).toEqual({ '36': 6 });
+  });
+
+  it('o padrão do par segue a tarifa da ficha, depois o serviço, depois a sugestão', () => {
+    expect(resolveLaunchPairPrice({ referencePrice: 11.5, sectorPrice: 7, sheetPrice: 4.25 }))
+      .toEqual({ price: 11.5, source: 'referencia' });
+    expect(resolveLaunchPairPrice({ referencePrice: null, sectorPrice: 7, sheetPrice: 4.25 }))
+      .toEqual({ price: 7, source: 'setor' });
+    expect(resolveLaunchPairPrice({ referencePrice: 0, sectorPrice: null, sheetPrice: 4.25 }))
+      .toEqual({ price: 4.25, source: 'ficha' });
+    expect(resolveLaunchPairPrice({ referencePrice: null, sectorPrice: null, sheetPrice: null }).price).toBeNull();
+    expect(launchPriceSourceLabel('referencia')).toMatch(/ficha com este prestador/);
   });
 
   it('avisa a ficha da parte e deixa passar a que fecha em 12', () => {

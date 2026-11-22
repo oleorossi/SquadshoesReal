@@ -28,20 +28,23 @@ import {
   type AtelierPipelineStatus,
   type AtelierSector,
 } from '@/lib/atelier';
-import { atelierContractorCanTake, atelierOpenRatePrice, atelierTodayISO } from '@/lib/atelierAdmin';
+import { atelierContractorCanTake, atelierOpenRatePrice, atelierRateSector, atelierTodayISO } from '@/lib/atelierAdmin';
 import {
   colorSizeMeters,
+  launchPriceSourceLabel,
   parseLaunchPayload,
   positiveGrade,
   providerColorLines,
   providerFichaWarning,
+  resolveLaunchPairPrice,
   rowSizeCap,
   type LaunchColor,
   type LaunchPayload,
+  type LaunchPriceSource,
   type ProviderColorLine,
 } from '@/lib/atelierLancamento';
-import { gradeSizeKeys, gradeTotal, type SizeGrade } from '@/lib/atelierSplit';
-import { cn } from '@/lib/utils';
+import { gradeSizeKeys, gradeTotal, priceWasEdited, type SizeGrade } from '@/lib/atelierSplit';
+import { cn, formatCurrency } from '@/lib/utils';
 
 interface DraftRow {
   key: string;
@@ -49,6 +52,8 @@ interface DraftRow {
   contractorId: string;
   sizes: SizeGrade;
   price: string;
+  defaultPrice: number | null;
+  defaultSource: LaunchPriceSource | null;
 }
 
 function blankRow(): DraftRow {
@@ -58,7 +63,21 @@ function blankRow(): DraftRow {
     contractorId: '',
     sizes: {},
     price: '',
+    defaultPrice: null,
+    defaultSource: null,
   };
+}
+
+function priceInput(price: number | null): string {
+  if (price == null) return '';
+  return price.toFixed(2).replace('.', ',');
+}
+
+function parsePrice(raw: string): number | null {
+  const text = raw.trim().replace(',', '.');
+  if (text === '') return null;
+  const value = Number(text);
+  return Number.isFinite(value) ? value : null;
 }
 
 function pipelineLabel(status: string): string {
@@ -137,6 +156,80 @@ export function AtelierLancamento() {
   const today = atelierTodayISO();
   const payload = launch.data;
   const contractorRows = (contractors.data ?? []) as Contractor[];
+  const jobIds = (payload?.colors ?? []).map((color) => color.jobId).filter(Boolean);
+  const sheetsQuery = useQuery({
+    queryKey: ['atelier-launch-sheets', jobIds],
+    enabled: jobIds.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cabedal_prep_jobs' as never)
+        .select('id, technical_sheet_id')
+        .in('id', jobIds);
+      if (error) throw error;
+      const rows = (data ?? []) as { id: string; technical_sheet_id: string | null }[];
+      return new Map(rows.map((row) => [row.id, row.technical_sheet_id]));
+    },
+  });
+  const sheetIds = [...new Set(
+    [...(sheetsQuery.data?.values() ?? [])].filter((id): id is string => !!id),
+  )];
+  const referenceRates = useQuery({
+    queryKey: ['atelier-launch-reference-rates', sheetIds],
+    enabled: sheetIds.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('contractor_reference_rates' as never)
+        .select('contractor_id, technical_sheet_id, sector, price_per_pair, valid_from, valid_to')
+        .in('technical_sheet_id', sheetIds)
+        .is('valid_to', null);
+      if (error) throw error;
+      return (data ?? []) as {
+        contractor_id: string;
+        technical_sheet_id: string;
+        sector: string;
+        price_per_pair: number;
+        valid_from: string;
+      }[];
+    },
+  });
+  const sheetPrices = useQuery({
+    queryKey: ['atelier-launch-sheet-prices', sheetIds],
+    enabled: sheetIds.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('atelier_complex_references' as never)
+        .select('reference_id, sector, value_per_pair, active')
+        .in('reference_id', sheetIds)
+        .eq('active', true);
+      if (error) throw error;
+      return (data ?? []) as {
+        reference_id: string;
+        sector: string;
+        value_per_pair: number | null;
+      }[];
+    },
+  });
+
+  const quoteFor = (color: LaunchColor, contractorId: string) => {
+    const sheetId = sheetsQuery.data?.get(color.jobId) ?? null;
+    const rateSector = atelierRateSector(color.sector);
+    const reference = (referenceRates.data ?? []).find((row) => (
+      row.contractor_id === contractorId
+      && row.technical_sheet_id === sheetId
+      && row.sector === rateSector
+      && row.valid_from.slice(0, 10) <= today
+    ));
+    return resolveLaunchPairPrice({
+      referencePrice: reference?.price_per_pair,
+      sectorPrice: atelierOpenRatePrice(rates.data ?? [], contractorId, color.sector, today),
+      sheetPrice: (sheetPrices.data ?? []).find((row) => (
+        row.reference_id === sheetId && row.sector === color.sector
+      ))?.value_per_pair,
+    });
+  };
 
   const optionsFor = (sectorName: string) => contractorRows.filter((contractor) => (
     atelierContractorCanTake(contractor, sectorName, sectors.data ?? [])
@@ -177,12 +270,15 @@ export function AtelierLancamento() {
     const parts = rows.flatMap((row, index) => {
       const grade = grades[index];
       if (gradeTotal(grade) <= 0) return [];
-      const price = row.price.trim().replace(',', '.');
+      const standard = row.mode === 'contractor' && row.contractorId
+        ? quoteFor(color, row.contractorId).price
+        : null;
+      const typed = parsePrice(row.price);
       return [{
         mode: row.mode,
         contractor_id: row.mode === 'contractor' ? row.contractorId || null : null,
         grade,
-        unit_price: price === '' ? null : Number(price),
+        unit_price: typed ?? standard,
         save_reference_rate: false,
       }];
     });
@@ -192,6 +288,10 @@ export function AtelierLancamento() {
     }
     if (parts.some((part) => part.mode === 'contractor' && !part.contractor_id)) {
       toast.error('Escolha o prestador de cada parte.');
+      return;
+    }
+    if (parts.some((part) => part.mode === 'contractor' && !(Number(part.unit_price) > 0))) {
+      toast.error('Informe o R$/par maior que zero. O padrão da ficha não muda.');
       return;
     }
     setBusyJob(color.jobId);
@@ -327,9 +427,11 @@ export function AtelierLancamento() {
                         <Meter remaining={color.remaining} drafts={grades} />
                         {rows.map((row, index) => {
                           const warning = providerFichaWarning(color.color, grades[index]);
-                          const quote = row.mode === 'contractor'
-                            ? atelierOpenRatePrice(rates.data ?? [], row.contractorId, color.sector, today)
-                            : null;
+                          const quote = row.mode === 'contractor' && row.contractorId
+                            ? quoteFor(color, row.contractorId)
+                            : { price: null as number | null, source: null as LaunchPriceSource | null };
+                          const shownPrice = row.price !== '' ? row.price : priceInput(quote.price);
+                          const differs = row.mode === 'contractor' && priceWasEdited(parsePrice(shownPrice), quote.price);
                           return (
                             <div key={row.key} className="space-y-2 rounded-md border border-border p-2">
                               <div className="flex flex-wrap items-center gap-2">
@@ -354,12 +456,14 @@ export function AtelierLancamento() {
                                   <Select
                                     value={row.contractorId || undefined}
                                     onValueChange={(value) => {
-                                      const price = atelierOpenRatePrice(rates.data ?? [], value, color.sector, today);
+                                      const next = quoteFor(color, value);
                                       setRows(color.jobId, rows.map((item, i) => (
                                         i === index ? {
                                           ...item,
                                           contractorId: value,
-                                          price: price == null ? item.price : String(price).replace('.', ','),
+                                          price: priceInput(next.price),
+                                          defaultPrice: next.price,
+                                          defaultSource: next.source,
                                         } : item
                                       )));
                                     }}
@@ -380,14 +484,31 @@ export function AtelierLancamento() {
                                     <Input
                                       inputMode="decimal"
                                       aria-label="R$/par"
-                                      className="ml-1 h-8 w-24 font-mono text-xs"
-                                      value={row.price}
-                                      placeholder={quote == null ? '' : String(quote)}
+                                      className={cn(
+                                        'ml-1 h-8 w-24 font-mono text-xs',
+                                        differs && 'border-amber-500',
+                                      )}
+                                      value={shownPrice}
                                       onChange={(event) => setRows(color.jobId, rows.map((item, i) => (
                                         i === index ? { ...item, price: event.target.value } : item
                                       )))}
                                     />
                                   </label>
+                                )}
+                                {row.mode === 'contractor' && quote.price != null && quote.source && (
+                                  <span className="text-[11px] text-muted-foreground">
+                                    Padrão {formatCurrency(quote.price)} · {launchPriceSourceLabel(quote.source)}
+                                  </span>
+                                )}
+                                {row.mode === 'contractor' && row.contractorId && quote.price == null && (
+                                  <span className="text-[11px] text-muted-foreground">
+                                    Sem padrão nesta ficha. O valor fica só nesta OS.
+                                  </span>
+                                )}
+                                {differs && (
+                                  <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                                    Diferente do padrão. Vale só nesta OS. A ficha não muda.
+                                  </span>
                                 )}
                               </div>
                               <div className="flex gap-2 overflow-x-auto">
