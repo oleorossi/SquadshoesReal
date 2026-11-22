@@ -5,14 +5,12 @@
  * O corte é do lote. A OP nasce no promote para Em Produção, depois que os jobs voltam.
  */
 import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft,
   CircleNotch as Loader2,
   Plus,
   Scissors,
 } from '@phosphor-icons/react';
-import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Panel } from '@/components/ui/panel';
@@ -46,11 +44,6 @@ import {
 } from '@/hooks/useAtelier';
 import { AtelierExecutionDefaultControl, AtelierSectorAdmin } from '@/components/atelier/AtelierAdminPanel';
 import { AtelierOperacao } from '@/components/atelier/AtelierOperacao';
-import { AtelierRelatorioView } from '@/components/atelier/AtelierRelatorioView';
-import { AtelierLancamento } from '@/components/atelier/AtelierLancamento';
-import { AtelierStrapsView } from '@/components/atelier/AtelierStrapsView';
-
-const VIEW_SET = new Set(['cadastro', 'fila', 'lancamento', 'relatorio', 'tiras']);
 
 function sheetLabel(s: {
   code?: string | null;
@@ -166,7 +159,7 @@ function AgendaSettings() {
   );
 }
 
-function CadastroView() {
+export function CadastroView() {
   const [sector, setSector] = useState<AtelierSector>('costura_cabedal');
   const [sheetId, setSheetId] = useState<string>('');
   const [q, setQ] = useState('');
@@ -354,7 +347,7 @@ function CadastroView() {
 }
 
 
-function FilaView() {
+export function FilaView() {
   const [params, setParams] = useSearchParams();
   const { data: lots = [], isLoading, isError, refetch } = useAtelierLots();
   const pedido = params.get('pedido') ?? '';
@@ -395,72 +388,23 @@ function FilaView() {
 }
 
 
+const ATELIE_TAB: Record<string, string> = {
+  fila: 'corte',
+  lancamento: 'lancar',
+  relatorio: 'relatorio',
+  cadastro: 'modelos',
+  tiras: 'tiras',
+};
+
+/** /atelie e as views antigas abrem a aba equivalente do módulo único.
+ * value="lancamento" continua reconhecido e cai em Lançar.
+ * Fila operacional e Modelos complexos ficam nas abas Corte e Modelos.
+ */
 export default function Atelie() {
-  const [params, setParams] = useSearchParams();
-  const raw = params.get('view') ?? 'fila';
-  const view = VIEW_SET.has(raw) ? raw : 'fila';
-
-  const setView = (v: string) => {
-    setParams(
-      (prev) => {
-        const p = new URLSearchParams(prev);
-        p.set('view', v);
-        return p;
-      },
-      { replace: true },
-    );
-  };
-
-  return (
-    <div className="space-y-5 page-enter">
-      <EditorialPageHeader
-        sectionLabel="ENGENHARIA · ATELIÊ"
-        title="Ateliê"
-        description="Cada costura e aviamento anda na própria etapa. O corte é do lote. A OP nasce quando o pedido vai para Em Produção, depois que os jobs voltam."
-        actions={
-          <Button variant="outline" size="sm" className="h-9" asChild>
-            <Link to="/terceirizados">
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Terceirizados
-            </Link>
-          </Button>
-        }
-      />
-
-      <Tabs value={view} onValueChange={setView} className="space-y-4">
-        <TabsList className="h-11 bg-muted/50 p-0.5">
-          <TabsTrigger value="fila" className="text-xs sm:text-sm">
-            Fila operacional
-          </TabsTrigger>
-          <TabsTrigger value="lancamento" className="text-xs sm:text-sm">
-            Lançamento
-          </TabsTrigger>
-          <TabsTrigger value="tiras" className="text-xs sm:text-sm">
-            Tiras
-          </TabsTrigger>
-          <TabsTrigger value="relatorio" className="text-xs sm:text-sm">
-            Relatório
-          </TabsTrigger>
-          <TabsTrigger value="cadastro" className="text-xs sm:text-sm">
-            Modelos complexos
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="fila">
-          <FilaView />
-        </TabsContent>
-        <TabsContent value="lancamento">
-          <AtelierLancamento />
-        </TabsContent>
-        <TabsContent value="tiras">
-          <AtelierStrapsView />
-        </TabsContent>
-        <TabsContent value="relatorio">
-          <AtelierRelatorioView />
-        </TabsContent>
-        <TabsContent value="cadastro">
-          <CadastroView />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
+  const [params] = useSearchParams();
+  const view = params.get('view') ?? 'fila';
+  const next = new URLSearchParams(params);
+  next.delete('view');
+  next.set('tab', ATELIE_TAB[view] ?? 'lancar');
+  return <Navigate to={`/terceirizados?${next.toString()}`} replace />;
 }

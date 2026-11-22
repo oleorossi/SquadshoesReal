@@ -45,7 +45,7 @@ describe('production sequence frozen (contract)', () => {
     expect(app).toContain('producao/sequencia');
     expect(access).toContain("'/producao/sequencia': 'producao'");
     expect(hub).toContain("'/producao/sequencia'");
-    expect(page).toContain('/atelie?view=cadastro');
+    expect(page).toContain('/terceirizados?tab=modelos');
     expect(page).toContain('useAtelierCatalog');
   });
 

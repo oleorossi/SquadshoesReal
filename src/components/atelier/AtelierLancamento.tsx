@@ -2,7 +2,7 @@
  * Lançamento do pedido no Ateliê: quantos pares de cada cor vão para cada prestador.
  * O saldo ao vivo segue o lançamento por numeração. Gerar OS usa atelier_send_split.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleNotch as Loader2, Truck } from '@phosphor-icons/react';
@@ -43,8 +43,10 @@ import {
   type LaunchPriceSource,
   type ProviderColorLine,
 } from '@/lib/atelierLancamento';
-import { gradeSizeKeys, gradeTotal, priceWasEdited, type SizeGrade } from '@/lib/atelierSplit';
-import { cn, formatCurrency } from '@/lib/utils';
+import { useOutsourcedPairLedger } from '@/hooks/useOutsourcedPairLedger';
+import { totalsFromLedger } from '@/lib/outsourcedPairLedger';
+import { gradeSizeKeys, gradeTotal, type SizeGrade } from '@/lib/atelierSplit';
+import { cn } from '@/lib/utils';
 
 interface DraftRow {
   key: string;
@@ -155,6 +157,32 @@ export function AtelierLancamento() {
   const [receipt, setReceipt] = useState<ProviderColorLine | null>(null);
   const today = atelierTodayISO();
   const payload = launch.data;
+  const ledger = useOutsourcedPairLedger('week');
+  const preferredByJob = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const line of ledger.data ?? []) {
+      if (line.jobId && line.contractorId && !map.has(line.jobId)) map.set(line.jobId, line.contractorId);
+    }
+    return map;
+  }, [ledger.data]);
+  useEffect(() => {
+    if (!payload?.colors.length) return;
+    setDrafts((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const color of payload.colors) {
+        const preferred = preferredByJob.get(color.jobId);
+        if (!preferred) continue;
+        const rows = next[color.jobId] ?? defaults.current[color.jobId];
+        if (!rows || rows.length !== 1 || rows[0].contractorId) continue;
+        const filled = [{ ...rows[0], mode: 'contractor' as const, contractorId: preferred }];
+        next[color.jobId] = filled;
+        defaults.current[color.jobId] = filled;
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [payload, preferredByJob]);
   const contractorRows = (contractors.data ?? []) as Contractor[];
   const jobIds = (payload?.colors ?? []).map((color) => color.jobId).filter(Boolean);
   const sheetsQuery = useQuery({
@@ -275,7 +303,7 @@ export function AtelierLancamento() {
         : null;
       const typed = parsePrice(row.price);
       return [{
-        mode: row.mode,
+        mode: 'contractor' as const,
         contractor_id: row.mode === 'contractor' ? row.contractorId || null : null,
         grade,
         unit_price: typed ?? standard,
@@ -307,6 +335,46 @@ export function AtelierLancamento() {
       const message = error && typeof error === 'object' && 'message' in error
         ? String((error as { message?: string }).message)
         : 'Falha ao gerar a OS';
+      toast.error(message);
+    } finally {
+      setBusyJob(null);
+    }
+  };
+
+  const reserve = async (color: LaunchColor) => {
+    const rows = rowsOf(color.jobId);
+    const grades = rows.map((row) => positiveGrade(row.sizes));
+    if (colorSizeMeters(color.remaining, grades).some((meter) => meter.over)) {
+      toast.error('Algum tamanho passou do saldo desta cor.');
+      return;
+    }
+    const parts = rows.flatMap((row, index) => {
+      const grade = grades[index];
+      if (gradeTotal(grade) <= 0 || !row.contractorId) return [];
+      const price = row.price.trim().replace(',', '.');
+      return [{
+        contractor_id: row.contractorId,
+        grade,
+        unit_price: price === '' ? null : Number(price),
+      }];
+    });
+    if (parts.length === 0) {
+      toast.error('Escolha o prestador e ao menos 1 par para reservar.');
+      return;
+    }
+    setBusyJob(color.jobId);
+    try {
+      const { error } = await supabase.rpc('save_atelier_launch_reservation' as never, {
+        p_job_id: color.jobId,
+        p_parts: parts,
+      } as never);
+      if (error) throw error;
+      toast.success(`${color.color}: divisão reservada. A OS sai depois do corte.`);
+      await qc.invalidateQueries({ queryKey: ['atelier-launch-reservations'] });
+    } catch (error) {
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: string }).message)
+        : 'Falha ao reservar a divisão';
       toast.error(message);
     } finally {
       setBusyJob(null);
@@ -402,6 +470,11 @@ export function AtelierLancamento() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {color.pairs} pares · {pipelineLabel(color.pipelineStatus)}
+                          {(() => {
+                            const motor = totalsFromLedger((ledger.data ?? []).filter((line) => line.jobId === color.jobId));
+                            if (!ledger.data) return '';
+                            return ` · motor: a enviar ${motor.balance} · na rua ${motor.street} · recebido ${motor.received}`;
+                          })()}
                           {color.itemPairs != null && color.itemPairs !== color.pairs
                             ? ` · item do PV ${color.itemPairs}`
                             : ''}
@@ -415,14 +488,19 @@ export function AtelierLancamento() {
                       <ul className="space-y-1 text-xs text-muted-foreground">
                         {color.parts.map((part) => (
                           <li key={part.id}>
-                            {part.executionMode === 'internal' ? 'Fábrica' : (part.contractorName ?? 'Prestador')}
+                            {part.executionMode === 'internal' ? 'Interno em aberto' : (part.contractorName ?? 'Prestador')}
                             {` · ${part.pairs} enviados · ${part.receivedPairs} recebidos`}
                             {part.serviceOrderNumber ? ` · ${part.serviceOrderNumber}` : ''}
                           </li>
                         ))}
                       </ul>
                     )}
-                    {color.canSend ? (
+                    {!color.canSend && (
+                      <p className="text-sm text-muted-foreground">
+                        {color.blockReason || 'O envio espera o corte e o kit.'} A divisão entre prestadores pode ser reservada agora. A OS só sai depois do corte, com o kit fechado.
+                      </p>
+                    )}
+                    {(
                       <>
                         <Meter remaining={color.remaining} drafts={grades} />
                         {rows.map((row, index) => {
@@ -435,23 +513,6 @@ export function AtelierLancamento() {
                           return (
                             <div key={row.key} className="space-y-2 rounded-md border border-border p-2">
                               <div className="flex flex-wrap items-center gap-2">
-                                <div className="inline-flex rounded-md border border-border p-0.5">
-                                  {(['contractor', 'internal'] as const).map((mode) => (
-                                    <button
-                                      key={mode}
-                                      type="button"
-                                      className={cn(
-                                        'rounded px-2 py-0.5 text-[11px]',
-                                        row.mode === mode ? 'bg-foreground text-background' : 'text-muted-foreground',
-                                      )}
-                                      onClick={() => setRows(color.jobId, rows.map((item, i) => (
-                                        i === index ? { ...item, mode } : item
-                                      )))}
-                                    >
-                                      {mode === 'internal' ? 'Fábrica' : 'Prestador'}
-                                    </button>
-                                  ))}
-                                </div>
                                 {row.mode === 'contractor' && (
                                   <Select
                                     value={row.contractorId || undefined}
@@ -560,9 +621,20 @@ export function AtelierLancamento() {
                           </Button>
                           <Button
                             type="button"
+                            variant="outline"
                             size="sm"
                             className="h-9"
-                            disabled={busyJob === color.jobId || over}
+                            disabled={busyJob === color.jobId}
+                            onClick={() => void reserve(color)}
+                          >
+                            Reservar divisão
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-9"
+                            disabled={busyJob === color.jobId || over || !color.canSend}
+                            title={color.canSend ? undefined : (color.blockReason || 'O envio espera o corte e o kit.')}
                             onClick={() => void send(color)}
                           >
                             {busyJob === color.jobId
@@ -572,8 +644,6 @@ export function AtelierLancamento() {
                           </Button>
                         </div>
                       </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">{color.blockReason}</p>
                     )}
                   </Panel>
                 );

@@ -19,7 +19,6 @@ import {
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import SaleOrderFormPanel, { removeItemsAtIndices, restoreItemsAt } from '@/components/sale-orders/SaleOrderFormPanel';
 import { PvServiceOrdersCard } from '@/components/sale-orders/PvServiceOrdersCard';
-import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
 import {
   buildExtraItemColumns,
   filterProductionSaleOrderItems,
@@ -1097,9 +1096,6 @@ export default function SaleOrderForm() {
   const [billingOverrideReason, setBillingOverrideReason] = useState('');
   // Atalho "Gerar OS por Pedido" no edit — assistente manual (não pós-create).
   const queryClient = useQueryClient();
-  const [genOsOpen, setGenOsOpen] = useState(false);
-  const [genOsPvId, setGenOsPvId] = useState<string | null>(null);
-  const [genOsNavAfter, setGenOsNavAfter] = useState(false);
   // Live min billing date for the persistent red badge in the form panel.
   // Edit mode → server compute_min_billing_date(id). New mode → frontend
   // computeMinBillingForNewOrder over current items. Recomputed with debounce.
@@ -2548,7 +2544,7 @@ export default function SaleOrderForm() {
               {isEdit && id && (
                 <Button
                   variant="outline" size="sm" className="h-9 gap-1.5"
-                  onClick={() => { setGenOsPvId(id); setGenOsNavAfter(false); setGenOsOpen(true); }}
+                  onClick={() => navigate(`/terceirizados?tab=lancar&pedido=${encodeURIComponent(form?.order_number || '')}`)}
                   disabled={hasUnsavedEdits}
                   title={hasUnsavedEdits ? 'Salve o pedido antes de gerar OS sobre os dados persistidos.' : undefined}
                 >
@@ -2913,17 +2909,6 @@ export default function SaleOrderForm() {
         }}
       />
 
-      <GenerateServiceOrdersWizard
-        open={genOsOpen}
-        onOpenChange={(o) => {
-          setGenOsOpen(o);
-          if (!o && genOsNavAfter) { setGenOsNavAfter(false); navigate('/sales'); }
-        }}
-        initialSaleOrderId={genOsPvId || undefined}
-        onGenerated={() => {
-          if (genOsPvId) queryClient.invalidateQueries({ queryKey: ['pv_service_orders', genOsPvId] });
-        }}
-      />
 
       {/* Saída com alterações pendentes. Cobre Voltar e Cancelar (navegação
           interna do router, que o beforeunload NÃO pega — ele só vale pra F5,

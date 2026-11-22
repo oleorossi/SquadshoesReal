@@ -34,7 +34,7 @@ const SHORTCUTS = [
   { to: '/producao/estouro', label: 'Estouro', icon: AlertTriangle, hint: 'Acima da capacidade' },
   { to: '/producao/apontamento', label: 'Apontamento', icon: ListChecks, hint: 'Chão por setor' },
   { to: '/producao/setores', label: 'Setores', icon: Factory, hint: 'Capacidade pares/dia' },
-  { to: '/atelie?view=cadastro', label: 'Ateliê (cadastro)', icon: Sparkles, hint: 'Refs de cabedal complexo' },
+  { to: '/terceirizados?tab=modelos', label: 'Ateliê (cadastro)', icon: Sparkles, hint: 'Refs de cabedal complexo' },
 ] as const;
 
 /**
@@ -81,7 +81,7 @@ export default function ProducaoSequencia() {
             Catálogo de cabedal complexo está vazio — a porta Ateliê não distingue refs complexas até cadastrar em Ateliê.
           </p>
           <Button asChild variant="outline" size="sm" className="h-8 shrink-0">
-            <Link to="/atelie?view=cadastro">Abrir cadastro</Link>
+            <Link to="/terceirizados?tab=modelos">Abrir cadastro</Link>
           </Button>
         </div>
       )}

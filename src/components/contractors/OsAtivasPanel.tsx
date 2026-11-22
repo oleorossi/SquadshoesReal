@@ -9,6 +9,8 @@ import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Panel } from '@/components/ui/panel';
 import { useContractors } from '@/hooks/useContractors';
+import { useOutsourcedPairLedger } from '@/hooks/useOutsourcedPairLedger';
+import { totalsFromLedger } from '@/lib/outsourcedPairLedger';
 import { useActiveServiceOrders, useServiceOrderRedistributions, type OsAtivaRow } from '@/hooks/useOsAtivas';
 import { gradeTotal } from '@/lib/atelierSplit';
 import { capacityAlert, formatGrade } from '@/lib/osRedistribuicao';
@@ -50,13 +52,11 @@ export function OsAtivasPanel() {
     [board.data, pv, reference, color, contractorId],
   );
 
+  const ledger = useOutsourcedPairLedger('week');
+  const motor = totalsFromLedger(ledger.data ?? []);
   const totals = rows.reduce((acc, row) => ({
-    planned: acc.planned + row.planned,
-    sent: acc.sent + row.sent,
-    street: acc.street + row.street,
-    toSend: acc.toSend + row.toSend,
     late: acc.late + (row.late ? 1 : 0),
-  }), { planned: 0, sent: 0, street: 0, toSend: 0, late: 0 });
+  }), { late: 0 });
 
   const groups = useMemo(() => {
     const map = new Map<string, OsAtivaRow[]>();
@@ -74,10 +74,10 @@ export function OsAtivasPanel() {
   return (
     <div className="space-y-4">
       <StatGrid>
-        <StatCard label="Planejado" value={totals.planned} unit="pares" />
-        <StatCard label="Enviado" value={totals.sent} unit="pares" />
-        <StatCard label="Na rua" value={totals.street} unit="pares" tone={totals.street > 0 ? 'warning' : 'default'} />
-        <StatCard label="A enviar" value={totals.toSend} unit="pares" />
+        <StatCard label="Demanda" value={motor.demand} unit="pares" />
+        <StatCard label="Enviado" value={motor.sent} unit="pares" />
+        <StatCard label="Na rua" value={motor.street} unit="pares" tone={motor.street > 0 ? 'warning' : 'default'} />
+        <StatCard label="A enviar" value={motor.balance} unit="pares" />
         <StatCard label="Atrasadas" value={totals.late} tone={totals.late > 0 ? 'destructive' : 'default'} />
       </StatGrid>
 

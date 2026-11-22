@@ -74,7 +74,6 @@ import { cn } from "@/lib/utils";
 const MarginDialog = lazy(() => import('@/components/sale-orders/MarginDialog'));
 const OrderPhotosDialog = lazy(() => import('@/components/sale-orders/OrderPhotosDialog'));
 const OperatorFichasDialog = lazy(() => import('@/components/sale-orders/OperatorFichasDialog'));
-const GenerateServiceOrdersWizard = lazy(() => import('@/components/contractors/GenerateServiceOrdersWizard').then(m => ({ default: m.GenerateServiceOrdersWizard })));
 const GeneratePurchaseOrdersDialog = lazy(() => import('@/components/purchase/GeneratePurchaseOrdersDialog'));
 const PostApprovalCabedalDistributeScreen = lazy(() =>
   import('@/components/sale-orders/PostApprovalCabedalDistributeScreen').then((m) => ({
@@ -408,7 +407,6 @@ export default function SaleOrders() {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [selectedOrderItems, setSelectedOrderItems] = useState<any[]>([]);
   const confirmLockRef = useRef(false);
-  const [osDialogOpen, setOsDialogOpen] = useState(false); // atalho "Gerar OS" do PV
   const [loadingOrderItems, setLoadingOrderItems] = useState(false);
   // `enabled` obrigatório: sem PV selecionado o id é undefined e a query varreria
   // nfe_emitidas inteira em vez de não rodar (auditoria PV 07/08/2026).
@@ -3155,7 +3153,7 @@ export default function SaleOrders() {
                 {/* Atalho: cria uma Ordem de Serviço com os itens deste pedido
                     (terceirização) — mesmo fluxo/tabela da OS do menu. Primário
                     (vermelho) por ser uma ação de criação, igual Gerar OCs/OPs. */}
-                <Button size="sm" className="gap-2" onClick={() => setOsDialogOpen(true)} title="Gerar Ordem de Serviço com os itens deste pedido — mesmo fluxo do menu Terceirizados">
+                <Button size="sm" className="gap-2" onClick={() => navigate(`/terceirizados?tab=lancar&pedido=${encodeURIComponent(selectedOrder.order_number || '')}`)} title="Abrir o lançamento deste pedido no módulo de terceirizados">
                   <Buildings className="h-3.5 w-3.5" /> Gerar OS
                 </Button>
                   </div>
@@ -3777,22 +3775,6 @@ export default function SaleOrders() {
             minBillingById={minBillingMap}
             onDone={() => setPostApprovalDistribute(null)}
           />
-        </Suspense>
-      )}
-
-      {/* Atalho "Gerar OS" do PV — usa o mesmo assistente do pós-cadastro e do
-          menu de Terceirizados. A unidade de emissão é OP × setor; assim não há
-          um segundo modelo de OS criado diretamente pelos itens do pedido. */}
-      {/* Guarda por `osDialogOpen`, não só por `selectedOrder`: este nunca volta a
-          null depois do primeiro PV aberto, então sozinho ele montaria o diálogo
-          (e baixaria o chunk) para sempre. */}
-      {osDialogOpen && selectedOrder && (
-        <Suspense fallback={null}>
-        <GenerateServiceOrdersWizard
-          open={osDialogOpen}
-          onOpenChange={setOsDialogOpen}
-          initialSaleOrderId={selectedOrder.id}
-        />
         </Suspense>
       )}
 

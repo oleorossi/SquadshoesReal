@@ -69,7 +69,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/fichas-tecnicas', label: 'Fichas', group: 'Engenharia', icon: Ruler, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TechnicalSheets') },
   { path: '/engenharia/fichas-rascunho', label: 'Rascunhos', group: 'Engenharia', icon: FileText, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/FichasEmRascunhoPage') },
   { path: '/engenharia/materiais-base', label: 'Materiais base', group: 'Engenharia', icon: DollarSign, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/MateriaisBasePage') },
-  { path: '/atelie', label: 'Ateliê', group: 'Engenharia', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Atelie') },
+  { path: '/atelie', label: 'Ateliê', group: 'Engenharia', icon: Scissors, surfaces: ['command'], preload: () => import('@/pages/Atelie') },
   { path: '/escalonamento', label: 'Escalonamento', group: 'Engenharia', icon: Calculator, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/EscalonamentoCadPage') },
   { path: '/tiras-artesanais', label: 'Central de Tiras', group: 'Engenharia', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ArtisanalStraps') },
   { path: '/solados', label: 'Solados', group: 'Engenharia', icon: Footprints, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/SolesHub') },
@@ -153,7 +153,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/rh', label: 'Pessoas', group: 'RH', icon: UsersThree, surfaces: ['hub', 'command'], preload: () => import('@/pages/RHHub') },
   { path: '/fichas-montadores', label: 'Montadores', group: 'RH', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/FichaMontadoresPage') },
   { path: '/terceirizados', label: 'Terceirizados', group: 'RH', icon: Truck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
-  { path: '/terceirizados?tab=os-ativas', label: 'OS ativas', group: 'Produção', icon: Kanban, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/TerceirizadosHub') },
+  { path: '/terceirizados?tab=os-ativas', label: 'OS ativas', group: 'Produção', icon: Kanban, surfaces: ['command'], preload: () => import('@/pages/TerceirizadosHub') },
   // Ajuste de batidas/ausências (workspace único do Ponto). Sem resolver,
   // o dia não desconta nem paga — risco de pagar quem ainda deve horas.
   // Destino final (não o redirect legado /rh/pendencias-ponto).
@@ -274,7 +274,6 @@ const hubsDeclarados: NavigationHub[] = [
     groups: ['Produção'],
     children: [
       resource('/producao/corte-lookahead'),
-      resource('/atelie'),
       resource('/terceirizados'),
       resource('/producao/kanban'),
       resource('/producao/apontamento'),

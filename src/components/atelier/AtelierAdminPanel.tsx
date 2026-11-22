@@ -25,7 +25,6 @@ import {
   useUpsertAtelierContractorSector,
 } from '@/hooks/useAtelier';
 import {
-  ATELIER_EXECUTION_MODE_LABEL,
   ATELIER_SECTOR_LABEL,
   type AtelierExecutionMode,
   type AtelierSector,
@@ -37,7 +36,6 @@ import {
 } from '@/lib/atelierAdmin';
 import { formatCurrency } from '@/lib/utils';
 
-const INHERIT = '__inherit__';
 const NONE = '__none__';
 
 interface RateRow {
@@ -81,14 +79,14 @@ export function AtelierExecutionDefaultControl({
   const eligible = (contractors as Contractor[]).filter((c) =>
     atelierContractorCanTake(c, sector, sectors),
   );
-  const modeValue = mode === 'internal' || mode === 'contractor' ? mode : INHERIT;
+  const modeValue = 'contractor';
 
-  const commit = (nextMode: AtelierExecutionMode | null, nextContractor: string | null) => {
+  const commit = (_nextMode: AtelierExecutionMode | null, nextContractor: string | null) => {
     save.mutate({
       referenceId,
       sector,
-      mode: nextMode,
-      contractorId: nextMode === 'contractor' ? nextContractor : null,
+      mode: 'contractor',
+      contractorId: nextContractor,
     });
   };
 
@@ -96,26 +94,16 @@ export function AtelierExecutionDefaultControl({
     <div className="space-y-2">
       <div className="space-y-1">
         <Label className="text-xs">Quem faz por padrão</Label>
-        <Select
-          value={modeValue}
-          onValueChange={(value) => {
-            if (value === INHERIT) commit(null, null);
-            else if (value === 'internal') commit('internal', null);
-            else commit('contractor', contractorId);
-          }}
-          disabled={save.isPending}
-        >
-          <SelectTrigger className="h-8 text-xs" aria-label="Quem faz por padrão">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={INHERIT}>Como o pedido</SelectItem>
-            <SelectItem value="internal">{ATELIER_EXECUTION_MODE_LABEL.internal}</SelectItem>
-            <SelectItem value="contractor">{ATELIER_EXECUTION_MODE_LABEL.contractor}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {mode === 'contractor' && (
+          <Select value={modeValue} disabled>
+            <SelectTrigger className="h-8 text-xs" aria-label="Quem faz por padrão">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="contractor">Prestador</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <p className="text-[11px] text-muted-foreground">Cabedal complexo não fica na fábrica.</p>
         <div className="space-y-1">
           <Label className="text-xs">Prestador sugerido</Label>
           <Select
@@ -139,9 +127,8 @@ export function AtelierExecutionDefaultControl({
             </p>
           )}
         </div>
-      )}
       <p className="text-[11px] text-muted-foreground">
-        O job novo copia este padrão. Até o corte, a fila ainda pode trocar.
+        O job novo nasce com prestador. Parte que já está na fábrica continua recebível, sem mudar o pedido.
       </p>
     </div>
   );
