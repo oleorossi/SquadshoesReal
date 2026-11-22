@@ -1,22 +1,23 @@
 /**
  * Lançamento do pedido no Ateliê: quantos pares de cada cor vão para cada prestador.
- * O saldo ao vivo segue o lançamento por numeração. Gerar OS usa atelier_send_split.
+ * O saldo ao vivo segue o lançamento por numeração. A OS nasce na aprovação do corte.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleNotch as Loader2, Truck } from '@phosphor-icons/react';
+import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { AtelierReceiptDialog } from '@/components/atelier/AtelierReceiptDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
+import { ReferenceThumb } from '@/components/production/kanban/CorteCabedalQueue';
+import { resolveCutPhoto } from '@/lib/corteCabedal';
 import { Panel } from '@/components/ui/panel';
 import { SearchInput } from '@/components/ui/search-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useContractors, type Contractor } from '@/hooks/useContractors';
 import {
-  sendAtelierSplit,
   useAtelierContractorSectors,
   useAtelierOpenRates,
   type AtelierLotJob,
@@ -45,8 +46,8 @@ import {
 } from '@/lib/atelierLancamento';
 import { useOutsourcedPairLedger } from '@/hooks/useOutsourcedPairLedger';
 import { totalsFromLedger } from '@/lib/outsourcedPairLedger';
-import { gradeSizeKeys, gradeTotal, type SizeGrade } from '@/lib/atelierSplit';
-import { cn } from '@/lib/utils';
+import { gradeSizeKeys, gradeTotal, priceWasEdited, type SizeGrade } from '@/lib/atelierSplit';
+import { cn, formatCurrency } from '@/lib/utils';
 
 interface DraftRow {
   key: string;
@@ -222,6 +223,36 @@ export function AtelierLancamento() {
       }[];
     },
   });
+  const photos = useQuery({
+    queryKey: ['atelier-launch-photos', sheetIds],
+    enabled: sheetIds.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const [sheets, variants] = await Promise.all([
+        supabase.from('technical_sheets').select('id, image_url, images').in('id', sheetIds),
+        supabase.from('reference_color_variants').select('reference_id, color, image_url').in('reference_id', sheetIds),
+      ]);
+      if (sheets.error) throw sheets.error;
+      return {
+        sheets: (sheets.data ?? []) as Array<{ id: string; image_url: string | null; images: unknown }>,
+        variants: (variants.data ?? []) as Array<{ reference_id: string; color: string | null; image_url: string | null }>,
+      };
+    },
+  });
+  const photoFor = (jobId: string, colorName: string) => {
+    const sheetId = sheetsQuery.data?.get(jobId);
+    if (!sheetId || !photos.data) return '';
+    const sheet = photos.data.sheets.find((row) => row.id === sheetId);
+    const variants = photos.data.variants.filter((row) => row.reference_id === sheetId);
+    const exact = variants.find((row) => (row.color || '').trim().toLowerCase() === colorName.trim().toLowerCase())?.image_url;
+    const preto = variants.find((row) => (row.color || '').trim().toLowerCase() === 'preto')?.image_url;
+    return resolveCutPhoto({
+      variantImageUrl: exact,
+      pretoImageUrl: preto,
+      images: sheet?.images,
+      imageUrl: sheet?.image_url,
+    });
+  };
   const sheetPrices = useQuery({
     queryKey: ['atelier-launch-sheet-prices', sheetIds],
     enabled: sheetIds.length > 0,
@@ -287,59 +318,6 @@ export function AtelierLancamento() {
     () => providerColorLines(payload?.colors ?? []),
     [payload],
   );
-
-  const send = async (color: LaunchColor) => {
-    const rows = rowsOf(color.jobId);
-    const grades = rows.map((row) => positiveGrade(row.sizes));
-    if (colorSizeMeters(color.remaining, grades).some((meter) => meter.over)) {
-      toast.error('Algum tamanho passou do saldo desta cor.');
-      return;
-    }
-    const parts = rows.flatMap((row, index) => {
-      const grade = grades[index];
-      if (gradeTotal(grade) <= 0) return [];
-      const standard = row.mode === 'contractor' && row.contractorId
-        ? quoteFor(color, row.contractorId).price
-        : null;
-      const typed = parsePrice(row.price);
-      return [{
-        mode: 'contractor' as const,
-        contractor_id: row.mode === 'contractor' ? row.contractorId || null : null,
-        grade,
-        unit_price: typed ?? standard,
-        save_reference_rate: false,
-      }];
-    });
-    if (parts.length === 0) {
-      toast.error('Informe ao menos 1 par.');
-      return;
-    }
-    if (parts.some((part) => part.mode === 'contractor' && !part.contractor_id)) {
-      toast.error('Escolha o prestador de cada parte.');
-      return;
-    }
-    if (parts.some((part) => part.mode === 'contractor' && !(Number(part.unit_price) > 0))) {
-      toast.error('Informe o R$/par maior que zero. O padrão da ficha não muda.');
-      return;
-    }
-    setBusyJob(color.jobId);
-    try {
-      const result = await sendAtelierSplit({ jobId: color.jobId, parts });
-      const made = result?.service_order_ids?.length ?? 0;
-      toast.success(made > 0
-        ? `${color.color}: ${made} OS gerada${made === 1 ? '' : 's'}`
-        : `${color.color}: parte lançada`);
-      setDrafts((current) => ({ ...current, [color.jobId]: [blankRow()] }));
-      await qc.invalidateQueries({ queryKey: ['atelier-order-launch'] });
-    } catch (error) {
-      const message = error && typeof error === 'object' && 'message' in error
-        ? String((error as { message?: string }).message)
-        : 'Falha ao gerar a OS';
-      toast.error(message);
-    } finally {
-      setBusyJob(null);
-    }
-  };
 
   const reserve = async (color: LaunchColor) => {
     const rows = rowsOf(color.jobId);
@@ -459,11 +437,12 @@ export function AtelierLancamento() {
                 const rows = rowsOf(color.jobId);
                 const grades = rows.map((row) => positiveGrade(row.sizes));
                 const sizes = gradeSizeKeys(color.remaining);
-                const over = colorSizeMeters(color.remaining, grades).some((meter) => meter.over);
                 return (
                   <Panel key={color.jobId} className="space-y-3 p-4">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <div>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        <ReferenceThumb url={photoFor(color.jobId, color.color)} size={44} />
+                        <div>
                         <p className="font-semibold text-foreground">
                           {color.color}
                           {color.referenceCode ? ` · ${color.referenceCode}` : ''}
@@ -482,6 +461,7 @@ export function AtelierLancamento() {
                             ? ` · OP ${color.opPairs}`
                             : ''}
                         </p>
+                        </div>
                       </div>
                     </div>
                     {color.parts.length > 0 && (
@@ -629,19 +609,9 @@ export function AtelierLancamento() {
                           >
                             Reservar divisão
                           </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-9"
-                            disabled={busyJob === color.jobId || over || !color.canSend}
-                            title={color.canSend ? undefined : (color.blockReason || 'O envio espera o corte e o kit.')}
-                            onClick={() => void send(color)}
-                          >
-                            {busyJob === color.jobId
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <Truck className="h-3.5 w-3.5" />}
-                            Gerar OS desta cor
-                          </Button>
+                          <p className="text-xs text-muted-foreground">
+                            A OS desta cor nasce na aprovação do corte, uma por prestador e por lançamento.
+                          </p>
                         </div>
                       </>
                     )}

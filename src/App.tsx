@@ -771,6 +771,11 @@ const DESIGN_PREVIEW_ROUTES: RouteObject[] = import.meta.env.DEV
         lazy: () => import("./pages/DensityAudit").then(m => ({ Component: m.default })),
         errorElement: <RouteErrorFallback />,
       },
+      {
+        path: "/corte-preview",
+        lazy: () => import("./pages/CortePreview").then(m => ({ Component: m.default })),
+        errorElement: <RouteErrorFallback />,
+      },
     ]
   : [];
 

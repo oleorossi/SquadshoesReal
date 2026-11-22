@@ -33,6 +33,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { searchMatchesAllTerms, searchMatchesAny, splitSearchTerms, normalizeForSearch } from '@/lib/searchUtils';
 import { thumbUrl } from '@/lib/imageThumb';
 import { toast } from 'sonner';
+import { CorteCabedalQueue } from '@/components/production/kanban/CorteCabedalQueue';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import { MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
@@ -2034,6 +2035,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
                     </div>
                   ))}
                 </div>
+                {sector === 'Corte Cabedal' && <CorteCabedalQueue />}
                 </div>
               </div>
             );
