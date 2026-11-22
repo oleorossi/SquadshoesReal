@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,6 @@ import {
   useProductionOverloads, useProductionScheduleGrid, useAcceptOverload,
   useEnsureFreshSchedule, OverloadRow,
 } from '@/hooks/useProductionEngine';
-import { GenerateServiceOrdersWizard } from '@/components/contractors/GenerateServiceOrdersWizard';
 import { useCan } from '@/hooks/useAccessControl';
 import { useRealtimeOrderStages } from '@/hooks/useOrderStages';
 import { todayISO, todayPlusDaysISO } from '@/lib/date';
@@ -44,8 +43,7 @@ export default function ProducaoEstouro() {
   const { data: grid = [] } = useProductionScheduleGrid(todayISO(), plusDaysISO(30));
   const accept = useAcceptOverload();
   const canEdit = useCan('/producao/estouro').canEdit;
-
-  const [osWizard, setOsWizard] = useState<{ saleOrderId: string } | null>(null);
+  const navigate = useNavigate();
   const [acceptRow, setAcceptRow] = useState<OverloadRow | null>(null);
   const [acceptReason, setAcceptReason] = useState('');
 
@@ -175,7 +173,7 @@ export default function ProducaoEstouro() {
                         size="sm" variant="outline" className="h-8 gap-1.5 text-xs"
                         disabled={!o.sale_order_id}
                         title={o.sale_order_id ? 'Gerar OS de terceirização pré-preenchida' : 'OP sem PV vinculado'}
-                        onClick={() => o.sale_order_id && setOsWizard({ saleOrderId: o.sale_order_id })}
+                        onClick={() => o.sale_order_id && navigate('/terceirizados?tab=planejar')}
                       >
                         <SendToThird className="h-3.5 w-3.5" /> Enviar pra terceiro
                       </Button>
@@ -269,16 +267,6 @@ export default function ProducaoEstouro() {
             ))}
           </div>
         </div>
-      )}
-
-      {/* OS pré-preenchida (fluxo existente de terceirização por OP×setor) */}
-      {osWizard && (
-        <GenerateServiceOrdersWizard
-          open
-          onOpenChange={v => { if (!v) setOsWizard(null); }}
-          initialSaleOrderId={osWizard.saleOrderId}
-          onGenerated={() => setOsWizard(null)}
-        />
       )}
 
       {/* Aceitar atraso com motivo + autoria (R4.3) */}

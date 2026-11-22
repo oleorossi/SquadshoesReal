@@ -94,10 +94,9 @@ describe('Ateliê — interno × prestador + kit da ficha', () => {
     expect(ficha).toContain('toggleKitProduct');
 
     const pv = readFileSync('src/components/sale-orders/ItemAtelierModeSection.tsx', 'utf8');
-    expect(pv).toContain('AtelierExecutionMode');
-    expect(pv).toContain('ATELIER_EXECUTION_MODE_LABEL');
-    expect(pv).toContain("'internal'");
-    expect(pv).toContain("'contractor'");
+    expect(pv).toContain('Prestador preferido');
+    expect(pv).toContain('outsourced_sectors');
+    expect(pv).not.toContain('ATELIER_EXECUTION_MODE_LABEL');
 
     const form = readFileSync('src/components/sale-orders/SaleOrderItemForm.tsx', 'utf8');
     expect(form).toContain('ItemAtelierModeSection');

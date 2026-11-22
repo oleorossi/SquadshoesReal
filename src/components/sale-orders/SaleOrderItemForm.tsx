@@ -3709,8 +3709,20 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
         {item.reference_id && (
           <ItemAtelierModeSection
             referenceId={item.reference_id}
-            value={item.atelier_execution_mode}
-            onChange={(next) => onUpdate(index, 'atelier_execution_mode', next)}
+            contractorId={
+              item.outsourced_sectors?.costura_cabedal
+              || item.outsourced_sectors?.costura
+              || item.outsourced_sectors?.aviamento
+              || null
+            }
+            onContractor={(next) => {
+              const sectors = { ...(item.outsourced_sectors || {}) };
+              for (const key of ['costura_cabedal', 'costura', 'aviamento', 'mesa']) {
+                if (next) sectors[key] = next;
+                else delete sectors[key];
+              }
+              onUpdate(index, 'outsourced_sectors', sectors);
+            }}
           />
         )}
 

@@ -875,7 +875,7 @@ const router = createBrowserRouter([
       {
         // Antecipação unificada no Ateliê (agenda + fila Costura/Aviamento).
         path: "producao/antecipacao",
-        element: <Navigate to="/atelie" replace />,
+        element: <Navigate to="/terceirizados?tab=corte" replace />,
       },
       {
         path: "producao/sequencia",

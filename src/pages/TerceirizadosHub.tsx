@@ -1,191 +1,160 @@
 /**
- * Hub "Terceirizados" (rota canônica `/terceirizados`) — UNIFICA num só módulo
- * tudo que era espalhado entre duas telas/itens de menu (o antigo "Terceiros"
- * /terceiros e o "Terceirizados" /contractors). O dono apontou que "é o mesmo
- * conceito" e nomeou o módulo unificado como **Terceirizados**.
+ * Módulo único de ordens de serviço de terceirizados.
+ * Ateliê (cabedal complexo) e o antigo menu Terceirizados moram aqui.
+ * Os pares vêm de outsourced_pair_ledger.
  *
- * Uma única barra de abas, agrupada em OPERACIONAL | CADASTRO:
- *   OPERACIONAL:
- *   • Ordens de Serviço → lista de OS + acompanhamento em campo (chips "Na rua"/
- *     "Atrasados" + KPIs) + enviar/receber + filtros/seleção/PDF (Contractors).
- *     A antiga aba "Na Rua" (OutsourcedInField) foi FUNDIDA aqui em 2026-06-30 —
- *     era um recorte filtrado das próprias OS; ?tab=rua redireciona pra cá.
- *   • Planejamento      → projeção de carga por contratada (Contractors)
- *   • Relatório         → métricas + histórico (ContractorReports)
- *   CADASTRO:
- *   • Prestadores          → cadastro/CRUD das contratadas (Contractors)
- *   • Tarifas por Referência → R$/par por ficha (TerceirizacaoCoberturaPanel)
- *
- * Receitas de tiras agora pertencem ao grupo próprio Central de Tiras. O parâmetro
- * legado `?tab=recipes` é preservado apenas como redirect.
- *
- * As páginas originais são renderizadas em modo `embedded` (sem header/AppLayout
- * próprios — o header é deste hub). Contractors mantém seus 4 painéis, mas a
- * TabsList interna fica oculta: a aba ativa é controlada pela barra única daqui.
- *
- * Rotas antigas (/terceiros, /terceiros-na-rua, /terceiros/relatorios,
- * /contractors) redirecionam pra cá com a aba certa via ?tab=.
+ * Rotas antigas:
+ *   /atelie?view=fila        → corte
+ *   /atelie?view=lancamento  → lancar
+ *   /atelie?view=relatorio   → relatorio
+ *   /atelie?view=cadastro    → modelos
+ *   /atelie?view=tiras       → tiras
+ *   ?tab=orders|os-ativas    → rua
+ *   ?tab=planning            → planejar
+ *   ?tab=gestao              → relatorio
+ *   ?tab=prep                → corte
+ *   requestedRaw === 'prep'  → corte (atalho antigo)
  */
-import { useState, useEffect, useRef } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { useEffect, useState } from 'react';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import {
-  ChartBar as BarChart3, ClipboardText as ClipboardList,
-  ChartLineUp, Kanban, Users, Tag, Scissors,
+  Calendar, ClipboardText, Factory, Kanban, Scissors, Tag, Truck, Users,
 } from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { Button } from '@/components/ui/button';
-import { Panel } from '@/components/ui/panel';
-import { OsPrestadorGestao } from '@/components/contractors/OsPrestadorGestao';
-import ContractorReportsPage from './ContractorReports';
-import ContractorsPage from './Contractors';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useOutsourcedPairLedger } from '@/hooks/useOutsourcedPairLedger';
+import { totalsFromLedger } from '@/lib/outsourcedPairLedger';
+import { OsAtivasPanel } from '@/components/contractors/OsAtivasPanel';
+import { OutsourcingPlanPanel } from '@/components/contractors/OutsourcingPlanPanel';
 import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
-import { OsAtivasPanel, OsRedistribuicaoHistorico } from '@/components/contractors/OsAtivasPanel';
-import { Link } from 'react-router-dom';
+import { AtelierLancamento } from '@/components/atelier/AtelierLancamento';
+import { AtelierRelatorioView } from '@/components/atelier/AtelierRelatorioView';
+import { AtelierStrapsView } from '@/components/atelier/AtelierStrapsView';
+import { CadastroView, FilaView } from '@/pages/Atelie';
+import ContractorsPage from './Contractors';
+import ContractorReportsPage from './ContractorReports';
 
-// Uma única régua, com alvos de toque de 44px e labels curtos. O nome completo
-// continua no aria-label/title de cada aba.
-const TRIGGER = 'h-11 shrink-0 snap-start gap-1.5 rounded-md px-3 py-0 text-[11px] data-[state=active]:bg-background data-[state=active]:shadow-sm sm:text-xs';
-const GROUP_LABEL = 'flex h-11 shrink-0 items-center px-2 font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/80';
+const TRIGGER = 'h-11 shrink-0 snap-start rounded-md px-3 text-[11px] sm:text-xs';
 
-// Abas servidas pelo componente Contractors (uma única instância controlada).
-// Prep. cabedal saiu do hub → /atelie (spec atelie-cabedal-complexo).
-const CONTRACTOR_TABS = ['orders', 'planning', 'contractors'];
-const VALID_TABS = new Set([...CONTRACTOR_TABS, 'cobertura', 'relatorio', 'os-ativas', 'gestao']);
-const DEFAULT_TAB = 'orders';
+const TAB_ALIAS: Record<string, string> = {
+  orders: 'rua',
+  'os-ativas': 'rua',
+  planning: 'planejar',
+  gestao: 'relatorio',
+  prep: 'corte',
+  rua: 'rua',
+  contractors: 'prestadores',
+  cobertura: 'prestadores',
+  recipes: 'tiras',
+};
+
+const TABS = new Set(['planejar', 'lancar', 'rua', 'receber', 'corte', 'prestadores', 'relatorio', 'modelos', 'tiras']);
 
 export default function TerceirizadosHub() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabListRef = useRef<HTMLDivElement>(null);
-  // "Na Rua" foi FUNDIDA em "Ordens de Serviço" (2026-06-30): o acompanhamento
-  // em campo virou os chips "Na rua"/"Atrasados" + KPIs dentro da própria OS.
-  // Links/bookmarks antigos (?tab=rua) redirecionam pra Ordens de Serviço.
-  const requestedRaw = searchParams.get('tab') ?? '';
-  const requested = requestedRaw === 'rua' || requestedRaw === 'prep' ? 'orders' : requestedRaw;
-  const [tab, setTab] = useState<string>(VALID_TABS.has(requested) ? requested : DEFAULT_TAB);
+  const raw = searchParams.get('tab') ?? 'planejar';
+  const mapped = TAB_ALIAS[raw] ?? raw;
+  const [tab, setTab] = useState(TABS.has(mapped) ? mapped : 'planejar');
 
   useEffect(() => {
-    if (VALID_TABS.has(requested)) setTab(requested);
-  }, [requested]);
+    if (TABS.has(mapped)) setTab(mapped);
+  }, [mapped]);
 
-  // Links diretos podem abrir uma aba que está fora do recorte horizontal no
-  // celular. Mantemos a ativa visível sem mover verticalmente a página.
-  useEffect(() => {
-    const activeTab = tabListRef.current?.querySelector<HTMLElement>('[data-state="active"]');
-    activeTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [tab]);
+  if (raw === 'recipes') {
+    return <Navigate to="/tiras-artesanais?tab=receitas" replace />;
+  }
 
-  const onTabChange = (v: string) => {
-    setTab(v);
-    setSearchParams(
-      (prev) => { const p = new URLSearchParams(prev); p.set('tab', v); return p; },
-      { replace: true },
-    );
+  const onTabChange = (value: string) => {
+    setTab(value);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', value);
+      return next;
+    }, { replace: true });
   };
 
-  // "Nova OS" abre o ÚNICO formulário canônico (aba Ordens de Serviço). Mantido
-  // o canal openCreateOS pra eventuais chamadas externas; sem a aba "Na Rua",
-  // hoje a criação parte da própria Ordens de Serviço.
-  const [pendingCreateOS, setPendingCreateOS] = useState<{ contractorId?: string } | null>(null);
-
-  // Legado ?tab=prep → Ateliê (fila operacional).
-  if (requestedRaw === 'prep') {
-    return <Navigate to="/atelie?view=fila" replace />;
-  }
-  if (requestedRaw === 'recipes') {
-    const params = new URLSearchParams(searchParams);
-    params.set('tab', 'receitas');
-    return <Navigate to={`/tiras-artesanais?${params.toString()}`} replace />;
-  }
-
   return (
-    <div className="space-y-5 page-enter">
+    <div className="space-y-4 pb-24">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · TERCEIRIZAÇÃO"
+        sectionLabel="PRODUÇÃO · ORDENS DE SERVIÇO"
         title="Terceirizados"
-        description="Na rua, OS, relatório e prestadores. Cabedal complexo mora no Ateliê — debitar, enviar e receber."
-        actions={
-          <Button variant="outline" size="sm" className="h-9" asChild>
-            <Link to="/atelie?view=fila">
-              <Scissors className="h-3.5 w-3.5" />
-              Ateliê
-            </Link>
-          </Button>
-        }
+        description="Um módulo só: planejar, lançar, acompanhar na rua e receber. Cabedal complexo entra aqui, sempre com prestador."
       />
-      <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
+      <Tabs value={tab} onValueChange={onTabChange}>
         <TabsList
-          ref={tabListRef}
           indicator="none"
-          aria-label="Áreas de terceirização"
-          className="h-auto snap-x snap-proximity flex-nowrap items-center gap-1 overflow-x-auto overscroll-x-contain rounded-lg border border-border/60 bg-muted/50 p-0.5 scroll-px-2"
+          aria-label="Ordens de serviço"
+          className="h-auto snap-x snap-proximity flex-nowrap gap-1 overflow-x-auto rounded-lg border border-border/60 bg-muted/50 p-0.5"
         >
-          <span aria-hidden="true" className={GROUP_LABEL}>Operação</span>
-          <TabsTrigger value="orders" className={TRIGGER} aria-label="Ordens de Serviço" title="Ordens de Serviço">
-            <ClipboardList className="h-3.5 w-3.5" /> Ordens
-          </TabsTrigger>
-          <TabsTrigger value="os-ativas" className={TRIGGER} aria-label="OS ativas" title="OS ativas">
-            <Kanban className="h-3.5 w-3.5" /> OS ativas
-          </TabsTrigger>
-          <TabsTrigger value="planning" className={TRIGGER} aria-label="Planejamento de terceirização" title="Planejamento de terceirização">
-            <ChartLineUp className="h-3.5 w-3.5" /> Planejar
-          </TabsTrigger>
-          <TabsTrigger value="gestao" className={TRIGGER} aria-label="Gestão de OS e relatórios" title="Gestão de OS / Relatórios">
-            <ClipboardList className="h-3.5 w-3.5" /> Gestão
-          </TabsTrigger>
-          <TabsTrigger value="relatorio" className={TRIGGER} aria-label="Relatório de terceirizados">
-            <BarChart3 className="h-3.5 w-3.5" /> Relatório
-          </TabsTrigger>
-          <span aria-hidden className="mx-1 h-6 w-px shrink-0 self-center bg-border" />
-          <span aria-hidden="true" className={GROUP_LABEL}>Cadastros</span>
-          <TabsTrigger value="contractors" className={TRIGGER} aria-label="Cadastro de prestadores">
-            <Users className="h-3.5 w-3.5" /> Prestadores
-          </TabsTrigger>
-          <TabsTrigger value="cobertura" className={TRIGGER} aria-label="Tarifas por Referência" title="Tarifas por Referência">
-            <Tag className="h-3.5 w-3.5" /> Tarifas
-          </TabsTrigger>
+          <TabsTrigger value="planejar" className={TRIGGER}><Calendar className="h-3.5 w-3.5" /> Planejar</TabsTrigger>
+          <TabsTrigger value="lancar" className={TRIGGER}><ClipboardText className="h-3.5 w-3.5" /> Lançar</TabsTrigger>
+          <TabsTrigger value="rua" className={TRIGGER}><Truck className="h-3.5 w-3.5" /> Na rua</TabsTrigger>
+          <TabsTrigger value="receber" className={TRIGGER}><Kanban className="h-3.5 w-3.5" /> Receber</TabsTrigger>
+          <TabsTrigger value="corte" className={TRIGGER}><Scissors className="h-3.5 w-3.5" /> Corte</TabsTrigger>
+          <TabsTrigger value="prestadores" className={TRIGGER}><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
+          <TabsTrigger value="relatorio" className={TRIGGER}><Factory className="h-3.5 w-3.5" /> Relatório</TabsTrigger>
+          <TabsTrigger value="modelos" className={TRIGGER}><Tag className="h-3.5 w-3.5" /> Modelos</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="cobertura">
+        <TabsContent value="planejar" className="mt-3">
+          <OutsourcingPlanPanel />
+        </TabsContent>
+        <TabsContent value="lancar" className="mt-3">
+          <AtelierLancamento />
+        </TabsContent>
+        <TabsContent value="rua" className="mt-3 space-y-4">
+          <OsAtivasPanel />
+          <ContractorsPage embedded activeTab="orders" onActiveTabChange={() => undefined} />
+        </TabsContent>
+        <TabsContent value="receber" className="mt-3 space-y-3">
+          <p className="text-sm text-muted-foreground">
+            A conferência (bom, defeito e retrabalho) é a da OS que está na rua. Os pares abaixo são os que o motor ainda marca como enviados e não recebidos.
+          </p>
+          <ReceberResumo />
+          <ContractorsPage embedded activeTab="orders" onActiveTabChange={() => undefined} />
+        </TabsContent>
+        <TabsContent value="corte" className="mt-3">
+          <FilaView />
+        </TabsContent>
+        <TabsContent value="prestadores" className="mt-3 space-y-4">
+          <ContractorsPage embedded activeTab="contractors" onActiveTabChange={() => undefined} />
           <TerceirizacaoCoberturaPanel />
         </TabsContent>
-        <TabsContent value="os-ativas">
-          <OsAtivasPanel />
-        </TabsContent>
-        <TabsContent value="gestao">
-          <OsPrestadorGestao />
-        </TabsContent>
-        <TabsContent value="relatorio" className="space-y-3">
-          <OsRedistribuicaoHistorico />
-          <Panel className="p-3 flex flex-wrap items-center justify-between gap-2 border border-border/60 bg-muted/20 rounded-lg">
-            <p className="text-sm text-muted-foreground">
-              Cabedal complexo: fila, débito e envio no{' '}
-              <Link to="/atelie?view=fila" className="text-foreground underline-offset-2 hover:underline font-medium">
-                Ateliê
-              </Link>
-              . Use Ordens abaixo pra OS gerais na rua.
-            </p>
-            <Button size="sm" className="h-8" asChild>
-              <Link to="/atelie?view=fila">Abrir Ateliê</Link>
-            </Button>
-          </Panel>
+        <TabsContent value="relatorio" className="mt-3 space-y-4">
+          <TotaisDoMotor />
+          <AtelierRelatorioView />
           <ContractorReportsPage embedded />
         </TabsContent>
-
-        {/* Uma única instância de Contractors serve as 4 abas de cadastro/OS.
-            Só monta quando uma dessas abas está ativa (evita carregar suas
-            queries pesadas enquanto o usuário fica só no "Na Rua"). O painel
-            ativo é dirigido por `activeTab`; a TabsList interna fica oculta. */}
-        {CONTRACTOR_TABS.includes(tab) && (
-          <ContractorsPage
-            embedded
-            activeTab={tab}
-            onActiveTabChange={onTabChange}
-            openCreateOS={pendingCreateOS}
-            onCreateOSConsumed={() => setPendingCreateOS(null)}
-          />
-        )}
+        <TabsContent value="modelos" className="mt-3">
+          <CadastroView />
+        </TabsContent>
+        <TabsContent value="tiras" className="mt-3">
+          <AtelierStrapsView />
+          <p className="text-sm text-muted-foreground">
+            Receitas de tira comprada ficam na <Link className="underline" to="/tiras-artesanais?tab=receitas">Central de Tiras</Link>.
+          </p>
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function TotaisDoMotor() {
+  const query = useOutsourcedPairLedger('week');
+  const totals = totalsFromLedger(query.data ?? []);
+  if (query.isLoading) return <p className="text-sm text-muted-foreground">Lendo o motor…</p>;
+  if (query.isError) return <p className="text-sm text-destructive">O relatório não leu o motor de pares.</p>;
+  return (
+    <p className="text-sm text-muted-foreground">
+      Nesta semana de produção: demanda {totals.demand.toLocaleString('pt-BR')}, enviado {totals.sent.toLocaleString('pt-BR')}, recebido {totals.received.toLocaleString('pt-BR')}, a enviar {totals.balance.toLocaleString('pt-BR')}. O detalhe por período está em Planejar.
+    </p>
+  );
+}
+
+function ReceberResumo() {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Abra a OS na lista e use Receber. O saldo da cor no Lançar e os totais do Planejar saem do mesmo motor.
+    </p>
   );
 }

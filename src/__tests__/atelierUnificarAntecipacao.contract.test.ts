@@ -35,7 +35,7 @@ describe('Ateliê unificar Antecipação — contratos', () => {
   it('rota Antecipação redireciona ao Ateliê e some do menu Produção', () => {
     const app = readFileSync(APP, 'utf8');
     expect(app).toContain('path: "producao/antecipacao"');
-    expect(app).toContain('Navigate to="/atelie"');
+    expect(app).toContain('Navigate to="/terceirizados?tab=corte"');
     expect(app).not.toMatch(/lazy\(\(\) => import\("\.\/pages\/ProducaoAntecipacao"\)\)/);
 
     const nav = readFileSync(NAV, 'utf8');

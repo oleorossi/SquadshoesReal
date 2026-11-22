@@ -37,6 +37,8 @@ import { useArtisanalStrapPurchaseOrderApprovalCount } from '@/hooks/useArtisana
 
 const QuickActionsFAB = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  if (location.pathname === '/terceirizados' || location.pathname === '/atelie') return null;
   const { canAccessRoute } = useAccessControl();
   const canCreateSales = canAccessRoute('/sales');
   const canManageOrders = canAccessRoute('/orders');

@@ -1,68 +1,73 @@
 /**
- * Sugestão de modo Ateliê no item do PV (interno | prestador).
- * Só aparece quando a referência está no cadastro Ateliê (Costura/Aviamento).
- * O relatório pode sobrescrever o job antes do 1º OK.
+ * Cabedal complexo no item do PV: sempre prestador.
+ * O preferido reutiliza outsourced_sectors (costura e aviamento).
+ * Não cria coluna nova. Pedido já gravado como interno não é reescrito aqui.
  */
-import { Factory, Truck } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { Truck } from '@phosphor-icons/react';
 import {
-  ATELIER_EXECUTION_MODE_LABEL,
-  type AtelierExecutionMode,
-} from '@/lib/atelier';
-import { useAtelierReferenceConfig } from '@/hooks/useAtelier';
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { useContractors, type Contractor } from '@/hooks/useContractors';
+import { useAtelierContractorSectors, useAtelierReferenceConfig } from '@/hooks/useAtelier';
+import { atelierContractorCanTake } from '@/lib/atelierAdmin';
+import type { AtelierSector } from '@/lib/atelier';
+
+const NONE = '__none__';
 
 interface Props {
   referenceId: string | null | undefined;
-  value?: AtelierExecutionMode | null;
-  onChange: (next: AtelierExecutionMode | null) => void;
+  contractorId?: string | null;
+  onContractor: (next: string | null) => void;
   disabled?: boolean;
 }
 
 export function ItemAtelierModeSection({
   referenceId,
-  value,
-  onChange,
+  contractorId,
+  onContractor,
   disabled,
 }: Props) {
   const { data: config, isLoading } = useAtelierReferenceConfig(referenceId);
-  const streetActive = (config?.rows ?? []).some(
-    (r) =>
-      r.active
-      && (r.sector === 'costura_cabedal' || r.sector === 'aviamento'),
+  const { data: contractors = [] } = useContractors();
+  const { data: sectors = [] } = useAtelierContractorSectors();
+  const street = (config?.rows ?? []).filter(
+    (row) => row.active && (row.sector === 'costura_cabedal' || row.sector === 'aviamento'),
+  );
+  if (!referenceId || isLoading || street.length === 0) return null;
+
+  const sector = (street[0]?.sector || 'costura_cabedal') as AtelierSector;
+  const eligible = (contractors as Contractor[]).filter((person) =>
+    person.active && atelierContractorCanTake(person, sector, sectors),
   );
 
-  if (!referenceId || isLoading || !streetActive) return null;
-
-  const mode = value === 'internal' || value === 'contractor' ? value : null;
-
   return (
-    <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
-      <p className="text-xs font-medium text-foreground">Ateliê · onde faz Costura/Aviamento</p>
-      <p className="text-[11px] text-muted-foreground">
-        Sugestão para o pedido. Dá pra ajustar no relatório antes do primeiro OK.
+    <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+      <p className="flex items-center gap-1 text-xs font-medium text-foreground">
+        <Truck className="h-3.5 w-3.5" /> Prestador preferido
       </p>
-      <div className="inline-flex rounded-md border border-border p-0.5">
-        {([
-          { id: 'internal' as const, icon: Factory },
-          { id: 'contractor' as const, icon: Truck },
-        ]).map(({ id, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            disabled={disabled}
-            onClick={() => onChange(mode === id ? null : id)}
-            className={cn(
-              'inline-flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-60',
-              mode === id
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:bg-muted/50',
-            )}
-          >
-            <Icon className="h-3 w-3" />
-            {ATELIER_EXECUTION_MODE_LABEL[id]}
-          </button>
-        ))}
-      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Costura e aviamento deste cabedal vão para prestador. Dá para dividir no lançamento.
+      </p>
+      <Select
+        value={contractorId || NONE}
+        onValueChange={(value) => onContractor(value === NONE ? null : value)}
+        disabled={disabled}
+      >
+        <SelectTrigger className="h-9" aria-label="Prestador preferido">
+          <SelectValue placeholder="Escolher prestador" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE}>Sem preferência</SelectItem>
+          {eligible.map((person) => (
+            <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {eligible.length === 0 && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-400">
+          Nenhum prestador ativo para este setor. Cadastre em Terceirizados.
+        </p>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -174,6 +175,7 @@ interface HeatmapCell {
 // ─── Main page ─────────────────────────────────────────────────────────────
 
 export default function ProductionControlCenter() {
+  const navigate = useNavigate();
   // A aba mora na URL (contrato do lote L6): antes era <Tabs defaultValue>, então
   // F5 e o botão Voltar devolviam o usuário à primeira aba.
   const { value: abaUrl, setValue: setAbaUrl } = useUrlTabState({
@@ -521,7 +523,8 @@ export default function ProductionControlCenter() {
             <StatCard
               label="OSes terceirizadas"
               value={activeOutsourceOses.length}
-              hint="ativas"
+              hint="ver no módulo"
+              onClick={() => navigate('/terceirizados?tab=rua')}
             />
           </StatGrid>
 
@@ -609,7 +612,7 @@ export default function ProductionControlCenter() {
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">{b.reason}</p>
                       </div>
-                      <Button size="sm" className="gap-1.5" onClick={() => setOutsourceTarget(b)}>
+                      <Button size="sm" className="gap-1.5" onClick={() => navigate('/terceirizados?tab=planejar')}>
                         <Truck className="h-3.5 w-3.5" /> Terceirizar
                       </Button>
                     </div>
@@ -625,7 +628,7 @@ export default function ProductionControlCenter() {
           </>)}
 
           {/* OSes terceirizadas ativas */}
-          <Panel title={`OSes terceirizadas ativas (${activeOutsourceOses.length})`} flush>
+          <Panel title={`OSes terceirizadas ativas (${activeOutsourceOses.length})`} subtitle="A lista canônica está no módulo de terceirizados." flush>
               {activeOutsourceOses.length === 0 ? (
                 <EmptyState
                   icon={Truck}
