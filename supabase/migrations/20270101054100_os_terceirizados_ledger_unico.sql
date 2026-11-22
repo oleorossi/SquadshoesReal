@@ -410,7 +410,7 @@ REVOKE ALL ON FUNCTION public.outsourced_pair_ledger(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.outsourced_pair_ledger(text) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.outsourced_pair_ledger(text) IS
-  'Pares de terceirizados por prestador, PV, cor, setor e período. Capacidade e excedente são do prestador no período: não some capacity_period entre linhas.';
+  'Pares de terceirizados por prestador, PV, cor, setor e período. Capacidade e excedente são do prestador no período: não some capacity_period entre linhas. A OS que nascer do corte entra por atelier_job_parts e service_orders; esta função não ganha um segundo cálculo.';
 
 -- Job novo de costura/aviamento nasce prestador. Linha já gravada não muda.
 CREATE OR REPLACE FUNCTION public.tg_atelier_job_is_contractor()
@@ -677,7 +677,7 @@ ALTER TABLE public.atelier_launch_reservations ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.atelier_launch_reservations FROM PUBLIC, anon, authenticated;
 
 COMMENT ON TABLE public.atelier_launch_reservations IS
-  'Divisão reservada da cor, antes do corte. Não é OS e não envia material.';
+  'Divisão reservada da cor, antes do corte. Não é OS e não envia material. O lançamento do Corte Cabedal (faixa de faca P/M/G) passa a gravar aqui; aprovar o corte é quem chama a geração da OS. Não apontar produção nesta tabela.';
 
 CREATE OR REPLACE FUNCTION public.save_atelier_launch_reservation(
   p_job_id uuid,
