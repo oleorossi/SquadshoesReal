@@ -36,6 +36,8 @@ import {
 
 interface Props {
   job: AtelierLotJob | null;
+  /** Parte já escolhida na tela de lançamento. */
+  initialPartId?: string | null;
   onClose: () => void;
 }
 
@@ -45,7 +47,7 @@ function formatWhen(iso: string) {
   return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-export function AtelierReceiptDialog({ job, onClose }: Props) {
+export function AtelierReceiptDialog({ job, initialPartId = null, onClose }: Props) {
   const qc = useQueryClient();
   const open = !!job;
   const received = Number(job?.received_pairs) || 0;
@@ -116,14 +118,15 @@ export function AtelierReceiptDialog({ job, onClose }: Props) {
     setNote('');
     setReason('');
     setReworkQty('');
-    setPartId(null);
-  }, [job?.id]);
+    setPartId(initialPartId);
+  }, [job?.id, initialPartId]);
   useEffect(() => {
     setQty(String(partRemaining || ''));
   }, [partRemaining, job?.id]);
   useEffect(() => {
+    if (initialPartId) return;
     if (parts.length === 1) setPartId(parts[0].id);
-  }, [parts]);
+  }, [parts, initialPartId]);
 
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: atelierKeys.all });
