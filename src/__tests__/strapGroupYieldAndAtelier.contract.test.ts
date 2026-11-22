@@ -62,9 +62,10 @@ describe('rendimento canônico no grupo da tira', () => {
 describe('Ateliê — aba Tiras', () => {
   it('Atelie expõe view=tiras com AtelierStrapsView', () => {
     const page = read('src/pages/Atelie.tsx');
-    expect(page).toContain("'tiras'");
-    expect(page).toContain('AtelierStrapsView');
-    expect(page).toContain('value="tiras"');
+    expect(page).toContain("tiras: 'tiras'");
+    const hub = read('src/pages/TerceirizadosHub.tsx');
+    expect(hub).toContain('AtelierStrapsView');
+    expect(hub).toContain('value="tiras"');
   });
 
   it('hook e view chamam as RPCs vivas do Ateliê de tira', () => {

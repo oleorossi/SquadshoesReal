@@ -34,8 +34,10 @@ describe('Ateliê — realizado e conferido (rua)', () => {
   });
 
   it('relatório operacional existe com filtros', () => {
+    const hub = readFileSync('src/pages/TerceirizadosHub.tsx', 'utf8');
+    expect(hub).toContain('AtelierRelatorioView');
     const page = readFileSync('src/pages/Atelie.tsx', 'utf8');
-    expect(page).toContain('AtelierRelatorioView');
+    expect(page).toContain("relatorio: 'relatorio'");
     const rel = readFileSync('src/components/atelier/AtelierRelatorioView.tsx', 'utf8');
     expect(rel).toContain('OK · Realizado');
     // Label densificado no cartão: "OK · Conferido" (status completo fica no pipeline)

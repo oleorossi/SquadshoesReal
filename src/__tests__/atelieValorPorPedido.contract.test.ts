@@ -23,10 +23,22 @@ describe('valor da OS pedido a pedido', () => {
   });
 
   it('a tela grava o valor na OS e não mexe no padrão', () => {
-    expect(screen).toContain('save_reference_rate: false');
+    // O valor negociado agora mora no corte, na OS daquele lançamento.
+    // A ficha e a tarifa de referência não são regravadas.
+    const cut = readFileSync(resolve(root, 'src/components/production/kanban/CorteCabedalQueue.tsx'), 'utf8');
+    const cutSql = readFileSync(
+      resolve(root, 'supabase/migrations/20270101054200_corte_parcial_gera_os.sql'),
+      'utf8',
+    );
+    expect(cut).toContain('R$/par neste pedido');
+    expect(cut).toContain('unit_price');
     expect(screen).toContain('Diferente do padrão');
-    expect(screen).toContain('maior que zero');
     expect(screen).not.toContain('atelier_save_reference_rate');
+    expect(cut).not.toContain('atelier_save_reference_rate');
+    expect(cutSql).not.toContain('atelier_save_reference_rate');
+    expect(cutSql).not.toContain('UPDATE public.atelier_complex_references');
+    expect(cutSql).not.toContain('UPDATE public.contractor_reference_rates');
+    expect(cutSql).toContain('Informe o R$/par deste prestador');
   });
 
   it('o script aborta a transação', () => {

@@ -467,6 +467,7 @@ const EXEMPT_FROM_MENU = [
   { re: /^\/m(\/|$)/, reason: 'PWA do representante — shell próprio com tab bar' },
   { re: /^\/design-preview$/, reason: 'Showcase interno do design system' },
   { re: /^\/density-audit$/, reason: 'Auditoria DEV de densidade de UI — fora do shell autenticado, só em import.meta.env.DEV' },
+  { re: /^\/corte-preview$/, reason: 'Prévia DEV do corte que gera OS — fora do shell autenticado, só em import.meta.env.DEV' },
   { re: /^\/navigation-audit$/, reason: 'Ferramenta de DEV, alcançada pelo banner de auditoria' },
   {
     re: /^\/producao\/kanban\/gestao$/,
@@ -669,7 +670,7 @@ const resolveOwner = (path) =>
  * guardado como as demais telas, então voltar a deixá-lo sem módulo tem que
  * quebrar o build igual a qualquer outra rota.
  */
-const OUTSIDE_ROUTE_GUARD = /^\/(auth|login|design-preview|density-audit|producao\/kanban\/gestao)/;
+const OUTSIDE_ROUTE_GUARD = /^\/(auth|login|design-preview|density-audit|corte-preview|producao\/kanban\/gestao)/;
 const routesWithoutModule = [...new Map(
   routes
     .filter((r) => r.path !== '/' && r.path !== '/*' && !OUTSIDE_ROUTE_GUARD.test(r.path))

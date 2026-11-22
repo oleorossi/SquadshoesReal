@@ -24,7 +24,7 @@ import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOutsourcedPairLedger } from '@/hooks/useOutsourcedPairLedger';
 import { totalsFromLedger } from '@/lib/outsourcedPairLedger';
-import { OsAtivasPanel } from '@/components/contractors/OsAtivasPanel';
+import { OsAtivasPanel, OsRedistribuicaoHistorico } from '@/components/contractors/OsAtivasPanel';
 import { OutsourcingPlanPanel } from '@/components/contractors/OutsourcingPlanPanel';
 import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
 import { AtelierLancamento } from '@/components/atelier/AtelierLancamento';
@@ -94,6 +94,7 @@ export default function TerceirizadosHub() {
           <TabsTrigger value="prestadores" className={TRIGGER}><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
           <TabsTrigger value="relatorio" className={TRIGGER}><Factory className="h-3.5 w-3.5" /> Relatório</TabsTrigger>
           <TabsTrigger value="modelos" className={TRIGGER}><Tag className="h-3.5 w-3.5" /> Modelos</TabsTrigger>
+          <TabsTrigger value="tiras" className={TRIGGER}><Scissors className="h-3.5 w-3.5" /> Tiras</TabsTrigger>
         </TabsList>
 
         <TabsContent value="planejar" className="mt-3">
@@ -104,6 +105,7 @@ export default function TerceirizadosHub() {
         </TabsContent>
         <TabsContent value="rua" className="mt-3 space-y-4">
           <OsAtivasPanel />
+          <OsRedistribuicaoHistorico />
           <ContractorsPage embedded activeTab="orders" onActiveTabChange={() => undefined} />
         </TabsContent>
         <TabsContent value="receber" className="mt-3 space-y-3">

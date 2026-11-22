@@ -17,7 +17,13 @@ describe('lançamento por prestador', () => {
     expect(migration).not.toContain('UPDATE public.orders');
     expect(migration).not.toContain("order_number = 'PV-00249'");
     expect(page).toContain('value="lancamento"');
-    expect(screen).toContain('sendAtelierSplit');
+    // A OS não nasce mais nesta tela. O Leonardo tirou o Gerar OS do Lançar;
+    // a aprovação do corte é o único gerador.
+    expect(screen).not.toContain('sendAtelierSplit');
+    expect(screen).toContain('A OS desta cor nasce na aprovação do corte');
+    const cut = readFileSync(resolve(root, 'src/components/production/kanban/CorteCabedalQueue.tsx'), 'utf8');
+    expect(cut).toContain('Aprovar corte e gerar OS');
+    expect(cut).toContain('approve_atelier_cut');
     expect(screen).toContain('providerFichaWarning');
     expect(screen).toContain('Lançar recebimento');
   });
