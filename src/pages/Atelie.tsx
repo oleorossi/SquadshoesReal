@@ -47,9 +47,10 @@ import {
 import { AtelierExecutionDefaultControl, AtelierSectorAdmin } from '@/components/atelier/AtelierAdminPanel';
 import { AtelierOperacao } from '@/components/atelier/AtelierOperacao';
 import { AtelierRelatorioView } from '@/components/atelier/AtelierRelatorioView';
+import { AtelierLancamento } from '@/components/atelier/AtelierLancamento';
 import { AtelierStrapsView } from '@/components/atelier/AtelierStrapsView';
 
-const VIEW_SET = new Set(['cadastro', 'fila', 'relatorio', 'tiras']);
+const VIEW_SET = new Set(['cadastro', 'fila', 'lancamento', 'relatorio', 'tiras']);
 
 function sheetLabel(s: {
   code?: string | null;
@@ -431,6 +432,9 @@ export default function Atelie() {
           <TabsTrigger value="fila" className="text-xs sm:text-sm">
             Fila operacional
           </TabsTrigger>
+          <TabsTrigger value="lancamento" className="text-xs sm:text-sm">
+            Lançamento
+          </TabsTrigger>
           <TabsTrigger value="tiras" className="text-xs sm:text-sm">
             Tiras
           </TabsTrigger>
@@ -443,6 +447,9 @@ export default function Atelie() {
         </TabsList>
         <TabsContent value="fila">
           <FilaView />
+        </TabsContent>
+        <TabsContent value="lancamento">
+          <AtelierLancamento />
         </TabsContent>
         <TabsContent value="tiras">
           <AtelierStrapsView />
