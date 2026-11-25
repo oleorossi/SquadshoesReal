@@ -9,6 +9,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { usePurchaseOrders, usePurchaseOrderItems, usePurchaseOrderItemSummaries, usePurchaseOrderPayments, useUpdatePurchaseOrder, useDeletePurchaseOrder, type PurchaseOrder, type PurchaseOrderItem, type PurchaseOrderItemSummary, type POContentType } from '@/hooks/usePurchaseOrders';
+import { usePurchaseOrderMotorPriority } from '@/hooks/usePurchaseOrderMotorPriority';
+import { motorUrgencyLabel, sortByMotorPriority } from '@/lib/purchaseOrderMotorPriority';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -352,6 +354,10 @@ export default function PurchaseOrders() {
     }
     return true;
   }), [geralOrders, statusSet, supplierFilter, search, itemFilter, contentFilter, originFilter, minValue, maxValue, itemSummaries, fromDate, toDate, basis, toCostRow]);
+
+  // Prioridade do motor: rascunhos/sugeridas que o motor marcou sobem para o topo.
+  const { data: motorPriority } = usePurchaseOrderMotorPriority();
+  const ordered = useMemo(() => sortByMotorPriority(filtered, motorPriority), [filtered, motorPriority]);
 
   const filteredSummary = useMemo(() => summarizePurchaseOrders(filtered, new Date().toISOString().slice(0, 10)), [filtered]);
 
@@ -840,8 +846,10 @@ export default function PurchaseOrders() {
                         />
                       </TableCell>
                     </TableRow>
-                  ) : filtered.map(o => {
+                  ) : ordered.map(o => {
                     const st = STATUS_MAP[o.status] || STATUS_MAP.pending;
+                    const prio = motorPriority?.get(o.id);
+                    const prioLabel = prio ? motorUrgencyLabel(prio) : null;
                     const today = new Date().toISOString().slice(0, 10);
                     const isOverdue = o.promised_date && o.promised_date < today && o.status !== 'received' && o.status !== 'cancelled';
                     const buyOverdue = o.purchase_by_date && o.purchase_by_date < today && o.status !== 'received' && o.status !== 'cancelled';
@@ -856,6 +864,20 @@ export default function PurchaseOrders() {
                         <TableCell className="font-mono font-semibold text-sm">
                           <div className="flex items-center gap-1.5">
                             <span>{o.order_number}</span>
+                            {prioLabel && (
+                              <Badge
+                                variant="outline"
+                                className={cn('text-xs h-4 px-1.5 font-medium', prio?.urgency === 'atrasada' ? 'border-destructive/60 text-destructive' : 'border-amber-500/60 text-amber-600')}
+                                title={`Prioridade do motor #${prio?.motor_rank} · ${prio?.reason ?? ''}`}
+                              >
+                                {prioLabel}
+                              </Badge>
+                            )}
+                            {prio?.over_weekly_cap && (
+                              <Badge variant="outline" className="text-xs h-4 px-1.5 font-normal border-destructive/40 text-destructive" title="Passa do teto semanal de compra (Prazos do motor)">
+                                Passa do teto
+                              </Badge>
+                            )}
                             {(() => {
                               const n = o.linked_sale_order_ids?.length ?? 0;
                               if (n === 0 && o.auto_generated) {
@@ -900,7 +922,15 @@ export default function PurchaseOrders() {
                         <TableCell><Badge variant={st.variant}>{st.label}</Badge></TableCell>
                         <TableCell className="text-right font-medium">{fmt(o.total_value)}</TableCell>
                         <TableCell>
-                          {o.purchase_by_date ? (
+                          {prio?.purchase_by_date ? (
+                            <span
+                              className={`flex items-center gap-1 text-sm ${prio.urgency === 'atrasada' ? 'text-destructive font-medium' : 'text-foreground'}`}
+                              title={`Comprar até (motor) — ${prio.reason ?? ''}`}
+                            >
+                              {prio.urgency === 'atrasada' && <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+                              {format(new Date(prio.purchase_by_date + 'T12:00:00'), 'dd/MM/yyyy')}
+                            </span>
+                          ) : o.purchase_by_date ? (
                             <span className={`flex items-center gap-1 text-sm ${buyOverdue ? 'text-destructive font-medium' : 'text-foreground'}`} title="Comprar até esta data — backward do faturamento, descontando o lead de produção e o lead do fornecedor">
                               {buyOverdue && <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
                               {format(new Date(o.purchase_by_date + 'T12:00:00'), 'dd/MM/yyyy')}

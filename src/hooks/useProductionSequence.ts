@@ -1,6 +1,7 @@
 /**
  * Ordem oficial da fila de produção (specs/sequencia-producao.md).
- * Fonte: RPC list_production_sequence.
+ * Fonte: RPC list_production_sequence — ordem única do motor (fixados/congelados/
+ * urgentes → semana de faturamento → mescla complexo×simples por pares → cor/ref).
  */
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,6 +21,13 @@ export interface ProductionSequenceRow {
   isFrozen: boolean;
   sequenceFrozenAt: string | null;
   blockReason: string | null;
+  /** Motor (20270101054800): classe do item, âncora da semana, urgência e espera. */
+  itemClass: 'complexo' | 'simples' | null;
+  billingAnchor: string | null;
+  isUrgent: boolean;
+  earliestStart: string | null;
+  waitReason: string | null;
+  projectedCompletion: string | null;
 }
 
 export const productionSequenceKeys = {
@@ -48,6 +56,12 @@ async function fetchProductionSequence(): Promise<ProductionSequenceRow[]> {
     blockReason: r.block_reason != null && String(r.block_reason).trim()
       ? String(r.block_reason)
       : null,
+    itemClass: r.item_class === 'complexo' || r.item_class === 'simples' ? r.item_class : null,
+    billingAnchor: r.billing_anchor != null ? String(r.billing_anchor) : null,
+    isUrgent: Boolean(r.is_urgent),
+    earliestStart: r.earliest_start != null ? String(r.earliest_start) : null,
+    waitReason: r.wait_reason != null ? String(r.wait_reason) : null,
+    projectedCompletion: r.projected_completion != null ? String(r.projected_completion) : null,
   }));
 }
 
