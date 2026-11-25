@@ -45,6 +45,7 @@ export function useSectorPanorama(days = 28, enabled = true) {
         sectors: raw.sectors ?? [],
         ops,
         schedule: (raw.schedule ?? []).filter(r => visible.has(r.order_id)),
+        forecast: raw.forecast ?? [],
       };
     },
   });

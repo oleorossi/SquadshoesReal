@@ -208,3 +208,29 @@ describe('gargalo', () => {
     expect(bottleneckSectors(sectors, [a], fa).sectors).toEqual(['Montagem']);
   });
 });
+
+describe('plano do motor (v_production_motor_plan)', () => {
+  it('classe do motor manda sobre o Ateliê e espera vira trava com data', () => {
+    const o = op({ order_id: 'm', atelier: [], motor: {
+      item_class: 'complexo', billing_anchor: '2026-12-07', billing_week: '2026-W50', is_urgent: true, motor_position: 1,
+      earliest_start: '2026-12-01', cabedal_expected_return: '2026-12-03', material_eta: '2026-12-01',
+      wait_reason: 'aguardando_material', days_vs_billing: 2,
+    } });
+    const f = opFlags(o, TODAY, groupOf);
+    expect(f.kind).toBe('complexo');
+    expect(f.urgent).toBe(true);
+    expect(f.waitingMaterial).toBe(true);
+    expect(f.materialReason).toBe('Aguardando material · chega 01/12');
+    expect(f.cabedalReturn).toBe('2026-12-03');
+    // semana de faturamento do motor entra no filtro de semana
+    const flags = new Map([[o.order_id, f]]);
+    expect(filterOps([o], flags, [], { ...EMPTY_FILTERS, week: '2026-12-07' })).toHaveLength(1);
+  });
+
+  it('aguardando_prestador conta como espera do Ateliê; sem motor, cai no job', () => {
+    const o = op({ order_id: 'p', motor: { item_class: 'complexo', billing_anchor: null, billing_week: null, is_urgent: false, motor_position: 2,
+      earliest_start: null, cabedal_expected_return: '2026-12-10', material_eta: null, wait_reason: 'aguardando_prestador', days_vs_billing: null } });
+    expect(opFlags(o, TODAY, groupOf).waitingAtelier).toBe(true);
+    expect(opFlags(op({ order_id: 'q', motor: null }), TODAY, groupOf).kind).toBe('simples');
+  });
+});
