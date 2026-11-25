@@ -36,14 +36,16 @@ import {
   useSetAtelierPrepDays,
   useAtelierLots,
   useAtelierOrderJobs,
-  useAtelierSettings,
   useReapplyAtelierEligibility,
   useRemoveAtelierReference,
   useTechnicalSheetsLiteForAtelier,
-  useUpdateAtelierSettings,
 } from '@/hooks/useAtelier';
 import { AtelierExecutionDefaultControl, AtelierSectorAdmin } from '@/components/atelier/AtelierAdminPanel';
 import { AtelierOperacao } from '@/components/atelier/AtelierOperacao';
+import { MotorPrazosPanel, MotorPrazosResumo } from '@/components/atelier/MotorPrazosPanel';
+import { useMotorConfig } from '@/hooks/useMotorConfig';
+import { parseReferencePrepDays, prepSourceLabel } from '@/lib/motorConfig';
+import { toast } from 'sonner';
 
 function sheetLabel(s: {
   code?: string | null;
@@ -53,111 +55,6 @@ function sheetLabel(s: {
   return [s.code, s.model || s.name].filter(Boolean).join(' · ') || 'Sem código';
 }
 
-
-function AgendaSettings() {
-  const { data: settings, isLoading } = useAtelierSettings();
-  const update = useUpdateAtelierSettings();
-  const [costura, setCostura] = useState<string | null>(null);
-  const [aviamento, setAviamento] = useState<string | null>(null);
-  const [readyBefore, setReadyBefore] = useState<string | null>(null);
-
-  const costuraVal = costura ?? String(settings?.costura_offset_days ?? 5);
-  const aviVal = aviamento ?? String(settings?.aviamento_offset_days ?? 5);
-  const readyVal = readyBefore ?? String(settings?.ready_before_billing_days ?? 7);
-
-  const save = (field: 'costura' | 'aviamento' | 'ready', raw: string) => {
-    const n = Math.max(0, Math.min(90, Math.round(Number(raw) || 0)));
-    if (field === 'costura') {
-      setCostura(String(n));
-      if (n !== (settings?.costura_offset_days ?? 5)) {
-        update.mutate({ costuraOffsetDays: n });
-      }
-    } else if (field === 'aviamento') {
-      setAviamento(String(n));
-      if (n !== (settings?.aviamento_offset_days ?? 5)) {
-        update.mutate({ aviamentoOffsetDays: n });
-      }
-    } else {
-      setReadyBefore(String(n));
-      if (n !== (settings?.ready_before_billing_days ?? 7)) {
-        update.mutate({ readyBeforeBillingDays: n });
-      }
-    }
-  };
-
-  return (
-    <Panel className="p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Agenda · pronto antes do faturamento
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Material do kit pronto N dias antes do faturamento (ex.: fatura 14 → pronto 7). Se faltar em
-            estoque, a OC antecipa: chegar = pronto − max(Costura, Aviamento); comprar = chegar − lead do
-            fornecedor — para o cabedal estar pronto quando a produção começa.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Pronto (−dias)
-            </span>
-            <Input
-              type="number"
-              min={0}
-              max={90}
-              className="h-9 w-20 font-mono text-right"
-              disabled={isLoading || update.isPending}
-              value={readyVal}
-              onChange={(e) => setReadyBefore(e.target.value)}
-              onBlur={(e) => save('ready', e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              }}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Costura
-            </span>
-            <Input
-              type="number"
-              min={0}
-              max={60}
-              className="h-9 w-20 font-mono text-right"
-              disabled={isLoading || update.isPending}
-              value={costuraVal}
-              onChange={(e) => setCostura(e.target.value)}
-              onBlur={(e) => save('costura', e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              }}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Aviamento
-            </span>
-            <Input
-              type="number"
-              min={0}
-              max={60}
-              className="h-9 w-20 font-mono text-right"
-              disabled={isLoading || update.isPending}
-              value={aviVal}
-              onChange={(e) => setAviamento(e.target.value)}
-              onBlur={(e) => save('aviamento', e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              }}
-            />
-          </label>
-        </div>
-      </div>
-    </Panel>
-  );
-}
 
 export function CadastroView() {
   const [sector, setSector] = useState<AtelierSector>('costura_cabedal');
@@ -169,6 +66,11 @@ export function CadastroView() {
   const prepMut = useSetAtelierPrepDays();
   const removeMut = useRemoveAtelierReference();
   const reapply = useReapplyAtelierEligibility();
+  const { data: motorConfig } = useMotorConfig();
+  const effectivePrep = useMemo(
+    () => new Map((motorConfig?.references ?? []).map((r) => [r.id, r.effective_prep_business_days])),
+    [motorConfig],
+  );
 
   const filteredSheets = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -184,6 +86,7 @@ export function CadastroView() {
 
   return (
     <div className="space-y-4">
+      <MotorPrazosPanel />
       <Tabs value={sector} onValueChange={(v) => setSector(v as AtelierSector)}>
         <TabsList className="h-auto flex-wrap gap-1 bg-muted/50 p-0.5">
           {ATELIER_SECTORS.map((s) => (
@@ -267,31 +170,42 @@ export function CadastroView() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {ATELIER_SECTOR_LABEL[row.sector]}
-                    {row.prep_business_days != null && row.prep_business_days > 5
-                      ? ' · Complexo'
-                      : row.prep_business_days != null && row.prep_business_days > 0
-                        ? ' · Preparo curto'
-                        : ' · Marcação explícita'}
+                    {sector !== 'corte_cabedal' && (
+                      <>
+                        {' · prestador '}
+                        {effectivePrep.get(row.id) ?? row.prep_business_days ?? '—'}
+                        {' dias úteis ('}
+                        {motorConfig ? prepSourceLabel(row, motorConfig.settings) : 'padrão'}
+                        {')'}
+                      </>
+                    )}
                   </p>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  Preparo do cabedal (dias úteis)
-                  <Input
-                    type="number"
-                    min={0}
-                    max={90}
-                    className="h-8 w-20 text-right"
-                    placeholder="vazio = 7"
-                    defaultValue={row.prep_business_days ?? ''}
-                    key={`${row.id}-${row.prep_business_days ?? 'vazio'}`}
-                    onBlur={(event) => {
-                      const raw = event.target.value.trim();
-                      const next = raw === '' ? null : Math.max(0, Math.min(90, Math.round(Number(raw))));
-                      if (next === (row.prep_business_days ?? null) || (raw !== '' && !Number.isFinite(Number(raw)))) return;
-                      prepMut.mutate({ id: row.id, prepBusinessDays: next });
-                    }}
-                  />
-                </label>
+                {sector !== 'corte_cabedal' && (
+                  <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    Prazo do prestador (dias úteis)
+                    <Input
+                      type="number"
+                      min={1}
+                      max={60}
+                      className="h-8 w-20 text-right"
+                      placeholder={`padrão ${motorConfig?.settings.effective_default_prep_business_days ?? 5}`}
+                      defaultValue={row.prep_business_days ?? ''}
+                      key={`${row.id}-${row.prep_business_days ?? 'vazio'}`}
+                      onBlur={(event) => {
+                        const parsed = parseReferencePrepDays(event.target.value);
+                        if ('error' in parsed) {
+                          toast.error(parsed.error);
+                          event.target.value = row.prep_business_days == null ? '' : String(row.prep_business_days);
+                          return;
+                        }
+                        if (parsed.value === (row.prep_business_days ?? null)) return;
+                        prepMut.mutate({ id: row.id, prepBusinessDays: parsed.value });
+                      }}
+                    />
+                    <span className="text-[11px]">envio ao prestador = pronto − este prazo · vazio = padrão</span>
+                  </label>
+                )}
                 {sector !== 'corte_cabedal' && (
                   <AtelierExecutionDefaultControl
                     referenceId={row.reference_id}
@@ -369,7 +283,7 @@ export function FilaView() {
 
   return (
     <div className="space-y-3">
-      <AgendaSettings />
+      <MotorPrazosResumo />
       <AtelierOperacao
         lots={boardLots}
         isLoading={isLoading || (pedido.trim().length > 0 && orderJobs.isLoading)}

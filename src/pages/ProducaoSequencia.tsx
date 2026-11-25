@@ -39,7 +39,8 @@ const SHORTCUTS = [
 
 /**
  * Sequência / Liberação — porta da Produção (specs/sequencia-producao.md).
- * Ordem oficial: pin → congelados → fechar PV → due → cor → ref.
+ * Ordem oficial (motor): pin → congelados → urgentes → semana de faturamento →
+ * dentro da semana, complexo e simples mesclados por pares → cor → ref.
  */
 export default function ProducaoSequencia() {
   const { data: rows = [], isLoading, isError, refetch } = useProductionSequence();
@@ -55,7 +56,7 @@ export default function ProducaoSequencia() {
       <EditorialPageHeader
         sectionLabel="Produção"
         title="Sequência / Liberação"
-        description="Ordem oficial de entrada — fechar PV, urgência, cor e referência. O motor diário só agenda capacidade nessa ordem."
+        description="Ordem única do motor — fixados e urgentes primeiro, depois a semana de faturamento; dentro da semana, cabedal complexo e simples se alternam por pares; depois cor e referência. A agenda por setor segue esta mesma ordem."
         actions={(
           <Button asChild variant="outline" size="sm" className="h-9">
             <Link to="/producao/corte-lookahead">
@@ -135,8 +136,8 @@ export default function ProducaoSequencia() {
                 <TableHead>OP</TableHead>
                 <TableHead>Ref</TableHead>
                 <TableHead>Cor</TableHead>
-                <TableHead>Prazo</TableHead>
-                <TableHead className="text-right">Fecha PV</TableHead>
+                <TableHead>Semana</TableHead>
+                <TableHead className="text-right" title="Pares já produzidos do PV">Produzido PV</TableHead>
                 <TableHead>Flags</TableHead>
                 <TableHead>Porta</TableHead>
               </TableRow>
@@ -157,12 +158,18 @@ export default function ProducaoSequencia() {
                   </TableCell>
                   <TableCell className="font-mono text-xs">{r.referenceCode || '—'}</TableCell>
                   <TableCell>{r.color || '—'}</TableCell>
-                  <TableCell className="tabular-nums text-sm">{fmtDay(r.dueDate)}</TableCell>
+                  <TableCell className="tabular-nums text-sm" title={r.projectedCompletion ? `Fim previsto ${fmtDay(r.projectedCompletion)}` : undefined}>{fmtDay(r.billingAnchor ?? r.dueDate)}</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">
                     {Math.round((r.closeScore || 0) * 100)}%
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
+                      {r.itemClass === 'complexo' && (
+                        <Badge variant="outline" className="normal-case tracking-normal text-[10px]">Complexo</Badge>
+                      )}
+                      {r.isUrgent && (
+                        <Badge variant="destructive-soft" className="normal-case tracking-normal text-[10px]">Urgente</Badge>
+                      )}
                       {r.isPinned && (
                         <Badge variant="outline" className="normal-case tracking-normal text-[10px] gap-0.5">
                           <Pin className="h-3 w-3" />

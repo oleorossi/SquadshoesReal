@@ -191,7 +191,7 @@ export function AtelierSectorAdmin({ sector }: { sector: AtelierSector }) {
             Prestadores de {ATELIER_SECTOR_LABEL[sector].toLowerCase()}
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Marque quem atende e a capacidade do dia. A tarifa vigente é a que trava no envio.
+            Marque quem atende e a capacidade do dia (pares/dia). O motor usa a capacidade para empurrar o envio e a volta prevista — vazio = sem limite. A tarifa vigente é a que trava no envio.
           </p>
         </div>
         <Button variant="ghost" size="sm" className="h-8" asChild>

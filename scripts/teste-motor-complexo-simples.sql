@@ -12,7 +12,8 @@
 -- meio, a sequência fica como está e o resultado avisa ("nao_restaurada").
 --
 -- Como usar (SQL editor do Supabase ou MCP execute_sql):
---   1. Ajuste c_secao abaixo: 'resumo' | 'fila' | 'cronograma' | 'motor' | 'fase2'
+--   1. Ajuste c_secao abaixo: 'veredito' (padrão: critérios a–e + agenda semana×setor)
+--      | 'resumo' | 'fila' | 'cronograma' | 'motor' | 'fase2'
 --   2. Rode o arquivo inteiro. O erro "ENSAIO_ROLLBACK {...}" É o resultado.
 --   3. Confira depois: contagem de PVs/OPs/OCs/reservas igual à de antes.
 --
@@ -24,13 +25,19 @@
 -- Grade: copia a grade do último item real da mesma ref/cor (fichas de 12).
 -- Cabeçalho: copia o PV modelo (c_modelo_pv) e troca número, semana e prazo.
 --
--- Liga auto_motor_enabled SÓ dentro da transação, para simular. Não gera OC
--- real (as funções de OC do motor não são chamadas), não fatura, não emite NF.
+-- 'veredito' (padrão) roda com auto_motor_enabled como está (desligado): a
+-- ordem única do motor (20270101054800) não depende da chave. 'fila'/'motor'
+-- ligam auto_motor_enabled SÓ dentro da transação, para comparar.
+-- Simula o outbox dentro da transação (materializa Ateliê, liga o kit às
+-- reservas, cria OCs RASCUNHO do kit e do PV) — tudo some no rollback. Nunca
+-- gera OC real (Gerar OC), não fatura, não emite NF.
+-- Para testar migrations ainda não aplicadas: injete "EXECUTE $MIG$<sql>$MIG$;"
+-- no marcador @MIGRATIONS@ (DDL do Postgres é transacional e também volta).
 -- Não toca PV-00249/00250/00251 nem LOTE-00004 (só leitura da fila).
 -- ════════════════════════════════════════════════════════════════════════════
 DO $ensaio$
 DECLARE
-  c_secao     text := 'resumo';
+  c_secao     text := 'veredito';
   c_modelo_pv text := 'PV-00255';
   v_user uuid;
   v_tpl  jsonb;
@@ -51,6 +58,8 @@ DECLARE
   v_now bigint; v_ours bigint;
 BEGIN
   PERFORM set_config('statement_timeout', '600s', true);
+  -- @MIGRATIONS@ (o runner pode injetar aqui EXECUTE das migrations novas para
+  -- testar a versão nova das funções dentro desta mesma transação)
 
   -- Autor simulado: o usuário aprovado que mais recentemente rodou comando de PV
   -- (as trilhas de auditoria exigem auth.uid()). Só vale dentro desta transação.
@@ -130,12 +139,33 @@ BEGIN
     END;
   END LOOP;
 
+  -- ── 1b. O que o outbox faz depois do commit (aqui, na mesma transação):
+  --        materializa Ateliê + liga o kit às reservas + OC rascunho do kit
+  --        e OC rascunho por PV. Tudo some no rollback.
+  FOR v_so IN SELECT unnest(v_ids) LOOP
+    BEGIN
+      v_res := public.process_cabedal_prep_purchase_shortages(v_so);
+      v_log := v_log || jsonb_build_object((SELECT order_number FROM sale_orders WHERE id = v_so) || '_oc_kit', v_res);
+    EXCEPTION WHEN others THEN
+      v_log := v_log || jsonb_build_object((SELECT order_number FROM sale_orders WHERE id = v_so) || '_oc_kit', 'erro: ' || left(SQLERRM, 300));
+    END;
+    BEGIN
+      v_res := public.process_sale_order_purchase_shortages(v_so);
+      v_log := v_log || jsonb_build_object((SELECT order_number FROM sale_orders WHERE id = v_so) || '_oc_pv',
+                 jsonb_build_object('ok', v_res -> 'ok', 'created', v_res -> 'created', 'reused', v_res -> 'reused'));
+    EXCEPTION WHEN others THEN
+      v_log := v_log || jsonb_build_object((SELECT order_number FROM sale_orders WHERE id = v_so) || '_oc_pv', 'erro: ' || left(SQLERRM, 300));
+    END;
+  END LOOP;
+
   -- ── 2. Motor ligado SÓ nesta transação ───────────────────────────────────
   v_seq_off := (SELECT jsonb_agg(jsonb_build_object('pos', s.sequence_position, 'op', s.order_number,
                   'pv', so.order_number, 'ref', s.reference_code, 'cor', s.color, 'due', s.due_date,
                   'score', round(s.close_score, 2), 'trava', s.block_reason) ORDER BY s.sequence_position)
                   FROM public.list_production_sequence() s LEFT JOIN sale_orders so ON so.id = s.sale_order_id);
-  UPDATE atelier_settings SET auto_motor_enabled = true WHERE id = 1;
+  IF c_secao IN ('fila', 'motor') THEN
+    UPDATE atelier_settings SET auto_motor_enabled = true WHERE id = 1;  -- só nesta transação
+  END IF;
   v_snap := public.list_cabedal_motor_purchase_snapshot();
   v_seq_on := (SELECT jsonb_agg(jsonb_build_object('pos', s.sequence_position, 'op', s.order_number,
                   'pv', so.order_number, 'ref', s.reference_code, 'cor', s.color, 'due', s.due_date,
@@ -146,7 +176,8 @@ BEGIN
   -- (recompute 2× na mesma transação colide na chave idempotente da fila de
   --  tiras; por isso a fase 2 só recalcula depois do retorno simulado)
   IF c_secao <> 'fase2' THEN
-    PERFORM public.recompute_production_schedule('ensaio');
+    v_res := public.recompute_production_schedule('ensaio');
+    v_log := v_log || jsonb_build_object('recompute', v_res);
   END IF;
   v_sched1 := (
     SELECT jsonb_agg(x ORDER BY x->>'pv', x->>'op', (x->>'flow')::int)
@@ -204,7 +235,151 @@ BEGIN
   END IF;
 
   -- ── 5. Montar a saída da seção pedida ────────────────────────────────────
-  IF c_secao = 'resumo' THEN
+  IF c_secao = 'veredito' THEN
+    v_out := jsonb_build_object(
+      'log', v_log,
+      -- Plano do motor (ordem única) dos PVs de ensaio + PVs reais em produção
+      'plano', (SELECT jsonb_agg(jsonb_build_object(
+                  'pos', p.motor_position, 'pv', p.sale_order_number, 'op', COALESCE(p.order_number, '(previsto)'),
+                  'ref', p.reference_code, 'cor', p.color, 'pares', p.pairs, 'classe', p.item_class,
+                  'semana', p.billing_week, 'ancora', p.billing_anchor, 'urgente', p.is_urgent,
+                  'espera', p.wait_reason, 'volta_prestador', p.cabedal_expected_return, 'material_chega', p.material_eta,
+                  'fim_previsto', p.projected_completion, 'dias_vs_fatura', p.days_vs_billing) ORDER BY p.motor_position)
+                  FROM v_production_motor_plan p
+                 WHERE p.sale_order_id = ANY (v_ids)
+                    OR p.sale_order_number IN ('PV-00252', 'PV-00255')),
+      -- Agenda semana × setor (ensaio): OP = agenda real; previsto = complexo no prestador
+      'agenda_semana_setor', (SELECT jsonb_object_agg(k, v) FROM (
+          SELECT to_char(date_trunc('week', x.date), 'DD/MM') || ' · ' || x.sector AS k,
+                 jsonb_object_agg(x.pv || ' ' || x.classe, x.pares) AS v
+            FROM (
+              SELECT ps.date, ps.sector, so.order_number AS pv,
+                     public.production_motor_item_class(o.reference_id) AS classe, ps.planned_pairs AS pares
+                FROM production_schedule ps JOIN orders o ON o.id = ps.order_id
+                JOIN sale_orders so ON so.id = o.sale_order_id
+               WHERE o.sale_order_id = ANY (v_ids) AND ps.date >= public.br_today()
+              UNION ALL
+              SELECT f.date, f.sector, so.order_number, 'complexo(previsto)', f.planned_pairs
+                FROM production_motor_forecast f JOIN sale_orders so ON so.id = f.sale_order_id
+               WHERE f.sale_order_id = ANY (v_ids)
+            ) x
+           GROUP BY 1, date_trunc('week', x.date), x.sector
+        ) z),
+      'prestador', (SELECT jsonb_agg(jsonb_build_object(
+                  'pv', so.order_number, 'cor', e.sector || ' ' || j.color, 'pares', j.pairs,
+                  'prazo_dias_uteis', e.prep_business_days, 'envio_meta', e.target_start, 'envio_previsto', e.planned_send,
+                  'kit_chega', e.kit_material_eta, 'volta_prevista', e.expected_return, 'pronto_meta', d.ready_date,
+                  'empurrado_capacidade', e.capacity_pushed) ORDER BY so.order_number, j.color, e.sector)
+                  FROM atelier_jobs_expected_dates() e
+                  JOIN cabedal_prep_jobs j ON j.id = e.job_id
+                  JOIN sale_orders so ON so.id = e.sale_order_id
+                  LEFT JOIN cabedal_prep_demands d ON d.id = j.demand_id
+                 WHERE e.sale_order_id = ANY (v_ids)),
+      'reservas_kit', (SELECT jsonb_agg(jsonb_build_object('pv', so.order_number, 'material', p.name,
+                  'tipo', mr.metadata ->> 'kind', 'empenhado', round(mr.quantity_reserved, 2), 'falta', round(COALESCE(mr.quantity_short, 0), 2),
+                  'itens', jsonb_array_length(COALESCE(mr.metadata -> 'atelier_item_ids', '[]'::jsonb))) ORDER BY so.order_number, p.name)
+                  FROM material_reservations mr JOIN products p ON p.id = mr.product_id
+                  JOIN sale_orders so ON so.id = mr.sale_order_id
+                 WHERE mr.sale_order_id = ANY (v_ids) AND mr.status IN ('reserved', 'partially_consumed')
+                   AND mr.metadata ->> 'kind' = 'atelier_prep'),
+      'reservas_pv_nivel', (SELECT jsonb_agg(jsonb_build_object('pv', so.order_number, 'material', p.name || ' ' || COALESCE(p.color, ''),
+                  'tipo', COALESCE(mr.metadata ->> 'kind', mr.reservation_type), 'emp', round(mr.quantity_reserved, 1),
+                  'falta', round(COALESCE(mr.quantity_short, 0), 1)) ORDER BY so.order_number, p.name)
+                  FROM material_reservations mr JOIN products p ON p.id = mr.product_id
+                  JOIN sale_orders so ON so.id = mr.sale_order_id
+                 WHERE mr.sale_order_id = ANY (v_ids) AND mr.order_id IS NULL
+                   AND mr.status IN ('reserved', 'partially_consumed')
+                   AND so.order_number IN ('PV-ENSAIO-A', 'PV-ENSAIO-C')),
+      'ocs_rascunho', (SELECT jsonb_agg(jsonb_build_object('oc', po.order_number, 'status', po.status, 'origem', po.source_type,
+                  'fornecedor', po.supplier_name, 'valor', round(po.total_value, 2), 'comprar_ate', pr.purchase_by_date, 'material_na_fabrica', pr.material_need_date,
+                  'chegar', po.promised_date, 'envio_prestador', pr.send_to_contractor_date, 'expedite', po.expedite,
+                  'prioridade', pr.motor_rank, 'urgencia', pr.urgency, 'motivo', pr.reason, 'acima_teto', pr.over_weekly_cap)
+                  ORDER BY pr.motor_rank NULLS LAST)
+                  FROM purchase_orders po LEFT JOIN purchase_order_motor_priority pr ON pr.purchase_order_id = po.id
+                 WHERE po.created_at = now()),
+      'criterios', jsonb_build_object(
+        'a_prestador_com_tempo', (
+          SELECT jsonb_build_object(
+            'ok', COALESCE(bool_and(x.volta <= x.pronto AND (x.mont IS NULL OR x.mont >= x.volta)), false),
+            'itens', jsonb_agg(jsonb_build_object('pv', x.pv, 'cor', x.cor, 'envio', x.envio, 'volta', x.volta,
+                                                  'pronto', x.pronto, 'primeira_montagem', x.mont)))
+            FROM (
+              SELECT so.order_number AS pv, soi.color AS cor, MAX(e.planned_send) AS envio, MAX(e.expected_return) AS volta,
+                     MAX(d.ready_date) AS pronto,
+                     (SELECT MIN(f.date) FROM production_motor_forecast f
+                       WHERE f.sale_order_item_id = soi.id AND f.sector = 'Montagem') AS mont
+                FROM atelier_jobs_expected_dates() e
+                JOIN sale_order_items soi ON soi.id = e.sale_order_item_id
+                JOIN sale_orders so ON so.id = soi.sale_order_id
+                LEFT JOIN cabedal_prep_demands d ON d.sale_order_item_id = soi.id
+               WHERE e.sale_order_id = ANY (v_ids)
+               GROUP BY so.order_number, soi.id, soi.color) x),
+        'b_mescla_complexo_simples', (
+          SELECT jsonb_build_object(
+            'ok', COALESCE(bool_or(x.tem_c AND x.tem_s), false),
+            'dias_montagem', jsonb_object_agg(to_char(x.date, 'DD/MM'), jsonb_build_object('complexo', x.c, 'simples', x.s)))
+            FROM (
+              SELECT y.date, SUM(y.p) FILTER (WHERE y.cl = 'complexo') AS c, SUM(y.p) FILTER (WHERE y.cl = 'simples') AS s,
+                     COALESCE(SUM(y.p) FILTER (WHERE y.cl = 'complexo'), 0) > 0 AS tem_c,
+                     COALESCE(SUM(y.p) FILTER (WHERE y.cl = 'simples'), 0) > 0 AS tem_s
+                FROM (
+                  SELECT ps.date, public.production_motor_item_class(o.reference_id) AS cl, ps.planned_pairs AS p
+                    FROM production_schedule ps JOIN orders o ON o.id = ps.order_id
+                   WHERE ps.sector = 'Montagem' AND o.sale_order_id = ANY (v_ids)
+                  UNION ALL
+                  SELECT f.date, 'complexo', f.planned_pairs FROM production_motor_forecast f
+                   WHERE f.sector = 'Montagem' AND f.sale_order_id = ANY (v_ids)
+                ) y GROUP BY y.date
+            ) x),
+        'c_caixa', (
+          SELECT jsonb_build_object(
+            'ok', (min_pos ->> 'PV-ENSAIO-C')::int < (min_pos ->> 'PV-ENSAIO-B')::int
+                  AND (min_pos ->> 'PV-ENSAIO-B')::int < (min_pos ->> 'PV-ENSAIO-A')::int
+                  AND (min_pos ->> 'PV-ENSAIO-A')::int < (min_pos ->> 'PV-ENSAIO-D')::int,
+            'primeira_posicao', min_pos)
+            FROM (SELECT jsonb_object_agg(pv, pos) AS min_pos FROM (
+                    SELECT p.sale_order_number AS pv, MIN(p.motor_position) AS pos
+                      FROM v_production_motor_plan p WHERE p.sale_order_id = ANY (v_ids)
+                     GROUP BY 1) q) z),
+        'd_realismo', jsonb_build_object(
+          'costura_do_ateliê_agendada_na_fabrica', (
+            SELECT count(*) FROM production_schedule ps JOIN orders o ON o.id = ps.order_id
+             WHERE ps.date >= public.br_today()
+               AND public.production_motor_item_class(o.reference_id) = 'complexo'
+               AND (ps.sector = 'Corte Cabedal'
+                    OR (ps.sector = 'Costura Cabedal' AND 'costura_cabedal' = ANY (public.atelier_reference_street_sectors(o.reference_id)))
+                    OR (ps.sector = 'Aviamento' AND 'aviamento' = ANY (public.atelier_reference_street_sectors(o.reference_id))))),
+          'op_comeca_antes_do_material', (
+            SELECT count(*) FROM production_motor_state st
+              JOIN LATERAL (SELECT MIN(ps.date) AS d FROM production_schedule ps WHERE ps.order_id = st.order_id
+                              AND ps.date >= public.br_today() AND ps.sector <> 'Solagem') f ON true
+             WHERE st.material_eta IS NOT NULL AND f.d < st.material_eta),
+          'complexo_antes_do_retorno', (
+            SELECT count(*) FROM production_motor_forecast f JOIN production_motor_state st ON st.order_key = f.sale_order_item_id
+             WHERE st.cabedal_expected_return IS NOT NULL AND f.date < st.cabedal_expected_return),
+          'dias_setor_acima_da_capacidade', (
+            SELECT count(*) FROM (
+              SELECT ps.sector, ps.date, SUM(ps.day_fraction) AS fr
+                FROM production_schedule ps WHERE ps.date >= public.br_today() GROUP BY 1, 2) t
+             WHERE t.fr > 1.0001),
+          'snapshot_multiplicado', (
+            SELECT count(*) FROM (
+              SELECT (m ->> 'product_id') AS pid, i ->> 'sale_order_id' AS so, SUM((m ->> 'required')::numeric) AS req
+                FROM jsonb_array_elements(public.list_cabedal_motor_purchase_snapshot() -> 'items') i,
+                     jsonb_array_elements(i -> 'materials') m
+               WHERE (i ->> 'sale_order_id')::uuid = ANY (v_ids)
+               GROUP BY 1, 2) s
+              JOIN (SELECT d.product_id::text AS pid, x.id::text AS so, SUM(d.required) AS req
+                      FROM unnest(v_ids) x(id), LATERAL public.sale_order_material_demand_lines(x.id) d GROUP BY 1, 2) t
+                ON t.pid = s.pid AND t.so = s.so
+             WHERE abs(s.req - t.req) > 0.01)),
+        'e_datas_vs_semana', (
+          SELECT jsonb_build_object('ok', COALESCE(bool_and(x.fim <= x.ancora + 4), false),
+                                    'pvs', jsonb_object_agg(x.pv, jsonb_build_object('ancora', x.ancora, 'fim_previsto', x.fim)))
+            FROM (SELECT p.sale_order_number AS pv, MIN(p.billing_anchor) AS ancora, MAX(p.projected_completion) AS fim
+                    FROM v_production_motor_plan p WHERE p.sale_order_id = ANY (v_ids) GROUP BY 1) x)
+      ));
+  ELSIF c_secao = 'resumo' THEN
     v_out := jsonb_build_object(
       'log', v_log,
       'pvs', (SELECT jsonb_agg(jsonb_build_object('pv', so.order_number, 'tipo', so.order_type, 'status', so.status,
