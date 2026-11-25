@@ -127,8 +127,16 @@ export function SectorPanorama({ onOpenOp }: SectorPanoramaProps) {
     };
   }, [data?.ops]);
 
+  /** Itens complexos ainda sem OP (no prestador), previstos pelo motor. */
+  const forecast = useMemo(() => (data?.forecast ?? []).filter(it =>
+    (filters.pv === 'todos' || (it.sale_order_number ?? '') === filters.pv)
+    && (filters.color === 'todas' || (it.color ?? '') === filters.color)
+    && (filters.kind !== 'simples')
+    && (filters.week === 'todas' || (!!it.billing_anchor && weekStartISO(it.billing_anchor) === filters.week)),
+  ), [data?.forecast, filters]);
+
   const kpis = useMemo(() => {
-    let pairs = 0, late = 0, prestador = 0, material = 0, complexo = 0;
+    let pairs = 0, late = 0, prestador = 0, material = 0, complexo = 0, urgent = 0;
     for (const op of ops) {
       const f = flags.get(op.order_id)!;
       pairs += op.remaining_pairs_net || 0;
@@ -136,8 +144,9 @@ export function SectorPanorama({ onOpenOp }: SectorPanoramaProps) {
       if (f.waitingAtelier) prestador++;
       if (f.waitingMaterial) material++;
       if (f.kind === 'complexo') complexo++;
+      if (f.urgent) urgent++;
     }
-    return { ops: ops.length, pairs, late, prestador, material, complexo, simples: ops.length - complexo };
+    return { ops: ops.length, pairs, late, prestador, material, complexo, urgent, simples: ops.length - complexo };
   }, [ops, flags]);
 
   const filtersActive = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
@@ -167,7 +176,11 @@ export function SectorPanorama({ onOpenOp }: SectorPanoramaProps) {
     );
   }
 
-  const visibleSectors = focusSector ? sectors.filter(s => s.sector === focusSector) : sectors;
+  // Sem foco, setor sem nenhuma OP aberta sai da grade da fila (o mapa acima
+  // continua mostrando todos); com foco, mostra o setor mesmo vazio.
+  const visibleSectors = focusSector
+    ? sectors.filter(s => s.sector === focusSector)
+    : sectors.filter(s => (queues.get(s.sector)?.length ?? 0) > 0);
   const updated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
 
   return (
@@ -212,7 +225,7 @@ export function SectorPanorama({ onOpenOp }: SectorPanoramaProps) {
 
       {/* ── KPIs ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-2 px-2 py-2 sm:grid-cols-4 lg:grid-cols-7 md:px-3">
-        <Kpi label="OPs" value={kpis.ops} />
+        <Kpi label="OPs" value={kpis.urgent > 0 ? `${kpis.ops} · ${kpis.urgent} urg.` : kpis.ops} hint="OPs na fila do motor; 'urg.' = urgentes no topo da ordem única." />
         <Kpi label="Pares reais" value={kpis.pairs.toLocaleString('pt-BR')} hint="Pares físicos que faltam (remaining_pairs_net), não carga pares·setor." />
         <Kpi label="Atrasadas" value={kpis.late} tone={kpis.late > 0 ? 'bad' : undefined} hint="Previsão do motor depois do prazo de faturamento." />
         <Kpi label="Complexo / simples" value={`${kpis.complexo} / ${kpis.simples}`} />
@@ -355,6 +368,39 @@ export function SectorPanorama({ onOpenOp }: SectorPanoramaProps) {
         </section>
       </div>
 
+      {forecast.length > 0 && (
+        <section className="px-2 pb-3 md:px-3" aria-label="Cabedal complexo previsto sem OP">
+          <h2 className="mb-2 text-sm font-bold uppercase tracking-wide">Previstos pelo motor · cabedal complexo ainda sem OP</h2>
+          <div className="overflow-x-auto rounded-md border border-border bg-card">
+            <table className="w-full text-xs">
+              <thead className="text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-2 py-1">#</th><th className="px-2 py-1">PV</th><th className="px-2 py-1">Ref · cor</th>
+                  <th className="px-2 py-1 text-right">Pares</th><th className="px-2 py-1">Volta do cabedal</th>
+                  <th className="px-2 py-1">Material</th><th className="px-2 py-1">Fatura</th><th className="px-2 py-1">Previsão</th>
+                </tr>
+              </thead>
+              <tbody>
+                {forecast.map(it => (
+                  <tr key={it.order_key} className="border-t border-border/60">
+                    <td className="px-2 py-1 font-mono text-muted-foreground">{it.motor_position ?? '—'}</td>
+                    <td className="px-2 py-1 font-semibold">{it.sale_order_number ?? '—'}{it.is_urgent && <Badge variant="destructive-soft" className="ml-1">urgente</Badge>}</td>
+                    <td className="px-2 py-1">{it.reference_code} · {it.color}</td>
+                    <td className="px-2 py-1 text-right font-mono">{(it.pairs ?? 0).toLocaleString('pt-BR')}</td>
+                    <td className="px-2 py-1 font-mono">{fmtDM(it.cabedal_expected_return)}</td>
+                    <td className="px-2 py-1 font-mono">{it.material_eta ? `chega ${fmtDM(it.material_eta)}` : '—'}</td>
+                    <td className="px-2 py-1 font-mono">{fmtDM(it.billing_anchor)}</td>
+                    <td className={`px-2 py-1 font-mono ${(it.days_vs_billing ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                      {fmtDM(it.projected_completion)}{(it.days_vs_billing ?? 0) > 0 ? ` (+${it.days_vs_billing}d)` : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {/* ── Fila por setor (ordem do motor) ────────────────────────────── */}
       <section className="px-2 pb-4 md:px-3" aria-label="Fila de OPs por setor">
         <div className="mb-2 flex items-baseline justify-between gap-2">
@@ -488,6 +534,9 @@ function SectorQueueCard({ sector, items, capacity, isBottleneck, onOpenOp }: {
                   {f.atelierState === 'aguardando_corte' && <Badge variant="warning-soft"><Scissors className="mr-0.5 h-3 w-3" />cabedal s/ corte</Badge>}
                   {f.atelierState === 'no_prestador' && !it.outsourced && <Badge variant="warning-soft"><Truck className="mr-0.5 h-3 w-3" />cabedal no prestador</Badge>}
                   {f.waitingMaterial && <Badge variant="warning-soft" title={f.materialReason ?? undefined}><Package className="mr-0.5 h-3 w-3" />material</Badge>}
+                  {f.urgent && <Badge variant="destructive-soft">urgente</Badge>}
+                  {f.cabedalReturn && <Badge variant="outline" title="Volta prevista do cabedal (motor)">volta {fmtDM(f.cabedalReturn)}</Badge>}
+                  {f.materialEta && <Badge variant="outline" title="Chegada prevista do material (motor)">chega {fmtDM(f.materialEta)}</Badge>}
                   {f.late && <Badge variant="destructive-soft">+{op.late_days}d</Badge>}
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 pl-7 font-mono text-[10px] text-muted-foreground">

@@ -5,7 +5,9 @@ import { resolve } from 'node:path';
 const ROOT = resolve(__dirname, '..', '..');
 const MIG_DIR = resolve(ROOT, 'supabase/migrations');
 const migName = readdirSync(MIG_DIR).find(f => f.endsWith('_gestao_setores_panorama.sql'))!;
-const MIG = readFileSync(resolve(MIG_DIR, migName), 'utf8');
+// A versão VIGENTE da função é a última migration que a recria.
+const latestName = readdirSync(MIG_DIR).filter(f => /_gestao_setores_/.test(f)).sort().at(-1)!;
+const MIG = readFileSync(resolve(MIG_DIR, latestName), 'utf8');
 const HOOK = readFileSync(resolve(ROOT, 'src/hooks/useSectorPanorama.ts'), 'utf8');
 const PAGE = readFileSync(resolve(ROOT, 'src/pages/ProducaoKanbanGestao.tsx'), 'utf8');
 const UI = readFileSync(resolve(ROOT, 'src/components/production/kanban/SectorPanorama.tsx'), 'utf8');
@@ -40,8 +42,17 @@ describe('get_sector_panorama · contrato de leitura', () => {
     expect(LIB).not.toMatch(/\.remaining_pairs\b/);
   });
 
-  it('timestamp da migration na faixa reservada (≥ 20270101060000)', () => {
+  it('timestamp das migrations na faixa reservada (≥ 20270101060000)', () => {
     expect(Number(migName.slice(0, 14))).toBeGreaterThanOrEqual(20270101060000);
+    expect(Number(latestName.slice(0, 14))).toBeGreaterThanOrEqual(20270101060000);
+  });
+
+  it('versão vigente lê o plano do motor (classe, espera, volta) e os previstos sem OP', () => {
+    expect(sqlBody).toMatch(/from v_production_motor_plan p/);
+    for (const col of ['item_class', 'wait_reason', 'cabedal_expected_return', 'material_eta', 'billing_anchor', 'is_urgent']) {
+      expect(sqlBody).toContain(`'${col}', p.${col}`);
+    }
+    expect(sqlBody).toContain("'forecast'");
   });
 });
 

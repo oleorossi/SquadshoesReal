@@ -39,6 +39,39 @@ export interface PanoramaOpenStage {
   blocked_until: string | null;
 }
 
+/** Plano do motor por OP (v_production_motor_plan). Nulo até o motor rodar. */
+export interface PanoramaMotorPlan {
+  item_class: string | null;
+  billing_anchor: string | null;
+  billing_week: string | null;
+  is_urgent: boolean | null;
+  motor_position: number | null;
+  earliest_start: string | null;
+  cabedal_expected_return: string | null;
+  material_eta: string | null;
+  wait_reason: 'aguardando_prestador' | 'aguardando_material' | 'aguardando_solado' | string | null;
+  days_vs_billing: number | null;
+}
+
+/** Item complexo ainda sem OP, já previsto pelo motor. */
+export interface PanoramaForecastItem {
+  order_key: string;
+  sale_order_id: string | null;
+  sale_order_number: string | null;
+  reference_code: string | null;
+  color: string | null;
+  pairs: number;
+  item_class: string | null;
+  billing_anchor: string | null;
+  is_urgent: boolean | null;
+  motor_position: number | null;
+  cabedal_expected_return: string | null;
+  material_eta: string | null;
+  wait_reason: string | null;
+  projected_completion: string | null;
+  days_vs_billing: number | null;
+}
+
 export interface PanoramaOp {
   order_id: string;
   order_number: string;
@@ -66,6 +99,8 @@ export interface PanoramaOp {
   material_gate_reason: string | null;
   atelier: PanoramaAtelierJob[];
   open_stages: PanoramaOpenStage[];
+  /** Ausente antes da mig 20270101060100 ou antes do motor rodar. */
+  motor?: PanoramaMotorPlan | null;
 }
 
 export interface PanoramaScheduleRow {
@@ -85,6 +120,7 @@ export interface SectorPanoramaData {
   sectors: PanoramaSector[];
   ops: PanoramaOp[];
   schedule: PanoramaScheduleRow[];
+  forecast?: PanoramaForecastItem[];
 }
 
 // ── Datas (ISO yyyy-mm-dd, sem fuso) ────────────────────────────────────────
@@ -159,9 +195,18 @@ export interface OpFlags {
   currentSectors: string[];
   /** Setores executados fora da fábrica (prestador) para esta OP. */
   outsourcedSectors: Set<string>;
+  /** Urgente pelo motor (topo da ordem única). */
+  urgent: boolean;
+  /** Volta prevista do cabedal do prestador (motor). */
+  cabedalReturn: string | null;
+  /** Chegada prevista do material (motor). */
+  materialEta: string | null;
 }
 
-export function cabedalKind(op: Pick<PanoramaOp, 'atelier'>): CabedalKind {
+/** Classe do motor quando existe; senão, job do Ateliê = complexo. */
+export function cabedalKind(op: Pick<PanoramaOp, 'atelier' | 'motor'>): CabedalKind {
+  const cls = op.motor?.item_class;
+  if (cls === 'complexo' || cls === 'simples') return cls;
   return op.atelier && op.atelier.length > 0 ? 'complexo' : 'simples';
 }
 
@@ -205,12 +250,22 @@ export function opFlags(
       }
     }
   }
+  const wait = op.motor?.wait_reason ?? null;
+  const motorMaterial = wait === 'aguardando_material' || wait === 'aguardando_solado';
+  const eta = op.motor?.material_eta ?? null;
+  const motorMaterialText = motorMaterial
+    ? `${wait === 'aguardando_solado' ? 'Aguardando solado' : 'Aguardando material'}${eta ? ` · chega ${fmtDM(eta)}` : ''}`
+    : null;
   return {
     kind,
     atelierState: aState,
-    waitingAtelier: aState === 'aguardando_corte' || aState === 'no_prestador' || aState === 'em_atelie',
-    waitingMaterial: gateBlocks || pvShort,
-    materialReason: op.material_gate_reason ?? (pvShort ? 'Falta de material no PV' : null),
+    waitingAtelier: wait === 'aguardando_prestador'
+      || aState === 'aguardando_corte' || aState === 'no_prestador' || aState === 'em_atelie',
+    waitingMaterial: gateBlocks || pvShort || motorMaterial,
+    materialReason: motorMaterialText ?? op.material_gate_reason ?? (pvShort ? 'Falta de material no PV' : null),
+    urgent: !!op.motor?.is_urgent,
+    cabedalReturn: op.motor?.cabedal_expected_return ?? null,
+    materialEta: eta,
     late: (op.late_days ?? 0) > 0,
     currentSectors: current,
     outsourcedSectors: outsourced,
@@ -244,7 +299,10 @@ export function filterOps(
   if (f.week !== 'todas') {
     weekOps = new Set();
     for (const r of schedule) if (weekStartISO(r.date) === f.week) weekOps.add(r.order_id);
-    for (const op of ops) if (op.due_date && weekStartISO(op.due_date) === f.week) weekOps.add(op.order_id);
+    for (const op of ops) {
+      const due = op.motor?.billing_anchor ?? op.due_date;
+      if (due && weekStartISO(due) === f.week) weekOps.add(op.order_id);
+    }
   }
   return ops.filter(op => {
     const fl = flags.get(op.order_id);
@@ -516,7 +574,7 @@ export function buildSuggestions(inp: SuggestionInput, limit = 10): Suggestion[]
     const fl = inp.flags.get(op.order_id);
     if (!fl?.late) continue;
     const why = fl.waitingAtelier
-      ? ' Cabedal complexo ainda não voltou do Ateliê/prestador.'
+      ? ` Cabedal complexo ainda não voltou do Ateliê/prestador${fl.cabedalReturn ? ` (volta prevista ${fmtDM(fl.cabedalReturn)})` : ''}.`
       : fl.waitingMaterial ? ` Material: ${fl.materialReason ?? 'pendente'}.` : '';
     out.push({
       id: `atraso:${op.order_id}`, kind: 'atraso', severity: op.late_days >= 7 ? 3 : 2, orderId: op.order_id,
@@ -545,7 +603,9 @@ export function buildSuggestions(inp: SuggestionInput, limit = 10): Suggestion[]
     out.push({
       id: `material:${op.order_id}`, kind: 'material', severity: fl.late ? 3 : 1, orderId: op.order_id,
       title: `${op.order_number} aguardando material`,
-      detail: `${fl.materialReason ?? 'Material pendente'}${op.material_ready_date ? ` · previsto ${fmtDM(op.material_ready_date)}` : ' · sem data de chegada'}.`,
+      detail: fl.materialEta
+        ? `${fl.materialReason}.`
+        : `${fl.materialReason ?? 'Material pendente'}${op.material_ready_date ? ` · previsto ${fmtDM(op.material_ready_date)}` : ' · sem data de chegada'}.`,
     });
   }
 
