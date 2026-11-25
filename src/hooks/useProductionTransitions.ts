@@ -49,6 +49,7 @@ export const KANBAN_ENGINE_CACHE_KEYS: readonly (readonly string[])[] = [
   ['production_queue_detail'],
   ['production_overloads'],
   ['production_engine_runs'],
+  ['sector_panorama'],
 ];
 
 /**

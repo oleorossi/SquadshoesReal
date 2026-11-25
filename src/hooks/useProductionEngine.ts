@@ -185,6 +185,8 @@ export const ENGINE_QUERY_KEYS = [
   ['production_queue_detail'],
   ['production_overloads'],
   ['production_engine_runs'],
+  // Gestão · Setores (RPC get_sector_panorama) — mesma fonte do motor.
+  ['sector_panorama'],
 ] as const;
 
 export function invalidateEngineCaches(qc: QueryClient) {
@@ -286,32 +288,42 @@ export function useProductionQueueDetail() {
       const orderIds = rows.map((r) => r.order_id).filter(Boolean);
       if (orderIds.length === 0) return rows;
 
-      const aheadById = new Map<string, boolean>();
+      // PERF (25/11/2026): as duas leituras de apoio (adiantamento da OP e
+      // status do PV) são independentes. Antes rodavam em SÉRIE depois da view
+      // (3 idas encadeadas); agora as duas saem juntas, em paralelo.
       const CHUNK = 200;
-      for (let i = 0; i < orderIds.length; i += CHUNK) {
-        const chunk = orderIds.slice(i, i + CHUNK);
-        const { data: aheadRows, error: aheadErr } = await supabase
-          .from('orders')
-          .select('id, is_ahead_of_schedule')
-          .in('id', chunk);
-        if (aheadErr) throw aheadErr;
-        for (const row of aheadRows || []) {
-          aheadById.set(row.id, !!row.is_ahead_of_schedule);
-        }
-      }
-
-      const saleOrderStatus = new Map<string, { status: string | null; deletedAt: string | null }>();
+      const chunked = (ids: string[]): string[][] => {
+        const out: string[][] = [];
+        for (let i = 0; i < ids.length; i += CHUNK) out.push(ids.slice(i, i + CHUNK));
+        return out;
+      };
       const saleOrderIds = [...new Set(rows.map((r) => r.sale_order_id).filter(Boolean))] as string[];
-      for (let i = 0; i < saleOrderIds.length; i += CHUNK) {
-        const chunk = saleOrderIds.slice(i, i + CHUNK);
-        const { data: saleRows, error: saleErr } = await supabase
-          .from('sale_orders')
-          .select('id, status, deleted_at')
-          .in('id', chunk);
-        if (saleErr) throw saleErr;
-        for (const row of saleRows || []) {
-          saleOrderStatus.set(row.id, { status: row.status, deletedAt: row.deleted_at });
-        }
+      const [aheadChunks, saleChunks] = await Promise.all([
+        Promise.all(chunked(orderIds).map(async (chunk) => {
+          const { data: aheadRows, error: aheadErr } = await supabase
+            .from('orders')
+            .select('id, is_ahead_of_schedule')
+            .in('id', chunk);
+          if (aheadErr) throw aheadErr;
+          return aheadRows || [];
+        })),
+        Promise.all(chunked(saleOrderIds).map(async (chunk) => {
+          const { data: saleRows, error: saleErr } = await supabase
+            .from('sale_orders')
+            .select('id, status, deleted_at')
+            .in('id', chunk);
+          if (saleErr) throw saleErr;
+          return saleRows || [];
+        })),
+      ]);
+
+      const aheadById = new Map<string, boolean>();
+      for (const row of aheadChunks.flat()) {
+        aheadById.set(row.id, !!row.is_ahead_of_schedule);
+      }
+      const saleOrderStatus = new Map<string, { status: string | null; deletedAt: string | null }>();
+      for (const row of saleChunks.flat()) {
+        saleOrderStatus.set(row.id, { status: row.status, deletedAt: row.deleted_at });
       }
 
       return rows

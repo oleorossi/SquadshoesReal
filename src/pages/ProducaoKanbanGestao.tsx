@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import {
   ArrowLeft, ArrowRight, ArrowsInSimple, ArrowsOutSimple, CaretLeft, CaretRight, CheckSquare, Funnel, Highlighter,
-  Info, Kanban as KanbanIcon, ListBullets, Package, QrCode, Stack as Layers, Warning as AlertTriangle, X,
+  ChartBar, Info, Kanban as KanbanIcon, ListBullets, Package, QrCode, Stack as Layers, Warning as AlertTriangle, X,
 } from '@phosphor-icons/react';
 import {
   useSectorSettings, useProductionQueueDetail, useProductionScheduleGrid,
@@ -62,6 +62,7 @@ import {
   type KanbanBoardMode,
 } from '@/components/production/kanban/kanbanQueueSplit';
 import { KanbanOpCard } from '@/components/production/kanban/KanbanOpCard';
+import { SectorPanorama } from '@/components/production/kanban/SectorPanorama';
 import { DropApontarDialog } from '@/components/production/kanban/DropApontarDialog';
 import { BulkMoveDialog } from '@/components/production/kanban/BulkMoveDialog';
 import { QrScanDialog } from '@/components/production/kanban/QrScanDialog';
@@ -238,6 +239,9 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
   // esmaecido, quadro inteiro visível) fica como opção, e a escolha persiste.
   const [viewMode, setViewMode] = usePersistedState<'destacar' | 'filtrar'>('kanban-gestao-view-mode', 'filtrar');
   const [boardMode, setBoardMode] = usePersistedState<KanbanBoardMode>('kanban-gestao-board-mode', 'chao');
+  /** Aba Setores (panorama) × quadro (Chão/Fila). Separado de boardMode para
+   *  não mexer nas regras do quadro que dependem de 'chao' | 'fila'. */
+  const [gestaoView, setGestaoView] = usePersistedState<'quadro' | 'setores'>('kanban-gestao-view', 'quadro');
   const [sortMode, setSortMode] = useState<KanbanSortMode>(() => readKanbanSortMode());
   const setSortModePersist = (mode: KanbanSortMode) => {
     setSortMode(mode);
@@ -985,6 +989,13 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
 
   /** Apontou → a OP ganha halo de pouso na coluna nova por ~1,6s.
    *  Se veio da Fila, troca pra aba Chão pra o gestor ver o card pousar. */
+  /** Setores → Chão já filtrado pela OP (os fluxos de apontar ficam lá). */
+  const openOpInChao = useCallback((orderNumber: string) => {
+    setGestaoView('quadro');
+    setBoardMode('chao');
+    setSearch(orderNumber);
+  }, [setGestaoView, setBoardMode]);
+
   const markLanded = (orderId: string) => {
     setLandedId(orderId);
     window.setTimeout(() => setLandedId(cur => (cur === orderId ? null : cur)), 1600);
@@ -1039,8 +1050,14 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
       {/* Abas Chão (kanban) × Fila (reservadas) */}
       <div className="shrink-0 border-b border-border bg-card px-2 md:px-3">
         <Tabs
-          value={boardMode}
+          value={gestaoView === 'setores' ? 'setores' : boardMode}
           onValueChange={v => {
+            if (v === 'setores') {
+              setGestaoView('setores');
+              exitSelectMode();
+              return;
+            }
+            setGestaoView('quadro');
             setBoardMode(v as KanbanBoardMode);
             if (v === 'fila') exitSelectMode();
           }}
@@ -1056,9 +1073,21 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
               Fila
               <span className="font-mono text-[10px] opacity-70">{filaCount}</span>
             </TabsTrigger>
+            <TabsTrigger value="setores" className="h-10 gap-1.5 px-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:shadow-none">
+              <ChartBar className="h-4 w-4" />
+              Setores
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
+
+      {/* ── Aba Setores: carga × capacidade, fila por setor e sugestões ────
+          Somente leitura. Os fluxos do Chão/Fila (apontar, mover em lote,
+          bipar) seguem intactos abaixo — esta aba só troca o conteúdo. */}
+      {gestaoView === 'setores' ? (
+        <SectorPanorama onOpenOp={openOpInChao} />
+      ) : (
+      <>
 
       {/* ── Barra de comando ───────────────────────────────────────────────
           iPhone: busca + faixa primária enxuta (ordenação · Filtros · Selecionar).
@@ -2042,6 +2071,8 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           })}
           {selectMode && <MarqueeOverlay rect={sel.marqueeRect} />}
         </div>
+      )}
+      </>
       )}
 
       {dropTarget && canEdit && (
