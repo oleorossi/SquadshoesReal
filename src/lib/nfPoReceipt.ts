@@ -8,7 +8,58 @@
  */
 
 export const ALMOST_DELIVERED_WINDOW_DAYS = 7;
-export const OPEN_PO_STATUSES = ['pending', 'approved', 'sent', 'parcial'] as const;
+
+/**
+ * Status em que a OC pode receber a NF e o estoque.
+ *
+ * Inclui rascunho (`draft`), sugerida (`suggested`) e `pending`, além das
+ * já enviadas/aprovadas. Receber uma OC em rascunho ou sugerida é ação
+ * explícita do usuário na tela de Entrada por NF (ou em Dar entrada):
+ * a OC passa a recebida/parcial pela nota. Isso NÃO gera ordem de compra —
+ * OC real continua só no clique em Gerar OC.
+ */
+export const RECEIVABLE_PO_STATUSES = [
+  'draft',
+  'suggested',
+  'pending',
+  'approved',
+  'sent',
+  'parcial',
+] as const;
+
+/** @deprecated Use RECEIVABLE_PO_STATUSES. Mantido para os chamadores atuais. */
+export const OPEN_PO_STATUSES = RECEIVABLE_PO_STATUSES;
+
+export const DRAFT_LIKE_PO_STATUSES = ['draft', 'suggested'] as const;
+
+export const DRAFT_RECEIVE_CONFIRMATION =
+  'Esta OC ainda é rascunho ou sugerida. Ao confirmar a entrada, ela passa a recebida (ou parcial) pela nota. Isso não gera uma ordem de compra — OC real continua só no clique em Gerar OC.';
+
+export function isReceivablePoStatus(status: string | null | undefined): boolean {
+  return !!status && (RECEIVABLE_PO_STATUSES as readonly string[]).includes(status);
+}
+
+export function isDraftLikePoStatus(status: string | null | undefined): boolean {
+  return !!status && (DRAFT_LIKE_PO_STATUSES as readonly string[]).includes(status);
+}
+
+export function parseNfProductName(productName: string): { baseName: string; color: string | null } {
+  const colonIdx = productName.indexOf(':');
+  if (colonIdx > 0) {
+    return {
+      baseName: productName.slice(0, colonIdx).trim(),
+      color: productName.slice(colonIdx + 1).trim() || null,
+    };
+  }
+  const dashIdx = productName.indexOf(' - ');
+  if (dashIdx > 0) {
+    return {
+      baseName: productName.slice(0, dashIdx).trim(),
+      color: productName.slice(dashIdx + 3).trim() || null,
+    };
+  }
+  return { baseName: productName.trim(), color: null };
+}
 
 export type AlmostDeliveredPo = {
   id: string;
@@ -126,6 +177,8 @@ export type OpenPoItem = {
   quantity: number;
   received_quantity?: number | null;
   received_at?: string | null;
+  unit?: string | null;
+  unit_price?: number | null;
 };
 
 export type OpenPoCandidate = AlmostDeliveredPo & {

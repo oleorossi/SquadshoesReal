@@ -17,6 +17,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/compras/alcadas': 'financeiro',
   '/compras/inspecao': 'financeiro',
   '/compras/pendencias-material': 'financeiro',
+  '/compras/entrada-nf': 'financeiro',
   '/references': 'produtos',
   '/dashboard': 'dashboard',
   '/pcp': 'producao',

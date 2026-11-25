@@ -1229,6 +1229,11 @@ const router = createBrowserRouter([
         lazy: () => import("./pages/AlcadasCompras").then(m => ({ Component: m.default })),
       },
       {
+        // Entrada por NF (XML → prévia → receive da OC)
+        path: "compras/entrada-nf",
+        lazy: () => import("./pages/EntradaNfPage").then(m => ({ Component: m.default })),
+      },
+      {
         // Inspeção de recebimento (qualidade/NC → quarentena)
         path: "compras/inspecao",
         lazy: () => import("./pages/InspecaoRecebimento").then(m => ({ Component: m.default })),

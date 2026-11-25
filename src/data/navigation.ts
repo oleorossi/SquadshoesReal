@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UsersThree, Briefcase, Ruler, Compass, ShieldCheck, Lightning as Zap, ShoppingBag, Basket, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, CalendarBlank, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock, Storefront, CheckCircle, Notebook } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UsersThree, Briefcase, Ruler, Compass, ShieldCheck, Lightning as Zap, ShoppingBag, Basket, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, CalendarBlank, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock, Storefront, CheckCircle, Notebook, FileArrowUp } from '@phosphor-icons/react';
 
 /**
  * Superfícies de descoberta.
@@ -116,6 +116,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/quotations', label: 'Cotações (RFQ)', group: 'Compras', icon: FileSpreadsheet, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Quotations') },
   { path: '/purchase-orders', label: 'Pedidos de compra', group: 'Compras', icon: ShoppingBag, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchaseOrders') },
   { path: '/purchase-orders/per-pv', label: 'Por pedido', group: 'Compras', icon: ShoppingCart, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchaseOrdersPerPv') },
+  { path: '/compras/entrada-nf', label: 'Entrada por NF', group: 'Compras', icon: FileArrowUp, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/EntradaNfPage') },
   { path: '/compras/pendencias-material', label: 'Pendências', group: 'Compras', icon: AlertTriangle, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/RelatorioPendenciaMaterial') },
   { path: '/compras/inspecao', label: 'Inspeção', group: 'Compras', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/InspecaoRecebimento') },
   { path: '/suppliers', label: 'Fornecedores', group: 'Compras', icon: Briefcase, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Suppliers') },
@@ -251,6 +252,7 @@ const hubsDeclarados: NavigationHub[] = [
       resource('/quotations'),
       resource('/purchase-orders'),
       resource('/purchase-orders/per-pv'),
+      resource('/compras/entrada-nf'),
       resource('/compras/pendencias-material'),
       resource('/compras/inspecao'),
       resource('/suppliers'),
