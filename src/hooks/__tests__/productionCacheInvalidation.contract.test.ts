@@ -60,6 +60,7 @@ describe('invalidateProductionCaches · blast radius por superfície (P1.2)', ()
       'production_queue_detail',
       'production_overloads',
       'production_engine_runs',
+      'sector_panorama',
     ]);
   });
 
