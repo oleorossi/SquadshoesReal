@@ -250,7 +250,7 @@ export function MotorPrazosPanel() {
         </div>
         <p className="text-[11px] text-muted-foreground">
           A agenda usa a ordem e a capacidade diária de cada setor (e o ritmo da ficha técnica quando existe).
-          Editar em <Link className="underline" to="/producao/setores">Produção › Setores</Link>.
+          Editar em <Link className="underline" to="/motor?tab=capacidade">Motor de produção › Capacidade e equipe</Link>.
         </p>
       </section>
     </Panel>
@@ -268,7 +268,7 @@ export function MotorPrazosResumo() {
         Prazos do motor: prestador {s.effective_default_prep_business_days} dias úteis · pronto {s.ready_before_billing_days} dias
         antes do faturamento · lead de OC {s.default_oc_lead_days} dias · {s.motor_cabedal_gate_sector} espera o cabedal
       </span>
-      <Link className="font-medium text-foreground underline" to="/terceirizados?tab=modelos">Ajustar prazos do motor</Link>
+      <Link className="font-medium text-foreground underline" to="/motor?tab=prazos">Ajustar prazos do motor</Link>
     </Panel>
   );
 }

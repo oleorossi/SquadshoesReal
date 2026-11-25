@@ -7,6 +7,7 @@ export default function ProducaoHub() {
       sectionLabel="Produção"
       description="Corte, ateliê, prestadores, gestão e apontamento do chão."
       hints={{
+        '/motor': 'Prazos, plano, compras, capacidade e equipe do motor',
         '/producao/sequencia': 'Ordem oficial — fechar PV, cor e referência',
         '/producao/planejamento': 'Carga diária por setor',
         '/producao/corte-lookahead': 'Liberar Corte e fechar PV',

@@ -78,6 +78,10 @@ export const navigationCatalog: NavigationResource[] = [
 
   // Produção
   { path: '/producao', label: 'Produção', group: 'Produção', icon: BarChart3, surfaces: ['hub', 'command'], preload: () => import('@/pages/ProducaoHub') },
+  // Motor de produção: menu único (prazos, plano, sequência, compras, Ateliê,
+  // capacidade, equipe e chaves). As abas entram na busca como ações rápidas
+  // (GlobalSearch) com a permissão de /motor — sem destino concedível extra.
+  { path: '/motor', label: 'Motor de produção', group: 'Produção', icon: Cpu, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/MotorProducao') },
   { path: '/producao/sequencia', label: 'Sequência', group: 'Produção', icon: RouteIcon, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoSequencia') },
   { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: CalendarBlank, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
   { path: '/producao/corte-lookahead', label: 'Corte', group: 'Produção', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoCorteLookahead') },
@@ -273,6 +277,7 @@ const hubsDeclarados: NavigationHub[] = [
     icon: Factory,
     groups: ['Produção'],
     children: [
+      resource('/motor'),
       resource('/producao/corte-lookahead'),
       resource('/terceirizados'),
       resource('/producao/kanban'),

@@ -24,6 +24,7 @@ const EXTRA_ALIASES: Record<string, string[]> = {
   '/engenharia': ['engenharia', 'planejamento', 'PCP'],
   '/materiais': ['materiais', 'almoxarifado'],
   '/fiscal': ['fiscal', 'nota fiscal', 'NF-e'],
+  '/motor': ['motor', 'motor de produção', 'prazos do motor', 'prazos', 'capacidade', 'equipe por setor', 'equipe', 'reservas do ateliê', 'comprar até', 'recalcular fila'],
   '/producao/corte-lookahead': ['fila de corte'],
   '/producao/kanban': ['modo gestão', 'kanban'],
   '/producao/sequencia': ['sequência / liberação', 'liberação'],

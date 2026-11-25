@@ -98,6 +98,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/producao/kanban': 'producao',
   '/producao/estouro': 'producao',
   '/producao/setores': 'producao',
+  '/motor': 'producao',
   '/producao/apontamento': 'producao',
   '/producao/calculadora-grade': 'producao',
   '/producao/analises': 'producao',
