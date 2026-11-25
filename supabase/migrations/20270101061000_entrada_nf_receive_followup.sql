@@ -6,7 +6,7 @@
 -- 1) Amplia o gate de receive (15700 deixou só approved/sent/parcial).
 DO $patch_receive$
 DECLARE
-  v_reg regprocedure := 'public.execute_purchase_order_command(text,jsonb,uuid,uuid,timestamptz)'::regprocedure;
+  v_reg regprocedure;
   v_def text;
   v_old text := $old$    IF v_po.status NOT IN ('approved', 'sent', 'parcial') THEN
       RAISE EXCEPTION 'OC em estado % nao pode ser recebida', v_po.status
@@ -18,10 +18,12 @@ DECLARE
     END IF;$new$;
   v_n int;
 BEGIN
-  v_def := pg_get_functiondef(v_reg);
-  IF v_def IS NULL THEN
-    RAISE EXCEPTION 'execute_purchase_order_command não encontrada';
+  v_reg := to_regprocedure('public.execute_purchase_order_command(text,jsonb,uuid,uuid,timestamptz)');
+  IF v_reg IS NULL THEN
+    RAISE NOTICE 'execute_purchase_order_command ausente neste banco — patch 61000 adiado';
+    RETURN;
   END IF;
+  v_def := pg_get_functiondef(v_reg);
   -- Já aplicada (reapply / ramo paralelo).
   IF position(v_new in v_def) > 0 THEN
     RETURN;
@@ -272,12 +274,12 @@ CREATE OR REPLACE FUNCTION public.run_entrada_nf_receive_contract_tests()
 RETURNS void
 LANGUAGE plpgsql
 SET search_path = public
-AS $$
+AS $fn$
 DECLARE
   v_def text;
 BEGIN
   v_def := pg_get_functiondef('public.execute_purchase_order_command(text,jsonb,uuid,uuid,timestamptz)'::regprocedure);
-  IF position($$IF v_po.status NOT IN ('draft', 'suggested', 'pending', 'approved', 'sent', 'parcial')$$ in v_def) = 0 THEN
+  IF position($gate$IF v_po.status NOT IN ('draft', 'suggested', 'pending', 'approved', 'sent', 'parcial')$gate$ in v_def) = 0 THEN
     RAISE EXCEPTION 'receive não aceita draft/suggested/pending';
   END IF;
   IF to_regprocedure('public.apply_purchase_receive_followup(uuid,uuid[],uuid[])') IS NULL THEN
@@ -294,7 +296,7 @@ BEGIN
     RAISE EXCEPTION 'trigger de followup ausente';
   END IF;
 END;
-$$;
+$fn$;
 
 REVOKE ALL ON FUNCTION public.run_entrada_nf_receive_contract_tests() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.run_entrada_nf_receive_contract_tests() TO authenticated, service_role;

@@ -36,7 +36,7 @@ BEGIN
 
   -- Contrato: o gate de receive aceita rascunho/sugerida/pending.
   v_def := pg_get_functiondef('public.execute_purchase_order_command(text,jsonb,uuid,uuid,timestamptz)'::regprocedure);
-  IF position($$IF v_po.status NOT IN ('draft', 'suggested', 'pending', 'approved', 'sent', 'parcial')$$ in v_def) = 0 THEN
+  IF position($gate$IF v_po.status NOT IN ('draft', 'suggested', 'pending', 'approved', 'sent', 'parcial')$gate$ in v_def) = 0 THEN
     RAISE EXCEPTION 'ENSAIO_ROLLBACK %', jsonb_build_object('ok', false, 'reason', 'gate_receive_sem_rascunho');
   END IF;
   PERFORM public.run_entrada_nf_receive_contract_tests();
