@@ -19,7 +19,7 @@ interface Props {
 /**
  * Botão "Reverter Faturamento" — aparece quando PV está em status 'Faturado'.
  * Abre dialog pedindo justificativa (mín. 10 chars) e dispara RPC atômica.
- * Bloqueia automaticamente se houver NF autorizada (vide RPC).
+ * Com NF autorizada, a RPC reabre a produção e mantém o título a receber.
  */
 export function RevertInvoiceButton({ saleOrderId, orderNumber, size = 'icon' }: Props) {
   const [open, setOpen] = useState(false);
@@ -44,7 +44,7 @@ export function RevertInvoiceButton({ saleOrderId, orderNumber, size = 'icon' }:
           variant="ghost"
           size="icon"
           className="h-7 w-7 text-amber-700 hover:text-amber-700 hover:bg-amber-500/10"
-          title="Reverter faturamento (volta pra produção)"
+          title="Reverter faturamento (reabre a produção)"
           aria-label="Reverter faturamento"
           onClick={() => setOpen(true)}
         >
@@ -68,15 +68,15 @@ export function RevertInvoiceButton({ saleOrderId, orderNumber, size = 'icon' }:
             <AlertDialogTitle>Reverter faturamento de {orderNumber}?</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-sm">
-                <p>O PV voltará pra <strong>Em Produção</strong>. Os efeitos:</p>
+                <p>O PV volta para <strong>Em Produção</strong>, ou para <strong>Aprovado</strong> se o cabedal ainda não voltou do Ateliê. Os efeitos:</p>
                 <ul className="list-disc pl-5 space-y-0.5">
-                  <li>OPs finalizadas reabrem (status → Em Produção)</li>
-                  <li>Duplicatas pendentes (AR) cancelam</li>
-                  <li>Lançamentos financeiros estornam</li>
-                  <li>NFs em processamento mudam pra cancelled</li>
+                  <li>OPs finalizadas reabrem e as etapas fechadas pelo faturamento voltam para pendente</li>
+                  <li>Preparos de cabedal cancelados voltam para o Lançar</li>
+                  <li>Material baixado no faturamento volta ao estoque e é reservado de novo (OP sem apontamento real)</li>
+                  <li>NFs em processamento mudam pra cancelada</li>
                 </ul>
                 <p className="text-amber-700 font-medium">
-                  Se há NF autorizada na SEFAZ, cancele primeiro (módulo NF-e). A operação será bloqueada.
+                  Com NF autorizada vinculada, o título a receber e os lançamentos financeiros ficam como estão. Sem NF, duplicatas pendentes cancelam e os lançamentos estornam.
                 </p>
               </div>
             </AlertDialogDescription>

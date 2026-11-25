@@ -9,6 +9,10 @@ export interface RevertInvoiceResult {
   ar_cancelled: number;
   fe_estornado: number;
   nfe_proc_killed: number;
+  target_status?: string;
+  kept_receivable?: boolean;
+  stages_reopened?: number;
+  jobs_reopened?: number;
 }
 
 interface RevertInvoiceCommandResponse {
@@ -18,10 +22,11 @@ interface RevertInvoiceCommandResponse {
 }
 
 /**
- * Reverte um PV erroneamente marcado como "Faturado" quando a NF NÃO foi
- * efetivamente emitida na SEFAZ. RPC backend é atômica e bloqueia se houver
- * NF autorizada. O wrapper atual adiciona CAS/receipt e recusa NF-e avulsa,
- * que possui estorno fiscal próprio.
+ * Reverte um PV marcado como "Faturado" e reabre a produção (OPs, etapas
+ * fechadas pelo faturamento, preparos de cabedal e reservas). Com NF
+ * autorizada vinculada, mantém o título a receber. Destino: Em Produção, ou
+ * Aprovado se o cabedal ainda não voltou do Ateliê. O wrapper adiciona
+ * CAS/receipt e recusa NF-e avulsa, que possui estorno fiscal próprio.
  */
 export function useRevertInvoicedSaleOrder() {
   const qc = useQueryClient();
@@ -67,8 +72,12 @@ export function useRevertInvoicedSaleOrder() {
       qc.invalidateQueries({ queryKey: ['financial_entries'] });
       qc.invalidateQueries({ queryKey: ['nfe_emitidas'] });
       qc.invalidateQueries({ queryKey: ['notifications_aggregated'] });
+      const destino = result.target_status ?? 'produção';
+      const titulo = result.kept_receivable
+        ? 'título a receber mantido (NF autorizada)'
+        : `${result.ar_cancelled} duplicata(s) cancelada(s)`;
       toast.success(
-        `${result.order_number} voltou pra produção · ${result.ops_updated} OP(s) reabertas, ${result.ar_cancelled} duplicata(s) cancelada(s).`
+        `${result.order_number} voltou para ${destino} · ${result.ops_updated} OP(s) reabertas, ${titulo}.`
       );
     },
     onError: (err: any) => {
