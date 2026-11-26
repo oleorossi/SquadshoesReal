@@ -508,3 +508,68 @@ export function jobFailureLabel(job: {
   const where = [lot?.reference_code, lot?.color].filter(Boolean).join(' ');
   return [sector, job.order_number, where, lot?.lot_number].filter(Boolean).join(' · ');
 }
+
+const STREET_STATUSES = new Set(['sent_to_contractor', 'realized', 'partially_received']);
+const FINISHED_STATUSES = new Set(['done', 'received_at_factory']);
+const RECEIVE_STATUSES = new Set(['realized', 'partially_received']);
+
+export interface AtelierHubKpis {
+  awaitingCutLots: number;
+  readyToLaunchJobs: number;
+  onStreetJobs: number;
+  toReceiveJobs: number;
+  lateJobs: number;
+  pairsInProgress: number;
+}
+
+const EMPTY_ATELIER_HUB_KPIS: AtelierHubKpis = {
+  awaitingCutLots: 0,
+  readyToLaunchJobs: 0,
+  onStreetJobs: 0,
+  toReceiveJobs: 0,
+  lateJobs: 0,
+  pairsInProgress: 0,
+};
+
+/** Totais do topo da gestão do Ateliê — só leitura, sem mudar status. */
+export function summarizeAtelierHubKpis(
+  lots: readonly {
+    status?: string | null;
+    jobs?: readonly {
+      sector?: string | null;
+      pipeline_status?: string | null;
+      execution_mode?: string | null;
+      target_end?: string | null;
+      pairs?: number | null;
+      received_pairs?: number | null;
+    }[] | null;
+  }[],
+  settings?: { costura_offset_days?: number | null; aviamento_offset_days?: number | null } | null,
+  today = new Date(),
+): AtelierHubKpis {
+  const out: AtelierHubKpis = { ...EMPTY_ATELIER_HUB_KPIS };
+  for (const lot of lots) {
+    if (lot.status === 'open') out.awaitingCutLots += 1;
+    for (const raw of lot.jobs ?? []) {
+      const status = raw.pipeline_status ?? '';
+      if (status === 'cancelled') continue;
+      const column = atelierJobBoardColumn(status);
+      if (column === 'cut') out.readyToLaunchJobs += 1;
+      if (column && STREET_STATUSES.has(column)) out.onStreetJobs += 1;
+      if (column && RECEIVE_STATUSES.has(column)) out.toReceiveJobs += 1;
+      const pairs = Number(raw.pairs) || 0;
+      const received = Number(raw.received_pairs) || 0;
+      if (column && !FINISHED_STATUSES.has(column)) {
+        out.pairsInProgress += Math.max(0, pairs - received);
+      }
+      const targetEnd = atelierReturnDate(
+        raw.target_end,
+        atelierSectorOffsetDays(raw.sector ?? '', settings),
+      );
+      if (atelierJobIsLate(targetEnd, status, raw.execution_mode, today)) {
+        out.lateJobs += 1;
+      }
+    }
+  }
+  return out;
+}

@@ -257,18 +257,32 @@ export function MotorPrazosPanel() {
   );
 }
 
-/** Resumo de uma linha para a aba Corte — leva para a tela completa. */
+/** Faixa compacta de prazos — a edição completa fica no Motor. */
 export function MotorPrazosResumo() {
   const { data: config } = useMotorConfig();
   if (!config) return null;
   const s = config.settings;
+  const items = [
+    `prestador ${s.effective_default_prep_business_days} dias úteis`,
+    `pronto ${s.ready_before_billing_days} dias antes do faturamento`,
+    `lead de OC ${s.default_oc_lead_days} dias`,
+    `${s.motor_cabedal_gate_sector} espera o cabedal`,
+  ];
   return (
-    <Panel className="flex flex-wrap items-center justify-between gap-2 p-3 text-xs text-muted-foreground">
-      <span>
-        Prazos do motor: prestador {s.effective_default_prep_business_days} dias úteis · pronto {s.ready_before_billing_days} dias
-        antes do faturamento · lead de OC {s.default_oc_lead_days} dias · {s.motor_cabedal_gate_sector} espera o cabedal
-      </span>
-      <Link className="font-medium text-foreground underline" to="/motor?tab=prazos">Ajustar prazos do motor</Link>
-    </Panel>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+      <span className="font-medium text-foreground">Prazos do motor</span>
+      {items.map((item) => (
+        <span key={item} className="inline-flex items-center gap-3">
+          <span className="hidden h-3 w-px bg-border sm:block" aria-hidden />
+          <span>{item}</span>
+        </span>
+      ))}
+      <Link
+        className="ml-auto inline-flex h-8 shrink-0 items-center rounded-md px-2 text-sm font-medium text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground"
+        to="/motor?tab=prazos"
+      >
+        Ajustar no Motor
+      </Link>
+    </div>
   );
 }

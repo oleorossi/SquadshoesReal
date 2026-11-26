@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { House as Home } from '@phosphor-icons/react';
-import { grantableDestinations } from '@/data/navigation';
+import { HUBS, grantableDestinations } from '@/data/navigation';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -24,6 +24,19 @@ for (const destination of navigationDestinations) {
   if (!firstDestinationByGroup.has(destination.group)) {
     firstDestinationByGroup.set(destination.group, destination);
   }
+}
+
+const hubPathByGroup = new Map<string, string>();
+for (const hub of HUBS) {
+  hubPathByGroup.set(hub.label, hub.path);
+  for (const group of hub.groups) {
+    if (!hubPathByGroup.has(group)) hubPathByGroup.set(group, hub.path);
+  }
+}
+
+function pathForGroup(group: string | undefined): string | undefined {
+  if (!group) return undefined;
+  return hubPathByGroup.get(group) ?? firstDestinationByGroup.get(group)?.path;
 }
 
 const segmentLabels: Record<string, string> = {
@@ -123,7 +136,7 @@ export default function PageHeader({ title, compact }: { title?: string; subtitl
   const destination = findDestination(location.pathname);
   const firstSegmentDestination = destinationByPath.get(`/${segments[0]}`);
   const group = destination?.group;
-  const groupDestination = group ? firstDestinationByGroup.get(group) : undefined;
+  const groupPath = pathForGroup(group);
   const showGroup = Boolean(
     group
     && group !== 'Início'
@@ -133,8 +146,8 @@ export default function PageHeader({ title, compact }: { title?: string; subtitl
 
   const crumbs: BreadcrumbCrumb[] = [];
 
-  if (showGroup && group && groupDestination) {
-    crumbs.push({ label: group, to: groupDestination.path });
+  if (showGroup && group && groupPath) {
+    crumbs.push({ label: group, to: groupPath });
   }
 
   let pathAccum = '';

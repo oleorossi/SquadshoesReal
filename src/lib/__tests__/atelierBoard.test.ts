@@ -20,6 +20,7 @@ import {
   matchesAtelierBoardJob,
   runLabeledBatch,
   sharedBatchAction,
+  summarizeAtelierHubKpis,
 } from '@/lib/atelierBoard';
 
 const TODAY = new Date('2026-11-17T12:00:00');
@@ -273,5 +274,35 @@ describe('visão por pedido', () => {
       'awaiting_cut', 'cut', 'sent_to_contractor', 'realized', 'partially_received', 'received_at_factory',
     ]);
     expect(atelierTimeline('internal').map((s) => s.id)).toContain('in_progress');
+  });
+});
+
+describe('KPIs do hub do Ateliê', () => {
+  it('conta lotes em corte, jobs prontos, na rua, atrasados e pares em andamento', () => {
+    const kpis = summarizeAtelierHubKpis([
+      {
+        status: 'open',
+        jobs: [
+          { sector: 'costura_cabedal', pipeline_status: 'awaiting_cut', execution_mode: 'contractor', target_end: null, pairs: 20, received_pairs: 0 },
+        ],
+      },
+      {
+        status: 'cut',
+        jobs: [
+          { sector: 'costura_cabedal', pipeline_status: 'cut', execution_mode: 'contractor', target_end: '2026-11-10', pairs: 30, received_pairs: 0 },
+          { sector: 'aviamento', pipeline_status: 'sent_to_contractor', execution_mode: 'contractor', target_end: '2026-11-10', pairs: 30, received_pairs: 0 },
+          { sector: 'costura_cabedal', pipeline_status: 'realized', execution_mode: 'contractor', target_end: '2026-12-20', pairs: 10, received_pairs: 0 },
+          { sector: 'aviamento', pipeline_status: 'received_at_factory', execution_mode: 'contractor', target_end: '2026-11-01', pairs: 8, received_pairs: 8 },
+          { sector: 'costura_cabedal', pipeline_status: 'cancelled', execution_mode: 'contractor', target_end: '2026-11-01', pairs: 99, received_pairs: 0 },
+        ],
+      },
+    ], { costura_offset_days: 0, aviamento_offset_days: 0 }, TODAY);
+
+    expect(kpis.awaitingCutLots).toBe(1);
+    expect(kpis.readyToLaunchJobs).toBe(1);
+    expect(kpis.onStreetJobs).toBe(2);
+    expect(kpis.toReceiveJobs).toBe(1);
+    expect(kpis.lateJobs).toBe(2);
+    expect(kpis.pairsInProgress).toBe(20 + 30 + 30 + 10);
   });
 });

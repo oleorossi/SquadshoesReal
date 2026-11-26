@@ -27,9 +27,9 @@ const nonStrapView = migration.slice(
 describe('Tiras — fronteira própria fora de Terceirizados', () => {
   it('mantém a Central de Tiras no hub Engenharia, fora de Terceirizados', () => {
     // Hub reorg (7376022): o grupo flat "Tiras" foi absorvido por Engenharia.
-    // A fronteira que importa continua: tiras ≠ terceirizados (RH).
+    // A fronteira que importa continua: tiras ≠ Ateliê/terceirizados.
     expect(navigation).toContain("label: 'Central de Tiras', group: 'Engenharia'");
-    expect(navigation).toContain("label: 'Terceirizados', group: 'RH'");
+    expect(navigation).toContain("label: 'Ateliê', group: 'Produção'");
     expect(navigation).toMatch(
       /label: 'PCP',[\s\S]*?children: \[[\s\S]*?resource\('\/tiras-artesanais'\)/,
     );

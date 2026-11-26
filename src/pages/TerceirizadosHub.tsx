@@ -10,6 +10,7 @@
  *   /atelie?view=cadastro    → modelos
  *   /atelie?view=tiras       → tiras
  *   ?tab=orders|os-ativas    → rua
+ *   ?tab=na-rua              → rua
  *   ?tab=planning            → planejar
  *   ?tab=gestao              → relatorio
  *   ?tab=prep                → corte
@@ -17,11 +18,8 @@
  */
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import {
-  Calendar, ClipboardText, Factory, Kanban, Scissors, Tag, Truck, Users,
-} from '@phosphor-icons/react';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { useOutsourcedPairLedger } from '@/hooks/useOutsourcedPairLedger';
 import { totalsFromLedger } from '@/lib/outsourcedPairLedger';
 import { OsAtivasPanel, OsRedistribuicaoHistorico } from '@/components/contractors/OsAtivasPanel';
@@ -30,110 +28,97 @@ import { TerceirizacaoCoberturaPanel } from '@/components/contractors/Terceiriza
 import { AtelierLancamento } from '@/components/atelier/AtelierLancamento';
 import { AtelierRelatorioView } from '@/components/atelier/AtelierRelatorioView';
 import { AtelierStrapsView } from '@/components/atelier/AtelierStrapsView';
+import { MotorPrazosResumo } from '@/components/atelier/MotorPrazosPanel';
+import {
+  AtelierHubNav,
+  AtelierKpiStrip,
+  resolveAtelierHubTab,
+  useAtelierHubKpis,
+} from '@/components/atelier/AtelierHubChrome';
 import { CadastroView, FilaView } from '@/pages/Atelie';
 import ContractorsPage from './Contractors';
 import ContractorReportsPage from './ContractorReports';
 
-const TRIGGER = 'h-11 shrink-0 snap-start rounded-md px-3 text-[11px] sm:text-xs';
-
-const TAB_ALIAS: Record<string, string> = {
-  orders: 'rua',
-  'os-ativas': 'rua',
-  planning: 'planejar',
-  gestao: 'relatorio',
-  prep: 'corte',
-  rua: 'rua',
-  contractors: 'prestadores',
-  cobertura: 'prestadores',
-  recipes: 'tiras',
-};
-
-const TABS = new Set(['planejar', 'lancar', 'rua', 'receber', 'corte', 'prestadores', 'relatorio', 'modelos', 'tiras']);
-
 export default function TerceirizadosHub() {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get('tab') ?? 'planejar';
-  const mapped = TAB_ALIAS[raw] ?? raw;
-  const [tab, setTab] = useState(TABS.has(mapped) ? mapped : 'planejar');
+  const mapped = resolveAtelierHubTab(raw);
+  const [tab, setTab] = useState(mapped);
+  const kpis = useAtelierHubKpis();
 
   useEffect(() => {
-    if (TABS.has(mapped)) setTab(mapped);
+    setTab(mapped);
   }, [mapped]);
 
   if (raw === 'recipes') {
     return <Navigate to="/tiras-artesanais?tab=receitas" replace />;
   }
 
-  const onTabChange = (value: string) => {
-    setTab(value);
+  const onTabChange = (value: string, extras?: Record<string, string | null>) => {
+    const next = resolveAtelierHubTab(value);
+    setTab(next);
     setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set('tab', value);
-      return next;
+      const params = new URLSearchParams(prev);
+      params.set('tab', next);
+      if (extras) {
+        for (const [key, val] of Object.entries(extras)) {
+          if (val) params.set(key, val);
+          else params.delete(key);
+        }
+      }
+      return params;
     }, { replace: true });
   };
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="mx-auto w-full max-w-[90rem] space-y-4 pb-24">
       <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · ORDENS DE SERVIÇO"
-        title="Terceirizados"
-        description="Um módulo só: planejar, lançar, acompanhar na rua e receber. Cabedal complexo entra aqui, sempre com prestador."
+        sectionLabel="PRODUÇÃO · ATELIÊ"
+        title="Ateliê"
+        description="Planejar, cortar, lançar a OS, acompanhar no prestador e receber. Cabedal complexo entra aqui, sempre com prestador."
       />
-      <Tabs value={tab} onValueChange={onTabChange}>
-        <TabsList
-          indicator="none"
-          aria-label="Ordens de serviço"
-          className="h-auto snap-x snap-proximity flex-nowrap gap-1 overflow-x-auto rounded-lg border border-border/60 bg-muted/50 p-0.5"
-        >
-          <TabsTrigger value="planejar" className={TRIGGER}><Calendar className="h-3.5 w-3.5" /> Planejar</TabsTrigger>
-          <TabsTrigger value="lancar" className={TRIGGER}><ClipboardText className="h-3.5 w-3.5" /> Lançar</TabsTrigger>
-          <TabsTrigger value="rua" className={TRIGGER}><Truck className="h-3.5 w-3.5" /> Na rua</TabsTrigger>
-          <TabsTrigger value="receber" className={TRIGGER}><Kanban className="h-3.5 w-3.5" /> Receber</TabsTrigger>
-          <TabsTrigger value="corte" className={TRIGGER}><Scissors className="h-3.5 w-3.5" /> Corte</TabsTrigger>
-          <TabsTrigger value="prestadores" className={TRIGGER}><Users className="h-3.5 w-3.5" /> Prestadores</TabsTrigger>
-          <TabsTrigger value="relatorio" className={TRIGGER}><Factory className="h-3.5 w-3.5" /> Relatório</TabsTrigger>
-          <TabsTrigger value="modelos" className={TRIGGER}><Tag className="h-3.5 w-3.5" /> Modelos</TabsTrigger>
-          <TabsTrigger value="tiras" className={TRIGGER}><Scissors className="h-3.5 w-3.5" /> Tiras</TabsTrigger>
-        </TabsList>
+      <AtelierKpiStrip kpis={kpis} onTabChange={onTabChange} />
+      <MotorPrazosResumo />
+      <Tabs value={tab} onValueChange={(value) => onTabChange(value)}>
+        <AtelierHubNav tab={tab} onTabChange={onTabChange} kpis={kpis} />
 
-        <TabsContent value="planejar" className="mt-3">
+        <TabsContent value="planejar" className="mt-4">
           <OutsourcingPlanPanel />
         </TabsContent>
-        <TabsContent value="lancar" className="mt-3">
+        <TabsContent value="corte" className="mt-4">
+          <FilaView />
+        </TabsContent>
+        <TabsContent value="lancar" className="mt-4">
           <AtelierLancamento />
         </TabsContent>
-        <TabsContent value="rua" className="mt-3 space-y-4">
+        <TabsContent value="rua" className="mt-4 space-y-4">
           <OsAtivasPanel />
           <OsRedistribuicaoHistorico />
           <ContractorsPage embedded activeTab="orders" onActiveTabChange={() => undefined} />
         </TabsContent>
-        <TabsContent value="receber" className="mt-3 space-y-3">
+        <TabsContent value="receber" className="mt-4 space-y-3">
           <p className="text-sm text-muted-foreground">
             A conferência (bom, defeito e retrabalho) é a da OS que está na rua. Os pares abaixo são os que o motor ainda marca como enviados e não recebidos.
           </p>
           <ReceberResumo />
           <ContractorsPage embedded activeTab="orders" onActiveTabChange={() => undefined} />
         </TabsContent>
-        <TabsContent value="corte" className="mt-3">
-          <FilaView />
-        </TabsContent>
-        <TabsContent value="prestadores" className="mt-3 space-y-4">
+        <TabsContent value="prestadores" className="mt-4 space-y-4">
           <ContractorsPage embedded activeTab="contractors" onActiveTabChange={() => undefined} />
           <TerceirizacaoCoberturaPanel />
         </TabsContent>
-        <TabsContent value="relatorio" className="mt-3 space-y-4">
+        <TabsContent value="relatorio" className="mt-4 space-y-4">
           <TotaisDoMotor />
           <AtelierRelatorioView />
           <ContractorReportsPage embedded />
         </TabsContent>
-        <TabsContent value="modelos" className="mt-3">
+        <TabsContent value="modelos" className="mt-4">
           <CadastroView />
         </TabsContent>
-        <TabsContent value="tiras" className="mt-3">
+        <TabsContent value="tiras" className="mt-4">
           <AtelierStrapsView />
           <p className="text-sm text-muted-foreground">
-            Receitas de tira comprada ficam na <Link className="underline" to="/tiras-artesanais?tab=receitas">Central de Tiras</Link>.
+            Receitas de tira comprada ficam na <Link className="underline underline-offset-2" to="/tiras-artesanais?tab=receitas">Central de Tiras</Link>.
           </p>
         </TabsContent>
       </Tabs>

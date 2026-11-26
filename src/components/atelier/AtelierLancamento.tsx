@@ -383,7 +383,7 @@ export function AtelierLancamento() {
 
   return (
     <div className="space-y-4">
-      <Panel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
+      <Panel flush className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
         <label className="flex-1 space-y-1">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Pedido</span>
           <SearchInput
@@ -419,7 +419,7 @@ export function AtelierLancamento() {
             {payload.status ? ` · ${payload.status}` : ''}
           </p>
           {payload.gaps.length > 0 && (
-            <Panel className="space-y-1 border-amber-500/40 p-3">
+            <Panel flush className="space-y-1 border-amber-500/40 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
                 Divergência de quantidade
               </p>
@@ -438,7 +438,7 @@ export function AtelierLancamento() {
                 const grades = rows.map((row) => positiveGrade(row.sizes));
                 const sizes = gradeSizeKeys(color.remaining);
                 return (
-                  <Panel key={color.jobId} className="space-y-3 p-4">
+                  <Panel flush key={color.jobId} className="space-y-3 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="flex items-start gap-2">
                         <ReferenceThumb url={photoFor(color.jobId, color.color)} size={44} />
@@ -625,7 +625,7 @@ export function AtelierLancamento() {
               Este pedido não tem costura nem aviamento no Ateliê.
             </p>
           )}
-          <Panel className="space-y-2 p-4">
+          <Panel flush className="space-y-2 p-4">
             <h2 className="text-sm font-semibold text-foreground">Com cada prestador</h2>
             {summary.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma parte enviada ainda.</p>

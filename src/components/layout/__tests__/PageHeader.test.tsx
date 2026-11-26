@@ -74,6 +74,19 @@ describe('PageHeader — breadcrumb derivado da navegação', () => {
     expect(trilha.at(-1)).toBe('Editar');
     expect(trilha.join(' ')).not.toMatch(/3f2a|Detalhe/i);
   });
+
+  it('Terceirizados fica em Produção e aponta para o hub, não para o RH', () => {
+    const trilha = crumbs('/terceirizados');
+    expect(trilha).toEqual(['Produção', 'Ateliê']);
+    const { container } = render(
+      <MemoryRouter initialEntries={['/terceirizados']}>
+        <PageHeader />
+      </MemoryRouter>,
+    );
+    const alvos = Array.from(container.querySelectorAll('a')).map((a) => a.getAttribute('href'));
+    expect(alvos).toContain('/producao');
+    expect(alvos).not.toContain('/rh');
+  });
 });
 
 describe('resolveMobileNavMeta', () => {
@@ -88,6 +101,10 @@ describe('resolveMobileNavMeta', () => {
       label: 'Planejamento',
       group: 'Produção',
     });
+    expect(resolveMobileNavMeta('/terceirizados')).toEqual({
+      label: 'Ateliê',
+      group: 'Produção',
+    });
   });
 
   it('em Análises usa o rótulo da visão na query', () => {
@@ -97,3 +114,4 @@ describe('resolveMobileNavMeta', () => {
     });
   });
 });
+

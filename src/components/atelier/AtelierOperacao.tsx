@@ -15,6 +15,7 @@ import {
   Warehouse,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/search-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -76,6 +77,7 @@ import { atelierJobCanSplit, atelierSplitConfirmMessage } from '@/lib/atelierSpl
 import { kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
 import { deadlineChipLabel, deadlineTone } from '@/lib/reportOrderGrouping';
 import { daysUntilDeadline } from '@/lib/production/productionSequence';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { cn, formatCurrency } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -114,8 +116,12 @@ interface Props {
   onRefresh: () => void;
   pedido: string;
   modo: Modo;
+  searchQuery?: string;
+  lateOnly?: boolean;
   onPedidoChange: (orderNumber: string) => void;
   onModoChange: (modo: Modo) => void;
+  onSearchQueryChange?: (value: string) => void;
+  onLateOnlyChange?: (value: boolean) => void;
 }
 
 function formatQty(n: number) {
@@ -140,11 +146,11 @@ function GradeStrip({ grade }: { grade: Record<string, number> }) {
     .sort((a, b) => parseFloat(a) - parseFloat(b));
   if (sizes.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-0.5" aria-label="Grade do lote">
+    <div className="flex flex-wrap gap-1.5" aria-label="Grade do lote">
       {sizes.map((size) => (
         <span
           key={size}
-          className="inline-flex items-baseline gap-0.5 rounded border border-border/60 px-1 py-px font-mono text-[10px] leading-tight"
+          className="inline-flex items-baseline gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-1 font-mono text-xs leading-tight"
         >
           <span className="text-muted-foreground">{size}</span>
           <span className="font-semibold tabular-nums text-foreground">{formatQty(Number(grade[size]))}</span>
@@ -337,7 +343,7 @@ function JobActions({
             type="button"
             size="sm"
             variant="outline"
-            className="h-7 px-2 text-[11px]"
+            className="h-8 px-3 text-xs"
             disabled={busy}
             onClick={() => {
               if (!window.confirm(atelierSplitConfirmMessage(job, lot))) return;
@@ -360,7 +366,7 @@ function JobActions({
         <div className="space-y-1">
           <div className="flex gap-1">
             <Select value={contractorId || undefined} onValueChange={setContractorId}>
-              <SelectTrigger className="h-7 flex-1 text-[11px]" aria-label="Prestador">
+              <SelectTrigger className="h-8 flex-1 text-xs" aria-label="Prestador">
                 <SelectValue placeholder="Prestador" />
               </SelectTrigger>
               <SelectContent>
@@ -371,7 +377,7 @@ function JobActions({
             </Select>
             <Button
               size="sm"
-              className="h-7 px-2 text-[11px]"
+              className="h-8 px-3 text-xs"
               disabled={busy}
               onClick={() => setSplitOpen(true)}
             >
@@ -383,7 +389,7 @@ function JobActions({
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-7 px-2 text-[11px]"
+                className="h-8 px-3 text-xs"
                 onClick={onManage}
               >
                 Envios
@@ -454,7 +460,7 @@ function JobActions({
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-[11px]"
+            className="h-8 px-3 text-xs"
             onClick={() => { void printAtelierShipment(job.service_order_id as string).catch((error: Error) => toast.error(error.message || 'Não foi possível imprimir')); }}
           >
             Imprimir remessa
@@ -468,7 +474,7 @@ function JobActions({
             {job.execution_mode === 'internal' ? 'Interno' : (job.contractor_name ?? 'Prestador')}
             {job.atelier_service_number ? ` · ${job.atelier_service_number}` : ''}
           </span>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={() => realizedMut.mutate(job.id)}>
+          <Button size="sm" variant="outline" className="h-8 px-3 text-xs" disabled={busy} onClick={() => realizedMut.mutate(job.id)}>
             <CheckCircle className="h-3 w-3" />
             Realizado
           </Button>
@@ -477,7 +483,7 @@ function JobActions({
 
       {atelierCanRecordReceipt(job) && job.execution_mode !== 'internal' && (
         <div className="flex justify-end">
-          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onReceipt}>
+          <Button size="sm" variant="outline" className="h-8 px-3 text-xs" disabled={busy} onClick={onReceipt}>
             <Warehouse className="h-3 w-3" />
             Conferir recebimento
           </Button>
@@ -486,7 +492,7 @@ function JobActions({
 
       {action === 'internal_start' && (
         <div className="flex justify-end">
-          <Button size="sm" className="h-7 px-2 text-[11px]" disabled={busy} onClick={() => startMut.mutate(job.id)}>
+          <Button size="sm" className="h-8 px-3 text-xs" disabled={busy} onClick={() => startMut.mutate(job.id)}>
             <Factory className="h-3 w-3" />
             Em realização
           </Button>
@@ -495,7 +501,7 @@ function JobActions({
 
       {atelierCanRecordReceipt(job) && job.execution_mode === 'internal' && (
         <div className="flex justify-end">
-          <Button size="sm" className="h-7 px-2 text-[11px]" disabled={busy} onClick={onReceipt}>
+          <Button size="sm" className="h-8 px-3 text-xs" disabled={busy} onClick={onReceipt}>
             <CheckCircle className="h-3 w-3" />
             Lançar concluído
           </Button>
@@ -557,20 +563,19 @@ function JobCard({
   return (
     <article className={cn(
       enter && 'kb-card-in',
-      'space-y-1.5 rounded-md border p-2',
+      'space-y-2 rounded-lg border p-3',
       lotHasKitShortage(lot.debits) ? 'border-red-500/50 bg-red-500/10' : 'border-border/70 bg-card',
     )}>
-      <header className="flex items-start justify-between gap-1">
+      <header className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-[12px] font-semibold text-foreground">
-            {sector}
-            <span className="ml-1 font-normal text-muted-foreground">{job.order_number}</span>
-          </p>
-          <p className="truncate text-[10px] text-muted-foreground">
+          <p className="truncate text-sm font-semibold text-foreground">
             {atelierIdentityLabel(atelierJobIdentityLine(job, lot))}
           </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {job.order_number} · {sector}
+          </p>
           {job.atelier_service_number && (
-            <p className="truncate font-mono text-[10px] text-muted-foreground">OS {job.atelier_service_number}</p>
+            <p className="truncate font-mono text-xs text-muted-foreground">OS {job.atelier_service_number}</p>
           )}
         </div>
         {canSelect && (
@@ -581,11 +586,14 @@ function JobCard({
           />
         )}
       </header>
-      <div className="flex flex-wrap items-center gap-1 text-[10px]">
-        <span className="text-muted-foreground">{lot.lot_number}</span>
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="font-mono text-muted-foreground">{lot.lot_number}</span>
         {job.target_end && (
-          <span className={cn('rounded border px-1 py-px font-medium', late ? 'border-red-500/30 bg-red-500/10 text-red-600' : 'border-border text-muted-foreground')}>
-            voltar {formatDay(job.target_end)}{late ? ' · atrasado' : ''}
+          <span className={cn(
+            'rounded-full border px-2 py-0.5 font-semibold',
+            late ? 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400' : 'border-border text-muted-foreground',
+          )}>
+            {late ? `atraso · voltar ${formatDay(job.target_end)}` : `voltar ${formatDay(job.target_end)}`}
           </span>
         )}
       </div>
@@ -595,7 +603,7 @@ function JobCard({
         label="recebidos"
       />
       {blocks && (
-        <p className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+        <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
           Trava Em Produção de {job.order_number}
         </p>
       )}
@@ -619,12 +627,12 @@ function CutBand({
   if (lots.length === 0) return null;
 
   return (
-    <section className="space-y-2 rounded-md border border-foreground/20 bg-card p-3" aria-label="Corte dos lotes">
-      <header className="flex items-baseline justify-between gap-2">
-        <h2 className="font-display text-sm text-foreground">Corte do lote</h2>
-        <p className="text-[11px] text-muted-foreground">Uma faca por referência e cor. A napa sai do estoque aqui.</p>
+    <section className="space-y-3 rounded-xl border border-border/80 bg-card p-4" aria-label="Corte dos lotes">
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-display text-base text-foreground">Corte do lote</h2>
+        <p className="text-sm text-muted-foreground">Uma faca por referência e cor. A napa sai do estoque aqui.</p>
       </header>
-      <ul className="grid gap-2 lg:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {lots.map((lot) => {
           const numbers = [...new Set(lot.orders.map((o) => o.order_number).filter(Boolean))];
           const others = pedido ? numbers.filter((n) => n !== pedido) : numbers.length > 1 ? numbers : [];
@@ -634,31 +642,33 @@ function CutBand({
             <li
               key={lot.id}
               className={cn(
-                'space-y-1.5 rounded-md border p-2',
+                'flex flex-col gap-3 rounded-lg border p-3',
                 shortage ? 'border-red-500/50 bg-red-500/10' : 'border-border/70 bg-background',
               )}
             >
-              <div className="flex items-baseline justify-between gap-2">
-                <p className="min-w-0 truncate font-display text-sm text-foreground">
-                  {lot.reference_code ?? '—'}
-                  <span className="ml-1 font-sans text-[11px] font-normal text-muted-foreground">{lot.color ?? 'Sem cor'}</span>
-                </p>
-                <span className="font-mono text-[10px] text-muted-foreground">{lot.lot_number}</span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <p className="truncate font-display text-base leading-tight text-foreground">
+                    {lot.reference_code ?? '—'}
+                  </p>
+                  <p className="truncate text-sm text-muted-foreground">{lot.color ?? 'Sem cor'}</p>
+                </div>
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">{lot.lot_number}</span>
               </div>
               <ul className="space-y-0.5">
                 {atelierLotIdentityLines(lot).map((line) => (
-                  <li key={`${lot.id}-${line.orderNumber}`} className="truncate text-[11px] text-foreground">
+                  <li key={`${lot.id}-${line.orderNumber}`} className="truncate text-sm text-foreground">
                     {atelierIdentityLabel(line)}
                   </li>
                 ))}
               </ul>
               {others.length > 0 && (
-                <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
                   {pedido ? `Este corte também leva ${others.join(', ')}.` : `Este corte junta ${others.join(', ')}.`}
                 </p>
               )}
-              <div className="flex flex-wrap items-center gap-1 text-[10px]">
-                <span className={cn('rounded border px-1 py-px font-medium', deadlineClass(lot.min_delivery_deadline))}>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold', deadlineClass(lot.min_delivery_deadline))}>
                   {deadlineChipLabel(daysUntilDeadline(lot.min_delivery_deadline))}
                 </span>
                 {lot.min_ready_date && (
@@ -669,56 +679,57 @@ function CutBand({
                 )}
               </div>
               <GradeStrip grade={lot.grade} />
-              {lot.status === 'cut' && (
-                <Button type="button" size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => onManage(lot)}>
-                  <Truck className="h-3 w-3" />
-                  Gerir envios
-                </Button>
-              )}
               {shortage && (
-                <p className="text-[10px] font-medium text-red-700 dark:text-red-400">
+                <p className="text-xs font-medium text-red-700 dark:text-red-400">
                   Falta no kit: {kitShortageLabels(lot.debits).join(', ')}.
                 </p>
               )}
-              {lot.status === 'open' && (
-                <div className="space-y-1.5">
-                  {openKit === lot.id ? (
-                    <KitPreview lotId={lot.id} />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setOpenKit(lot.id)}
-                      className="text-[11px] font-medium text-foreground underline underline-offset-2"
-                    >
-                      Ver kit
-                    </button>
-                  )}
+              {openKit === lot.id && <KitPreview lotId={lot.id} />}
+              <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+                {lot.status === 'open' && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    onClick={() => setOpenKit(openKit === lot.id ? null : lot.id)}
+                  >
+                    {openKit === lot.id ? 'Ocultar kit' : 'Ver kit'}
+                  </Button>
+                )}
+                {lot.status === 'open' && (
                   <Button
                     size="sm"
-                    className="h-7 text-[11px]"
+                    className="h-9"
                     disabled={cutMut.isPending}
                     onClick={() => {
                       if (!window.confirm(lotCutConfirmMessage([lot], pedido || undefined))) return;
                       cutMut.mutate(lot.id);
                     }}
                   >
-                    {cutMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Scissors className="h-3 w-3" />}
+                    {cutMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}
                     Confirmar corte
                   </Button>
-                </div>
-              )}
-              {waitingKit && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-[11px]"
-                  disabled={releaseMut.isPending}
-                  onClick={() => releaseMut.mutate(lot.id)}
-                >
-                  {releaseMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                  Conferir estoque / Liberar kit
-                </Button>
-              )}
+                )}
+                {lot.status === 'cut' && (
+                  <Button type="button" size="sm" variant="outline" className="h-9" onClick={() => onManage(lot)}>
+                    <Truck className="h-4 w-4" />
+                    Gerir envios
+                  </Button>
+                )}
+                {waitingKit && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    disabled={releaseMut.isPending}
+                    onClick={() => releaseMut.mutate(lot.id)}
+                  >
+                    {releaseMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    Conferir estoque / Liberar kit
+                  </Button>
+                )}
+              </div>
             </li>
           );
         })}
@@ -733,6 +744,34 @@ const BATCH_RUN: Record<AtelierBatchAction, (jobId: string) => Promise<unknown>>
   internal_start: markAtelierJobInternalStart,
   internal_done: markAtelierJobInternalDone,
 };
+
+
+function lotSearchHaystack(
+  lot: AtelierLotRow,
+  job: AtelierLotJob | null,
+  contractorName?: string | null,
+): Array<string | null | undefined> {
+  return [
+    job?.order_number,
+    job?.atelier_service_number,
+    job?.contractor_name,
+    lot.reference_code,
+    lot.color,
+    lot.lot_number,
+    contractorName,
+    ...(lot.orders ?? []).map((order) => order.order_number),
+  ];
+}
+
+function matchesLotSearch(
+  query: string,
+  lot: AtelierLotRow,
+  job: AtelierLotJob | null,
+  contractorName?: string | null,
+): boolean {
+  if (!query.trim()) return true;
+  return searchMatchesAllTerms(query, ...lotSearchHaystack(lot, job, contractorName));
+}
 
 function withReturnDate(
   job: AtelierLotJob,
@@ -751,8 +790,12 @@ export function AtelierOperacao({
   onRefresh,
   pedido,
   modo,
+  searchQuery = '',
+  lateOnly: lateOnlyProp = false,
   onPedidoChange,
   onModoChange,
+  onSearchQueryChange,
+  onLateOnlyChange,
 }: Props) {
   const qc = useQueryClient();
   const { data: settings } = useAtelierSettings();
@@ -766,7 +809,11 @@ export function AtelierOperacao({
   const [color, setColor] = useState('');
   const [sector, setSector] = useState<'' | 'costura_cabedal' | 'aviamento'>('');
   const [executionMode, setExecutionMode] = useState<'' | AtelierExecutionMode>('');
-  const [lateOnly, setLateOnly] = useState(false);
+  const lateOnly = lateOnlyProp;
+  const setLateOnly = (value: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof value === 'function' ? value(lateOnly) : value;
+    onLateOnlyChange?.(next);
+  };
   const [blocksOnly, setBlocksOnly] = useState(false);
   const [failures, setFailures] = useState<BatchFailure[]>([]);
   const [batching, setBatching] = useState(false);
@@ -783,7 +830,7 @@ export function AtelierOperacao({
     lateOnly,
     blocksProductionOnly: blocksOnly,
   }), [pedido, color, sector, executionMode, lateOnly, blocksOnly]);
-  const filtersActive = Boolean(pedido || color || sector || executionMode || lateOnly || blocksOnly);
+  const filtersActive = Boolean(pedido || color || sector || executionMode || lateOnly || blocksOnly || searchQuery.trim());
 
   const orderNumbers = useMemo(() => {
     const set = new Set<string>();
@@ -812,6 +859,8 @@ export function AtelierOperacao({
         if (raw.pipeline_status === 'cancelled') continue;
         const job = withReturnDate(raw, settings);
         if (!matchesAtelierBoardJob(job, lot, filters)) continue;
+        const contractorName = contractorRecords.find((c) => c.id === job.contractor_id)?.name;
+        if (!matchesLotSearch(searchQuery, lot, job, contractorName)) continue;
         rows.push({ lot, job });
       }
     }
@@ -821,7 +870,7 @@ export function AtelierOperacao({
       return da.localeCompare(db) || (a.job.order_number ?? '').localeCompare(b.job.order_number ?? '', 'pt-BR');
     });
     return rows;
-  }, [lots, filters, settings]);
+  }, [lots, filters, settings, searchQuery, contractorRecords]);
 
   const selectedRows = visibleJobs.filter(({ job }) => selected.has(job.id));
   const assignSectors = new Set(selectedRows.map(({ job }) => job.sector));
@@ -841,10 +890,15 @@ export function AtelierOperacao({
         const needle = normalizeFilaText(color);
         if (needle && !normalizeFilaText(lot.color).includes(needle)) return false;
       }
+      const matchesSearch = (lot.jobs ?? []).some((job) => {
+        const contractorName = contractorRecords.find((c) => c.id === job.contractor_id)?.name;
+        return matchesLotSearch(searchQuery, lot, job, contractorName);
+      }) || matchesLotSearch(searchQuery, lot, null);
+      if (!matchesSearch) return false;
       if (!jobFilterOn) return true;
       return (lot.jobs ?? []).some((job) => matchesAtelierBoardJob(withReturnDate(job, settings), lot, filters));
     });
-  }, [lots, pedido, color, sector, executionMode, lateOnly, blocksOnly, filters, settings]);
+  }, [lots, pedido, color, sector, executionMode, lateOnly, blocksOnly, filters, settings, searchQuery, contractorRecords]);
 
   const blockingCount = visibleJobs.filter(({ job }) => atelierJobBlocksProduction(job.execution_mode, job.pipeline_status)).length;
 
@@ -891,12 +945,14 @@ export function AtelierOperacao({
       .filter((g) => !pedido || g.orderNumber.trim() === pedido.trim())
       .map((g) => ({
         ...g,
-        visible: g.entries.filter(({ job, lot }) => matchesAtelierBoardJob(withReturnDate(job, settings), lot, {
-          ...filters,
-          orderNumber: g.orderNumber,
-        })).map(({ job, lot }) => ({ lot, job: withReturnDate(job, settings) })),
+        visible: g.entries.filter(({ job, lot }) => {
+          const withDate = withReturnDate(job, settings);
+          if (!matchesAtelierBoardJob(withDate, lot, { ...filters, orderNumber: g.orderNumber })) return false;
+          const contractorName = contractorRecords.find((c) => c.id === job.contractor_id)?.name;
+          return matchesLotSearch(searchQuery, lot, withDate, contractorName);
+        }).map(({ job, lot }) => ({ lot, job: withReturnDate(job, settings) })),
       }));
-  }, [lots, pedido, color, filters, settings]);
+  }, [lots, pedido, color, filters, settings, searchQuery, contractorRecords]);
 
   if (isError) return <p className="text-sm text-destructive">Não foi possível carregar a fila.</p>;
   if (isLoading) {
@@ -909,8 +965,39 @@ export function AtelierOperacao({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+      <div className="space-y-3 rounded-xl border border-border/70 bg-card p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <SearchInput
+            value={searchQuery}
+            onChange={(value) => onSearchQueryChange?.(value)}
+            placeholder="Buscar PV, referência, lote ou prestador…"
+            className="h-10 w-full lg:max-w-md"
+          />
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-border bg-background p-0.5" role="tablist" aria-label="Modo da fila">
+              {([
+                ['quadro', 'Quadro'],
+                ['pedido', 'Por pedido'],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={modo === id}
+                  onClick={() => onModoChange(id)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium',
+                    modo === id ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted/50',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <Button variant="outline" size="sm" className="h-9 text-sm" onClick={onRefresh}>Atualizar</Button>
+          </div>
+        </div>
+        <div className="flex min-w-0 flex-wrap items-end gap-3">
           <FilterSelect label="Pedido" value={pedido || '__all__'} onChange={(v) => onPedidoChange(v === '__all__' ? '' : v)} allLabel="Todos os PVs">
             {pedidoOptions.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
           </FilterSelect>
@@ -925,62 +1012,43 @@ export function AtelierOperacao({
             <SelectItem value="contractor">Prestador</SelectItem>
             <SelectItem value="internal">Interno</SelectItem>
           </FilterSelect>
-          <Button type="button" variant={lateOnly ? 'default' : 'outline'} size="sm" className="h-8 self-end text-xs" aria-pressed={lateOnly} onClick={() => setLateOnly((v) => !v)}>
-            Atrasados
-          </Button>
-          <Button type="button" variant={blocksOnly ? 'default' : 'outline'} size="sm" className="h-8 self-end text-xs" aria-pressed={blocksOnly} onClick={() => setBlocksOnly((v) => !v)}>
-            Trava Em Produção
-          </Button>
-          {filtersActive && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 self-end text-xs"
-              onClick={() => {
-                onPedidoChange('');
-                setColor('');
-                setSector('');
-                setExecutionMode('');
-                setLateOnly(false);
-                setBlocksOnly(false);
-              }}
-            >
-              Limpar filtros
+          <div className="flex flex-wrap items-center gap-2 pb-0.5">
+            <Button type="button" variant={lateOnly ? 'default' : 'outline'} size="sm" className="h-9 text-sm" aria-pressed={lateOnly} onClick={() => setLateOnly((v) => !v)}>
+              Atrasados
             </Button>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="inline-flex rounded-md border border-border bg-card p-0.5" role="tablist" aria-label="Modo da fila">
-            {([
-              ['quadro', 'Quadro'],
-              ['pedido', 'Por pedido'],
-            ] as const).map(([id, label]) => (
-              <button
-                key={id}
+            <Button type="button" variant={blocksOnly ? 'default' : 'outline'} size="sm" className="h-9 text-sm" aria-pressed={blocksOnly} onClick={() => setBlocksOnly((v) => !v)}>
+              Trava Em Produção
+            </Button>
+            {filtersActive && (
+              <Button
                 type="button"
-                role="tab"
-                aria-selected={modo === id}
-                onClick={() => onModoChange(id)}
-                className={cn(
-                  'rounded px-2.5 py-1 text-[11px] font-medium',
-                  modo === id ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted/50',
-                )}
+                variant="ghost"
+                size="sm"
+                className="h-9 text-sm"
+                onClick={() => {
+                  onPedidoChange('');
+                  setColor('');
+                  setSector('');
+                  setExecutionMode('');
+                  setLateOnly(false);
+                  setBlocksOnly(false);
+                  onSearchQueryChange?.('');
+                }}
               >
-                {label}
-              </button>
-            ))}
+                Limpar filtros
+              </Button>
+            )}
           </div>
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onRefresh}>Atualizar</Button>
         </div>
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{visibleJobs.length}</span>
+          {visibleJobs.length === 1 ? ' job' : ' jobs'}
+          {blockingCount > 0 ? ` · ${blockingCount} travam Em Produção` : ''}
+          {cutLots.length > 0 ? ` · ${cutLots.length} lote${cutLots.length === 1 ? '' : 's'} na fila de corte` : ''}
+          . O corte é do lote. Cada costura e cada aviamento anda na própria etapa.
+          {pedido ? ` Filtro ${pedido}.` : ''}
+        </p>
       </div>
-
-      <p className="text-[11px] text-muted-foreground">
-        {visibleJobs.length} job{visibleJobs.length === 1 ? '' : 's'}
-        {blockingCount > 0 ? ` · ${blockingCount} travam Em Produção` : ''}
-        . O corte é do lote. Cada costura e cada aviamento anda na própria etapa.
-        {pedido ? ` Filtro ${pedido}.` : ''}
-      </p>
 
       <FailureList failures={failures} />
 
@@ -1123,7 +1191,7 @@ export function AtelierOperacao({
                       {cols.map((col, index) => {
                         const rows = byColumn.get(col.id) ?? [];
                         return (
-                          <section key={col.id} className="w-[240px] shrink-0 space-y-1.5" aria-labelledby={`col-${col.id}`}>
+                          <section key={col.id} className="w-[280px] shrink-0 space-y-2" aria-labelledby={`col-${col.id}`}>
                             <header className="px-0.5">
                               {label && index === 0 ? (
                                 <p className="text-[10px] font-medium text-muted-foreground">{label}</p>
@@ -1131,10 +1199,10 @@ export function AtelierOperacao({
                                 <p className="h-[14px]" aria-hidden />
                               )}
                               <div className="flex items-baseline justify-between gap-1">
-                                <h2 id={`col-${col.id}`} className={cn('text-xs font-semibold', rows.length ? 'text-foreground' : 'text-muted-foreground')}>
+                                <h2 id={`col-${col.id}`} className={cn('text-sm font-semibold', rows.length ? 'text-foreground' : 'text-muted-foreground')}>
                                   {col.title}
                                 </h2>
-                                <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{rows.length}</span>
+                                <span className="font-mono text-xs tabular-nums text-muted-foreground">{rows.length}</span>
                               </div>
                             </header>
                             <div className={cn('min-h-[72px] space-y-1.5 rounded-md p-1.5', rows.length ? 'border border-border bg-card/80' : 'border border-dashed border-border/40')}>
@@ -1204,10 +1272,10 @@ function FilterSelect({
   children: ReactNode;
 }) {
   return (
-    <label className="flex min-w-[140px] flex-1 flex-col gap-1 sm:max-w-[200px]">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+    <label className="flex min-w-[150px] flex-1 flex-col gap-1 sm:max-w-[210px]">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="h-8 text-xs" aria-label={`Filtrar por ${label.toLowerCase()}`}>
+        <SelectTrigger className="h-9 text-sm" aria-label={`Filtrar por ${label.toLowerCase()}`}>
           <SelectValue placeholder={allLabel} />
         </SelectTrigger>
         <SelectContent>
@@ -1243,14 +1311,14 @@ function PedidoJob({
   const enter = useColumnEnter(job.id, job.pipeline_status);
   const sector = ATELIER_SECTOR_LABEL[job.sector as AtelierSector] ?? job.sector;
   return (
-    <li className={cn(enter && 'kb-card-in', 'space-y-1.5 rounded-md border border-border/70 p-2')}>
+    <li className={cn(enter && 'kb-card-in', 'space-y-2 rounded-lg border border-border/70 p-3')}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[12px] font-semibold text-foreground">
+          <p className="text-sm font-semibold text-foreground">
             {atelierIdentityLabel(atelierJobIdentityLine(job, lot))}
             <span className="ml-1 font-normal text-muted-foreground">{sector}</span>
           </p>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {ATELIER_PIPELINE_LABEL[job.pipeline_status as AtelierPipelineStatus] ?? job.pipeline_status}
             {job.target_end ? ` · voltar ${formatDay(job.target_end)}` : ''}
             {atelierJobIsLate(job.target_end, job.pipeline_status, job.execution_mode) ? ' · atrasado' : ''}
@@ -1269,7 +1337,7 @@ function PedidoJob({
           <li
             key={step.id}
             className={cn(
-              'rounded border px-1.5 py-0.5 text-[10px] transition-colors duration-300',
+              'rounded-md border px-2 py-0.5 text-xs transition-colors duration-300',
               i === current
                 ? 'border-foreground bg-foreground font-semibold text-background'
                 : i < current
@@ -1335,17 +1403,17 @@ function PedidoView({
         const action = sharedBatchAction(selectedEntries.map(({ job }) => atelierBatchAction(job)));
         const mixed = selectedEntries.length > 0 && !action;
         return (
-          <section key={group.orderNumber} className="space-y-2 rounded-md border border-border bg-card p-3">
-            <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <h2 className="font-display text-base text-foreground">{group.orderNumber}</h2>
-              <span className="text-[12px] text-muted-foreground">{group.clientName || '—'}</span>
-              <span className="text-[11px] text-muted-foreground">
+          <section key={group.orderNumber} className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="font-display text-lg text-foreground">{group.orderNumber}</h2>
+              <span className="text-sm text-muted-foreground">{group.clientName || '—'}</span>
+              <span className="text-sm text-muted-foreground">
                 Entrega {group.deliveryDeadline ? formatDay(group.deliveryDeadline) : '—'}
               </span>
-              <span className={cn('rounded border px-1 py-px text-[10px] font-medium', deadlineClass(group.deliveryDeadline))}>
+              <span className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold', deadlineClass(group.deliveryDeadline))}>
                 {deadlineChipLabel(daysUntilDeadline(group.deliveryDeadline))}
               </span>
-              <span className="ml-auto font-mono text-[10px] text-muted-foreground">{formatQty(group.pairs)}p</span>
+              <span className="ml-auto font-mono text-xs text-muted-foreground">{formatQty(group.pairs)}p</span>
             </header>
             <p className={cn('text-[12px]', blocking.length ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>
               {blocking.length > 0
