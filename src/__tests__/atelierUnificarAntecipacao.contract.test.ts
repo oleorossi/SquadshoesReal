@@ -54,7 +54,7 @@ describe('Ateliê unificar Antecipação — contratos', () => {
     const board = readFileSync('src/components/atelier/AtelierOperacao.tsx', 'utf8');
     const columns = readFileSync('src/lib/atelierBoard.ts', 'utf8');
     expect(page).toContain('AtelierOperacao');
-    expect(page).toContain('MotorPrazosResumo');
+    expect(readFileSync('src/pages/TerceirizadosHub.tsx', 'utf8')).toContain('MotorPrazosResumo');
     expect(page).toContain('useAtelierLots');
     expect(columns).toContain("title: 'Aguardando corte'");
     expect(board).toContain('Confirmar corte');

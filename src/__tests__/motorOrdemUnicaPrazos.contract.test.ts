@@ -143,7 +143,7 @@ describe('motor — telas', () => {
     expect(panel).not.toMatch(/mutate\(\{\s*auto_motor_enabled/);
     expect(panel).not.toMatch(/mutate\(\{\s*urgent_release_without_material/);
     expect(read('src/pages/MotorProducao.tsx')).toContain('<MotorPrazosPanel />');
-    expect(read('src/pages/Atelie.tsx')).toContain('<MotorPrazosResumo />');
+    expect(read('src/pages/TerceirizadosHub.tsx')).toContain('<MotorPrazosResumo />');
   });
 
   it('lista de OCs coloca no topo as rascunhos priorizadas pelo motor (só leitura)', () => {

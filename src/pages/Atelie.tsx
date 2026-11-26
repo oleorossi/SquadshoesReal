@@ -42,7 +42,6 @@ import {
 } from '@/hooks/useAtelier';
 import { AtelierExecutionDefaultControl, AtelierSectorAdmin } from '@/components/atelier/AtelierAdminPanel';
 import { AtelierOperacao } from '@/components/atelier/AtelierOperacao';
-import { MotorPrazosResumo } from '@/components/atelier/MotorPrazosPanel';
 import { useMotorConfig } from '@/hooks/useMotorConfig';
 import { parseReferencePrepDays, prepSourceLabel } from '@/lib/motorConfig';
 import { toast } from 'sonner';
@@ -86,8 +85,7 @@ export function CadastroView() {
 
   return (
     <div className="space-y-4">
-      {/* Prazos do motor moraram aqui; agora ficam em Motor de produção › Prazos. */}
-      <MotorPrazosResumo />
+      {/* Prazos do motor moraram aqui; agora ficam no topo do hub e em Motor de produção › Prazos. */}
       <Tabs value={sector} onValueChange={(v) => setSector(v as AtelierSector)}>
         <TabsList className="h-auto flex-wrap gap-1 bg-muted/50 p-0.5">
           {ATELIER_SECTORS.map((s) => (
@@ -266,6 +264,8 @@ export function FilaView() {
   const [params, setParams] = useSearchParams();
   const { data: lots = [], isLoading, isError, refetch } = useAtelierLots();
   const pedido = params.get('pedido') ?? '';
+  const searchQuery = params.get('q') ?? '';
+  const lateOnly = params.get('atrasados') === '1';
   const orderJobs = useAtelierOrderJobs(pedido);
   const boardLots = useMemo(
     () => supplementAtelierLotsWithOrderJobs(lots, orderJobs.data ?? []),
@@ -284,7 +284,6 @@ export function FilaView() {
 
   return (
     <div className="space-y-3">
-      <MotorPrazosResumo />
       <AtelierOperacao
         lots={boardLots}
         isLoading={isLoading || (pedido.trim().length > 0 && orderJobs.isLoading)}
@@ -295,8 +294,12 @@ export function FilaView() {
         }}
         pedido={pedido}
         modo={modo}
+        searchQuery={searchQuery}
+        lateOnly={lateOnly}
         onPedidoChange={(orderNumber) => setParam('pedido', orderNumber)}
         onModoChange={(next) => setParam('modo', next === 'quadro' ? '' : next)}
+        onSearchQueryChange={(value) => setParam('q', value)}
+        onLateOnlyChange={(value) => setParam('atrasados', value ? '1' : '')}
       />
     </div>
   );
