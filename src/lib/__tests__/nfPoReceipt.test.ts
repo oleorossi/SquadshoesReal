@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   addDaysIso,
   buildReceiveReceipts,
+  DRAFT_RECEIVE_CONFIRMATION,
   filterAlmostDelivered,
   isAlmostDelivered,
+  isDraftLikePoStatus,
+  isReceivablePoStatus,
   matchNfItemToProduct,
+  OPEN_PO_STATUSES,
+  parseNfProductName,
   pickDefaultPurchaseOrder,
   overlappingOpenPos,
+  RECEIVABLE_PO_STATUSES,
 } from '@/lib/nfPoReceipt';
 
 describe('isAlmostDelivered', () => {
@@ -122,5 +128,60 @@ describe('pickDefaultPurchaseOrder + receipts', () => {
       { item_id: 'ia', quantity: 8, expected_received_quantity: 2 },
     ]);
     expect(buildReceiveReceipts(itemsA, new Set(['cola']))).toEqual([]);
+  });
+});
+
+
+describe('recebimento de OC em rascunho/sugerida/pending', () => {
+  it('inclui draft, suggested e pending na lista recebível', () => {
+    expect(RECEIVABLE_PO_STATUSES).toEqual(expect.arrayContaining([
+      'draft', 'suggested', 'pending', 'approved', 'sent', 'parcial',
+    ]));
+    expect(OPEN_PO_STATUSES).toEqual(RECEIVABLE_PO_STATUSES);
+  });
+
+  it('marca rascunho e sugerida como confirmação especial', () => {
+    expect(isDraftLikePoStatus('draft')).toBe(true);
+    expect(isDraftLikePoStatus('suggested')).toBe(true);
+    expect(isDraftLikePoStatus('pending')).toBe(false);
+    expect(isDraftLikePoStatus('sent')).toBe(false);
+    expect(DRAFT_RECEIVE_CONFIRMATION).toMatch(/Gerar OC/);
+  });
+
+  it('aceita todos os status abertos e recusa recebida/cancelada', () => {
+    for (const s of RECEIVABLE_PO_STATUSES) {
+      expect(isReceivablePoStatus(s)).toBe(true);
+    }
+    expect(isReceivablePoStatus('received')).toBe(false);
+    expect(isReceivablePoStatus('cancelled')).toBe(false);
+  });
+
+  it('casa OC draft com overlap', () => {
+    const draft = [{
+      id: 'd1',
+      order_number: 'OC-DRAFT',
+      status: 'draft',
+      promised_date: '2026-12-04',
+      items: [{ id: 'i1', product_id: 'preto', quantity: 10, received_quantity: 0, received_at: null }],
+    }];
+    expect(overlappingOpenPos(draft, new Set(['preto'])).map((o) => o.id)).toEqual(['d1']);
+    expect(pickDefaultPurchaseOrder(draft, new Set(['preto']), '2026-11-25')?.id).toBe('d1');
+  });
+});
+
+describe('parseNfProductName', () => {
+  it('separa nome e cor por dois-pontos ou travessão', () => {
+    expect(parseNfProductName('NAPA TITANIUM: OFF WHITE')).toEqual({
+      baseName: 'NAPA TITANIUM',
+      color: 'OFF WHITE',
+    });
+    expect(parseNfProductName('NAPA TITANIUM - PRETO')).toEqual({
+      baseName: 'NAPA TITANIUM',
+      color: 'PRETO',
+    });
+    expect(parseNfProductName('ADESIVO 14 KG')).toEqual({
+      baseName: 'ADESIVO 14 KG',
+      color: null,
+    });
   });
 });

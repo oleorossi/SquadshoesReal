@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import AppLayout from "@/components/layout/AppLayout";
 import { useState, useCallback, useEffect } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -28,7 +29,6 @@ import { createProductWithStock } from '@/lib/stockCommand';
 import { findDuplicate } from '@/lib/duplicateDetection';
 import { CATEGORIES } from '@/types/inventory';
 import SupplierFormDialog from '@/components/suppliers/SupplierFormDialog';
-import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
 import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
 import AddBoletoFinanceDialog from '@/components/suppliers/AddBoletoFinanceDialog';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
@@ -410,7 +410,6 @@ export default function Suppliers() {
   const perm = useCan('/suppliers');
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [xmlDialogOpen, setXmlDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Auditoria visual 11/06/2026: busca não persiste entre sessões (chave
@@ -431,49 +430,6 @@ export default function Suppliers() {
     }
   };
 
-  const handleAutoCreate = async (data: Partial<Supplier> & { name: string }) => {
-    const result = await addSupplier.mutateAsync(data);
-    return result ? { id: result.id } : undefined;
-  };
-
-  const handlePayablesCreate = async (
-    supplierId: string | null, invoiceId: string, duplicatas: ParsedNFeDuplicata[],
-    supplierName: string, invoiceNumber: string, paymentMethod: string
-  ) => {
-    try {
-      const payables = duplicatas.map(dup => ({
-        description: `NF ${invoiceNumber} - Parcela ${dup.number} - ${supplierName}`,
-        supplier_id: supplierId,
-        invoice_id: invoiceId,
-        category: 'material',
-        due_date: dup.dueDate,
-        amount: dup.value,
-        amount_paid: 0,
-        status: 'pending',
-        boleto_number: dup.number,
-        payment_method: paymentMethod,
-        installment_number: parseInt(dup.number) || 1,
-        total_installments: duplicatas.length,
-      }));
-      const { error } = await supabase.from('accounts_payable').insert(payables as any);
-      if (error) throw error;
-      toast.success(`${duplicatas.length} parcela(s) lançada(s) no financeiro!`);
-    } catch (err: any) {
-      toast.error(`Erro ao criar contas a pagar: ${err.message}`);
-    }
-  };
-
-  const handleImportComplete = useCallback(async (invoiceId: string) => {
-    const { data: items } = await supabase
-      .from('invoice_items')
-      .select('*')
-      .eq('invoice_id', invoiceId);
-    if (items && items.length > 0) {
-      setStockDialogItems(items as InvoiceItem[]);
-      setStockDialogInvoiceId(invoiceId);
-    }
-  }, []);
-
   const filtered = suppliers.filter(s =>
     searchMatchesAllTerms(search, s.name, s.trade_name, s.cnpj, s.city, s.state, s.phone));
 
@@ -493,9 +449,11 @@ export default function Suppliers() {
           description="Cadastro de fornecedores e importação de notas fiscais"
           actions={
             <>
-              <Button variant="outline" className="gap-2" onClick={() => setXmlDialogOpen(true)}>
-                <FileUp className="h-4 w-4" />
-                <span className="hidden sm:inline">Importar XML</span>
+              <Button variant="outline" className="gap-2" asChild>
+                <Link to="/compras/entrada-nf">
+                  <FileUp className="h-4 w-4" />
+                  <span className="hidden sm:inline">Entrada por NF</span>
+                </Link>
               </Button>
               {perm.canCreate && (
                 <Button onClick={openAdd} className="gap-2">
@@ -667,7 +625,7 @@ export default function Suppliers() {
       </div>
 
       <SupplierFormDialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null); }} editing={editing} onSubmit={handleSubmit} />
-      <XmlImportDialog open={xmlDialogOpen} onOpenChange={setXmlDialogOpen} suppliers={suppliers} onSupplierAutoCreate={handleAutoCreate} onPayablesCreate={handlePayablesCreate} onImportComplete={handleImportComplete} />
+
       <AddToStockDialog open={!!stockDialogInvoiceId} onOpenChange={(open) => { if (!open) { setStockDialogInvoiceId(null); setStockDialogItems([]); } }} items={stockDialogItems} />
       <SupplierItemsDialog supplier={itemsDialogSupplier} onOpenChange={(open) => { if (!open) setItemsDialogSupplier(null); }} />
     </AppLayout>

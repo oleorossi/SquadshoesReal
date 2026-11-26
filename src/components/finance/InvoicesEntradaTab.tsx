@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Fragment, useState } from 'react';
 import { FileArrowUp as FileUp, FileText, Trash as Trash2, CaretDown as ChevronDown, CaretUp as ChevronUp, Package as PackagePlus, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
@@ -7,11 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useInvoices, useDeleteInvoice, useInvoiceItems, type Invoice, type InvoiceItem } from '@/hooks/useSuppliers';
-import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
 import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
-import { useSuppliers, useAddSupplier } from '@/hooks/useSuppliers';
-import { useCreateAccountPayable } from '@/hooks/useFinance';
-import type { ParsedNFeDuplicata } from '@/lib/nfeParser';
+import { useSuppliers } from '@/hooks/useSuppliers';
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -85,47 +83,10 @@ export default function InvoicesEntradaTab() {
   const { data: invoices = [], isPending, isError, refetch } = useInvoices();
   const { data: suppliers = [] } = useSuppliers();
   const deleteInvoice = useDeleteInvoice();
-  const addSupplier = useAddSupplier();
-  const createPayable = useCreateAccountPayable();
-  const [xmlDialog, setXmlDialog] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [stockDialogItems, setStockDialogItems] = useState<InvoiceItem[]>([]);
   const [stockDialogSupplierId, setStockDialogSupplierId] = useState<string | null>(null);
   const [stockDialogOpen, setStockDialogOpen] = useState(false);
-
-  const handleSupplierAutoCreate = async (data: any) => {
-    return await addSupplier.mutateAsync(data);
-  };
-
-  const handlePayablesCreate = (
-    supplierId: string | null,
-    invoiceId: string,
-    duplicatas: ParsedNFeDuplicata[],
-    supplierName: string,
-    invoiceNumber: string,
-    paymentMethod: string
-  ) => {
-    duplicatas.forEach((dup, i) => {
-      createPayable.mutate({
-        description: `NF ${invoiceNumber} - Parcela ${dup.number || i + 1}`,
-        supplier_id: supplierId,
-        invoice_id: invoiceId,
-        category: 'material',
-        due_date: dup.dueDate,
-        amount: dup.value,
-        amount_paid: 0,
-        status: 'pending',
-        boleto_number: dup.number,
-        payment_method: paymentMethod,
-        installment_number: i + 1,
-        total_installments: duplicatas.length,
-        payment_date: null,
-        bank_name: '',
-        barcode: '',
-        notes: '',
-      });
-    });
-  };
 
   const handleLaunchStock = (items: InvoiceItem[]) => {
     // Fornecedor da NF (resolvido no import) → default do campo Fornecedor
@@ -136,11 +97,6 @@ export default function InvoicesEntradaTab() {
     setStockDialogOpen(true);
   };
 
-  const handleImportComplete = (invoiceId: string) => {
-    // Auto-expand the imported invoice to show items and stock status
-    setExpandedId(invoiceId);
-  };
-
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -148,8 +104,10 @@ export default function InvoicesEntradaTab() {
           <FileText className="h-4 w-4" />
           Notas Fiscais de Entrada
         </CardTitle>
-        <Button size="sm" onClick={() => setXmlDialog(true)}>
-          <FileUp className="h-4 w-4 mr-1" /> Importar XML
+        <Button size="sm" asChild>
+          <Link to="/compras/entrada-nf">
+            <FileUp className="h-4 w-4 mr-1" /> Entrada por NF
+          </Link>
         </Button>
       </CardHeader>
       <CardContent>
@@ -178,7 +136,7 @@ export default function InvoicesEntradaTab() {
             ) : invoices.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                  Nenhuma nota fiscal importada. Clique em "Importar XML" para começar.
+                  Nenhuma nota fiscal importada. Use Entrada por NF para começar.
                 </TableCell>
               </TableRow>
             ) : invoices.map(inv => {
@@ -233,14 +191,6 @@ export default function InvoicesEntradaTab() {
         </Table>
       </CardContent>
 
-      <XmlImportDialog
-        open={xmlDialog}
-        onOpenChange={setXmlDialog}
-        suppliers={suppliers}
-        onSupplierAutoCreate={handleSupplierAutoCreate}
-        onPayablesCreate={handlePayablesCreate}
-        onImportComplete={handleImportComplete}
-      />
 
       <AddToStockDialog
         open={stockDialogOpen}

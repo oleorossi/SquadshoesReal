@@ -1,7 +1,7 @@
 import CreatePurchaseOrderDialog from "@/components/purchase/CreatePurchaseOrderDialog";
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { LancamentoAvulsoDialog } from "@/components/avulso/LancamentoAvulsoDialog";
-import { Plus, Receipt } from '@phosphor-icons/react';
+import { Plus, Receipt, FileArrowUp } from '@phosphor-icons/react';
 import { receiptConversionFactor } from '@/lib/purchaseConversion';
 import { PurchaseOrderReceiveDialog, type ReceiveLineDraft } from '@/components/purchase/PurchaseOrderReceiveDialog';
 import { useState, useMemo, useEffect, useCallback } from 'react';
@@ -538,6 +538,11 @@ export default function PurchaseOrders() {
                   <AlertTriangle className="h-3.5 w-3.5" /> {overdueCount} em atraso
                 </Badge>
               )}
+              <Button variant="outline" asChild className="gap-2">
+                <Link to="/compras/entrada-nf">
+                  <FileArrowUp className="h-4 w-4" /> Entrada por NF
+                </Link>
+              </Button>
               {perm.canCreate && (
                 <Button variant="outline" onClick={() => setAvulsoOpen(true)} className="gap-2">
                   <Receipt className="h-4 w-4" /> Lançar Avulsa
@@ -1115,7 +1120,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
   // OC em estado em que dá pra receber (inclui 'parcial' p/ continuar de onde parou).
   const isReceivable = !isArtisanal && (
     order.status === 'sent' || order.status === 'approved' || order.status === 'parcial'
-    || order.status === 'draft' || order.status === 'suggested'
+    || order.status === 'draft' || order.status === 'suggested' || order.status === 'pending'
   );
 
   const handleItemChange = (itemId: string, field: 'quantity' | 'unit_price', value: number) => {
@@ -1789,6 +1794,7 @@ function OrderDetailDialog({ orderId, onClose }: { orderId: string; onClose: () 
           open={receiveAllOpen}
           onOpenChange={setReceiveAllOpen}
           orderNumber={order.order_number}
+          orderStatus={order.status}
           items={items}
           busy={receiving}
           onConfirm={handleReceiveAll}

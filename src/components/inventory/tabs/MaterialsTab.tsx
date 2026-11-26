@@ -24,7 +24,6 @@ import { TableViewProvider, useTableView, ALL_COLUMNS } from '@/components/inven
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import { useCan } from '@/hooks/useAccessControl';
 import { InventoryStatusFilters } from '@/components/inventory/InventoryStatusFilters';
-import XmlImportDialog from '@/components/suppliers/XmlImportDialog';
 import AddToStockDialog from '@/components/suppliers/AddToStockDialog';
 import { useSuppliers, useAddSupplier } from '@/hooks/useSuppliers';
 import type { InvoiceItem } from '@/hooks/useSuppliers';
@@ -44,7 +43,7 @@ import { Product, ProductFormData } from '@/types/inventory';
 import { z } from 'zod';
 import { useAddComponentSheet } from '@/hooks/useComponentSheets';
 import { useGroups } from '@/hooks/useGroups';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import GroupDialog from '@/components/groups/GroupDialog';
 import { GroupListDialog } from '@/components/inventory/GroupListDialog';
@@ -193,7 +192,6 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupListOpen, setGroupListOpen] = useState(false);
-  const [xmlDialogOpen, setXmlDialogOpen] = useState(false);
   const [stockDialogOpen, setStockDialogOpen] = useState(false);
   const [stockDialogItems, setStockDialogItems] = useState<InvoiceItem[]>([]);
   const [page, setPage] = useState(1);
@@ -570,8 +568,10 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
                   <Barcode className="h-4 w-4 mr-2" /> Escanear código de barras
                 </DropdownMenuItem>
                 {perm.canCreate && (
-                  <DropdownMenuItem onClick={() => setXmlDialogOpen(true)}>
-                    <FileUp className="h-4 w-4 mr-2" /> Importar XML (NF-e)
+                  <DropdownMenuItem asChild>
+                    <Link to="/compras/entrada-nf">
+                      <FileUp className="h-4 w-4 mr-2" /> Entrada por NF
+                    </Link>
                   </DropdownMenuItem>
                 )}
                 {perm.canCreate && <>
@@ -658,14 +658,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
       </div>
 
       {/* Hidden dialogs */}
-      <XmlImportDialog
-        open={xmlDialogOpen}
-        onOpenChange={setXmlDialogOpen}
-        suppliers={suppliers}
-        onSupplierAutoCreate={handleSupplierAutoCreate}
-        onPayablesCreate={handlePayablesCreate}
-        onImportComplete={handleImportComplete}
-      />
+
       <AddToStockDialog
         open={stockDialogOpen}
         onOpenChange={(open) => {

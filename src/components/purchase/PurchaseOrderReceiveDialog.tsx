@@ -5,7 +5,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Link } from 'react-router-dom';
 import { gradeReceiptIsValid } from '@/lib/purchaseReceipt';
+import { DRAFT_RECEIVE_CONFIRMATION, isDraftLikePoStatus } from '@/lib/nfPoReceipt';
 import type { PurchaseOrderItem } from '@/hooks/usePurchaseOrders';
 
 export interface ReceiveLineDraft {
@@ -19,6 +21,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   orderNumber: string;
+  orderStatus?: string | null;
   items: PurchaseOrderItem[];
   busy: boolean;
   onConfirm: (input: { receipts: ReceiveLineDraft[]; invoiceId: string | null }) => Promise<void>;
@@ -38,7 +41,7 @@ function openGrade(item: PurchaseOrderItem): Record<string, number> | null {
 }
 
 export function PurchaseOrderReceiveDialog({
-  open, onOpenChange, orderNumber, items, busy, onConfirm,
+  open, onOpenChange, orderNumber, orderStatus, items, busy, onConfirm,
 }: Props) {
   const openItems = useMemo(
     () => items.filter((item) => {
@@ -52,12 +55,15 @@ export function PurchaseOrderReceiveDialog({
   const [grades, setGrades] = useState<Record<string, Record<string, string>>>({});
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [draftConfirmed, setDraftConfirmed] = useState(false);
+  const draftLike = isDraftLikePoStatus(orderStatus);
 
   useEffect(() => {
     if (!open) return;
     setSelected(new Set(openItems.map((item) => item.id)));
     setQty({});
     setError(null);
+    setDraftConfirmed(false);
   }, [open, openItems]);
 
   const draftQty = (item: PurchaseOrderItem) => {
@@ -68,6 +74,10 @@ export function PurchaseOrderReceiveDialog({
 
   const confirm = async () => {
     setError(null);
+    if (draftLike && !draftConfirmed) {
+      setError('Confirme que deseja receber esta OC em rascunho ou sugerida. Isso não gera uma ordem de compra.');
+      return;
+    }
     const receipts: ReceiveLineDraft[] = [];
     const chosen = openItems.filter((item) => selected.has(item.id));
     if (chosen.length === 0) {
@@ -199,6 +209,15 @@ export function PurchaseOrderReceiveDialog({
               </div>
             );
           })}
+          {draftLike && (
+            <label className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <Checkbox checked={draftConfirmed} onCheckedChange={(value) => setDraftConfirmed(value === true)} className="mt-0.5" />
+              <span>{DRAFT_RECEIVE_CONFIRMATION}</span>
+            </label>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Prefira a <Link to="/compras/entrada-nf" className="underline">tela Entrada por NF</Link> para importar o XML e casar os itens automaticamente.
+          </p>
           <div className="space-y-1">
             <Label htmlFor="receive-invoice">Nota fiscal (opcional)</Label>
             <Input
@@ -212,7 +231,7 @@ export function PurchaseOrderReceiveDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancelar</Button>
-          <Button onClick={() => void confirm()} disabled={busy}>
+          <Button onClick={() => void confirm()} disabled={busy || (draftLike && !draftConfirmed)}>
             {busy ? 'Dando entrada…' : 'Dar entrada nos selecionados'}
           </Button>
         </DialogFooter>

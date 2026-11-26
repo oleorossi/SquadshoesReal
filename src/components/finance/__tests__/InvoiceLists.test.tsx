@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import InvoicesEntradaTab from '@/components/finance/InvoicesEntradaTab';
 import InvoicesSaidaTab from '@/components/finance/InvoicesSaidaTab';
@@ -26,7 +27,7 @@ beforeEach(() => {
 describe('Listas da central NF — estado de consulta explícito', () => {
   it('não chama falha de entrada de lista vazia nem permite agir no cache antigo', () => {
     mocks.invoices.mockReturnValue({ data: [{ id: 'old', invoice_number: 'CACHE', total_value: 1 }], isError: true, refetch: mocks.retry });
-    render(<InvoicesEntradaTab />);
+    render(<MemoryRouter><InvoicesEntradaTab /></MemoryRouter>);
     expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível');
     expect(screen.queryByText('CACHE')).not.toBeInTheDocument();
     expect(screen.queryByText(/Nenhuma nota fiscal/)).not.toBeInTheDocument();
@@ -36,7 +37,7 @@ describe('Listas da central NF — estado de consulta explícito', () => {
 
   it('mostra carregamento na entrada antes do estado vazio', () => {
     mocks.invoices.mockReturnValue({ data: [], isPending: true });
-    render(<InvoicesEntradaTab />);
+    render(<MemoryRouter><InvoicesEntradaTab /></MemoryRouter>);
     expect(screen.getByRole('status')).toHaveTextContent('Carregando');
     expect(screen.queryByText(/Nenhuma nota fiscal/)).not.toBeInTheDocument();
   });
@@ -44,7 +45,7 @@ describe('Listas da central NF — estado de consulta explícito', () => {
   it.each(['pending', 'error'])('não trata itens em %s como estoque conferido', state => {
     mocks.invoices.mockReturnValue({ data: [{ id: 'inv', invoice_number: 'TESTE', total_value: 1, status: 'imported' }] });
     mocks.items.mockReturnValue({ data: [{ added_to_stock: true }], isPending: state === 'pending', isError: state === 'error', refetch: mocks.retry });
-    render(<InvoicesEntradaTab />);
+    render(<MemoryRouter><InvoicesEntradaTab /></MemoryRouter>);
     fireEvent.click(screen.getByText('TESTE'));
     expect(screen.queryByText(/Todos os itens lançados/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Lançar no Estoque/ })).not.toBeInTheDocument();
