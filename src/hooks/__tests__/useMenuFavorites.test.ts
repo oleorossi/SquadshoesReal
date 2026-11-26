@@ -7,7 +7,7 @@ import { canonicalizeFavorites } from '../useMenuFavorites';
 describe('canonicalizeFavorites', () => {
   it('reescreve rota legada (/ordens-servico) pro hub canônico /terceirizados', () => {
     const out = canonicalizeFavorites([{ name: 'Ordens de Serviço', path: '/ordens-servico' }]);
-    expect(out).toEqual([{ name: 'Terceirizados', path: '/terceirizados' }]);
+    expect(out).toEqual([{ name: 'Ateliê', path: '/terceirizados' }]);
   });
 
   it('deduplica: Terceirizados + Ordens de Serviço (fantasma) viram UM item', () => {
@@ -17,7 +17,7 @@ describe('canonicalizeFavorites', () => {
       { name: 'Ordens de Serviço', path: '/ordens-servico' },
     ]);
     expect(out).toEqual([
-      { name: 'Terceirizados', path: '/terceirizados' },
+      { name: 'Ateliê', path: '/terceirizados' },
       { name: 'Pedidos de compra', path: '/purchase-orders' },
     ]);
   });
