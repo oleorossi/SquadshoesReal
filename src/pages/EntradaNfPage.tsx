@@ -55,6 +55,32 @@ type ProductRow = {
   conversion_rate?: number | null;
 };
 
+type PoQueryItem = {
+  id: string;
+  product_id: string;
+  quantity: number | string | null;
+  received_quantity: number | string | null;
+  received_at: string | null;
+  unit: string | null;
+  unit_price: number | string | null;
+};
+
+type PoQueryRow = {
+  id: string;
+  order_number: string;
+  status: string;
+  promised_date: string | null;
+  supplier_id: string | null;
+  source_pv_ids: string[] | null;
+  updated_at: string | null;
+  purchase_order_items: PoQueryItem[] | null;
+};
+
+function errorMessage(err: unknown, fallback: string) {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+
 async function loadAllProducts(): Promise<ProductRow[]> {
   const pageSize = 1000;
   const all: ProductRow[] = [];
@@ -120,15 +146,15 @@ export default function EntradaNfPage() {
       if (matchedSupplier?.id) q = q.eq('supplier_id', matchedSupplier.id);
       const { data, error } = await q.order('promised_date', { ascending: true, nullsFirst: false }).limit(80);
       if (error) throw error;
-      return ((data || []) as any[]).map((po) => ({
-        id: po.id as string,
-        order_number: po.order_number as string,
-        status: po.status as string,
-        promised_date: po.promised_date as string | null,
-        supplier_id: po.supplier_id as string | null,
-        source_pv_ids: po.source_pv_ids as string[] | null,
-        updated_at: po.updated_at as string | null,
-        items: ((po.purchase_order_items || []) as any[]).map((i) => ({
+      return ((data || []) as PoQueryRow[]).map((po) => ({
+        id: po.id,
+        order_number: po.order_number,
+        status: po.status,
+        promised_date: po.promised_date,
+        supplier_id: po.supplier_id,
+        source_pv_ids: po.source_pv_ids,
+        updated_at: po.updated_at,
+        items: (po.purchase_order_items || []).map((i) => ({
           id: i.id,
           product_id: i.product_id,
           quantity: Number(i.quantity),
@@ -221,8 +247,8 @@ export default function EntradaNfPage() {
         setDraftConfirmed(false);
         setResolutions({});
         setCreateSupplier(true);
-      } catch (err: any) {
-        toast.error(err?.message || 'Não foi possível ler o XML.');
+      } catch (err: unknown) {
+        toast.error(errorMessage(err, 'Não foi possível ler o XML.'));
       }
     };
     reader.readAsText(file);
@@ -288,8 +314,8 @@ export default function EntradaNfPage() {
         qc.invalidateQueries({ queryKey: ['suppliers-nf-entrada'] }),
       ]);
       reset();
-    } catch (err: any) {
-      toast.error(err?.message || 'Falha ao confirmar a entrada.');
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, 'Falha ao confirmar a entrada.'));
     } finally {
       setBusy(false);
     }
