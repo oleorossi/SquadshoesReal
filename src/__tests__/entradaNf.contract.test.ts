@@ -29,6 +29,15 @@ describe('Entrada por NF · contrato', () => {
     expect(MIG).toContain('run_entrada_nf_receive_contract_tests');
   });
 
+  it('não reabre furo de baixa pending_reconciliation no settle (61100)', () => {
+    const name = readdirSync(MIG_DIR).find((f) => f.endsWith('_entrada_nf_settle_nao_reabre_furo.sql'));
+    expect(name).toBe('20270101061100_entrada_nf_settle_nao_reabre_furo.sql');
+    const MIG = readFileSync(resolve(MIG_DIR, name as string), 'utf8');
+    expect(MIG).toContain('skipped_holes');
+    expect(MIG).toContain('Não reabrir');
+    expect(MIG).toContain('run_entrada_nf_settle_hole_contract_tests');
+  });
+
   it('a tela única está no menu de Compras e no mapa de acesso', () => {
     expect(NAV).toContain("path: '/compras/entrada-nf'");
     expect(NAV).toMatch(/Entrada por NF/);
