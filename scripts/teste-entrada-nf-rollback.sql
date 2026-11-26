@@ -47,19 +47,26 @@ BEGIN
 
   -- Fornecedor e produto sintéticos (somem no rollback).
   INSERT INTO suppliers (name, cnpj, active)
-  VALUES ('ENSAIO-NF-ENTRADA', '00000000000000', true)
+  VALUES ('ENSAIO-NF-ENTRADA', '99999999000191', true)
   RETURNING id INTO v_supplier;
 
   INSERT INTO products (name, sku, category, unit, quantity, unit_price, min_stock, max_stock, purchase_unit, conversion_rate, supplier_id, active)
   VALUES ('ENSAIO NAPA NF', 'ENSAIO-NF-SKU', 'Componente', 'm', 0, 10, 0, 0, 'm', 1, v_supplier, true)
   RETURNING id INTO v_product;
 
-  -- Reserva pending_reconciliation com falta, para a quitação.
-  -- Não amarra a PV-00249/250/251: sale_order_id nulo.
+  -- PV sintético só para satisfazer material_reservations_origin_ck.
+  -- Número próprio (PV-ENSAIO-NF); não usa PV-00249/250/251 nem a sequência.
+  INSERT INTO sale_orders (order_number, client_name, status, notes)
+  VALUES ('PV-ENSAIO-NF', 'ENSAIO-NF-ENTRADA', 'Rascunho', 'Ensaio entrada NF — rollback')
+  RETURNING id INTO v_pv;
+
+  -- Falta típica: reserva soft em reserved, quantity_short > 0.
+  -- (pending_reconciliation na produção são furos de baixa, reserved>0 e short=0;
+  --  o rateio cobre a falta das reservas reserved, não reabre esses furos.)
   INSERT INTO material_reservations (
-    product_id, quantity_reserved, quantity_consumed, quantity_short, status, reservation_type, source
+    product_id, quantity_reserved, quantity_consumed, quantity_short, status, reservation_type, source, sale_order_id
   ) VALUES (
-    v_product, 0, 0, 5, 'pending_reconciliation', 'production', 'ensaio-entrada-nf'
+    v_product, 0, 0, 5, 'reserved', 'soft', 'ensaio-entrada-nf', v_pv
   ) RETURNING id INTO v_res;
 
   INSERT INTO purchase_orders (
@@ -82,11 +89,14 @@ BEGIN
 
   IF NOT EXISTS (
     SELECT 1 FROM material_reservations
-     WHERE id = v_res AND status = 'reserved' AND COALESCE(quantity_short, 0) <= 0.0001
+     WHERE id = v_res
+       AND status = 'reserved'
+       AND COALESCE(quantity_short, 0) <= 0.0001
+       AND COALESCE(quantity_reserved, 0) >= 4.999
   ) THEN
     RAISE EXCEPTION 'ENSAIO_ROLLBACK %', jsonb_build_object(
       'ok', false,
-      'reason', 'settle_nao_quitou',
+      'reason', 'rateio_nao_cobriu_falta',
       'reservation', (SELECT to_jsonb(r) FROM material_reservations r WHERE r.id = v_res),
       'settle', v_settle
     );
@@ -98,12 +108,15 @@ BEGIN
   v_out := jsonb_build_object(
     'ok', true,
     'gate_rascunho', true,
-    'settle_status', (SELECT status FROM material_reservations WHERE id = v_res),
-    'settle_short', (SELECT quantity_short FROM material_reservations WHERE id = v_res),
+    'res_status', (SELECT status FROM material_reservations WHERE id = v_res),
+    'res_short', (SELECT quantity_short FROM material_reservations WHERE id = v_res),
+    'res_reserved', (SELECT quantity_reserved FROM material_reservations WHERE id = v_res),
+    'reallocate', v_settle,
     'followup_ok', COALESCE((v_follow ->> 'ok')::boolean, false),
     'followup_motor_has_error', v_follow -> 'motor' ? 'error',
     'po_count_same_before', v_before_po,
-    'touched_forbidden_pv', false
+    'touched_forbidden_pv', EXISTS (SELECT 1 FROM sale_orders WHERE id = v_pv AND order_number IN ('PV-00249','PV-00250','PV-00251')),
+    'ensaio_pv', (SELECT order_number FROM sale_orders WHERE id = v_pv)
   );
 
   RAISE EXCEPTION 'ENSAIO_ROLLBACK %', v_out;
