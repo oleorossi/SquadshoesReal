@@ -707,7 +707,11 @@ export function useAddSheet() {
         .select()
         .single();
       if (error) {
-        throw new Error(formatSheetNameUniqueViolation(error, name) || error.message);
+        throw new Error(
+          formatSheetNameUniqueViolation(error, name)
+          || formatTechnicalSheetStrapSaveError(error.message)
+          || error.message,
+        );
       }
 
       // Kit de materiais base da categoria → linhas na Precificação (rascunho).
@@ -767,7 +771,7 @@ export function useUpdateSheet() {
       if (error) {
         console.error('[useUpdateSheet] erro Supabase:', { id, payload, error });
         throw new Error(
-          formatSheetNameUniqueViolation(error, (data as any)?.name)
+          formatSheetNameUniqueViolation(error, data.name)
           || formatTechnicalSheetStrapSaveError(error.message)
           || error.message,
         );
