@@ -42,8 +42,8 @@ export default function TechnicalStrapSourceEditor<T extends TechnicalStrapLineL
         <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
           {loading && 'Carregando catálogo auxiliar…'}
           {failed && 'Catálogo auxiliar indisponível — recarregue antes de salvar.'}
-          {!loading && !failed && stockPinned && 'Comprar pronto — grupo de estoque selecionado na ficha.'}
-          {!loading && !failed && !stockPinned && onlyFinished && 'Comprar pronto (grupo acabado). Origem fixa pela identidade do produto.'}
+          {!loading && !failed && stockPinned && 'Comprar pronto — tira acabada, sem napa e sem OS de Ateliê. A cor é escolhida no pedido.'}
+          {!loading && !failed && !stockPinned && onlyFinished && 'Comprar pronto (grupo acabado). Não usa material base nem Ateliê.'}
           {!loading && !failed && onlyFactory && 'Prestador: a napa vai ao prestador. O pedido pode trocar para Comprar pronto quando houver grupo acabado.'}
           {!loading && !failed && !stockPinned && policy.allowsReferenceBase && policy.finishedGroups.length > 0 && (
             'Prestador ou Comprar pronto — o padrão vem do cadastro e o Pedido de Venda pode trocar na exceção.'
@@ -52,7 +52,7 @@ export default function TechnicalStrapSourceEditor<T extends TechnicalStrapLineL
             'Selecione o grupo de estoque da tira para ver a origem.'
           )}
           {!loading && !failed && !!line.measure_id && policy.loaded && !policy.allowsReferenceBase && policy.finishedGroups.length === 0 && !stockPinned && (
-            'Esta medida ainda não tem origem ativa — escolha o grupo de estoque.'
+            'Esta medida ainda não tem origem ativa no Hub. Se for tira pronta, escolha o grupo de estoque acabado; se for artesanal, cadastre a receita de napa.'
           )}
         </div>
         {policy.loaded && !sourceAllowed && !loading && !failed && onlyFinished && !stockPinned && (

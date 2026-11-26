@@ -2218,6 +2218,21 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
         return;
       }
       if (form.has_straps) {
+        const incompleteStrapLines = normalizedStraps.filter((line) => (
+          !line.measure_id
+          && !line.identity_group_id
+          && !(line as { group_id?: string | null }).group_id
+          && !(Number((line as { consumption?: number | null }).consumption) > 0)
+        ));
+        if (incompleteStrapLines.length > 0 && incompleteStrapLines.length < normalizedStraps.length) {
+          const dropped = new Set(incompleteStrapLines);
+          const kept = normalizedStraps.filter((line) => !dropped.has(line));
+          const labels = incompleteStrapLines.map((line, index) => line.label || `Tira ${index + 1}`).join(', ');
+          normalizedStraps.length = 0;
+          normalizedStraps.push(...kept);
+          payload.strap_colors = normalizedStraps;
+          toast.message(`Removemos as linhas de tira vazias (${labels}) antes de salvar.`);
+        }
         // Catálogo Hub é ponte opcional (measure_id). Identidade canônica da
         // ficha = grupo de estoque (spec tira-material-de-estoque R4).
         if (strapCatalogQuery.isError) {
@@ -2246,7 +2261,11 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
           !hasTechnicalStrapLineIdentity(line, measures, types)
         ));
         if (invalidLines.length > 0) {
-          toast.error(`${invalidLines.length} tira(s) sem grupo de estoque. Selecione o material da tira antes de salvar.`);
+          const labels = invalidLines.map((line, index) => line.label || `Tira ${index + 1}`).join(', ');
+          toast.error(
+            `${labels}: selecione o grupo de estoque da tira antes de salvar. Tira pronta (ex.: Strass) não usa napa — escolha o grupo acabado. Remova as linhas que não for usar.`,
+            { duration: 9000 },
+          );
           setAbaAtiva('range-aviamento');
           return;
         }
@@ -4147,8 +4166,6 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                   if (v && (!form.strap_colors || form.strap_colors.length === 0)) {
                     updateField('strap_colors', ensureTechnicalStrapLineIds([
                       { label: 'TIRA 1', color: '' },
-                      { label: 'TIRA 2', color: '' },
-                      { label: 'TIRA 3', color: '' },
                     ]));
                   }
                   // BUG ANTIGO: ao desmarcar 'Habilitar tiras', strap_colors
@@ -4296,9 +4313,10 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
             {form.has_straps && (
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Defina quantas tiras este modelo possui, a <strong>família, medida e base de identidade</strong> de cada uma
-                  e o consumo por numeração <strong>por pé</strong> (em cm). Cada posição pode seguir o material da referência,
-                  ter material fixo ou permitir escolher o material no pedido.
+                  Defina quantas tiras este modelo possui e o <strong>grupo de estoque</strong> de cada uma
+                  e o consumo por numeração <strong>por pé</strong> (em cm). Tira pronta (Strass, elástico acabado) não usa napa
+                  nem Ateliê — a cor é escolhida no pedido. Tira artesanal segue o material da referência
+                  ou um material fixo/escolhido no pedido.
                   O sistema multiplica por <strong>2</strong> (par = 2 pés) ao calcular o consumo.
                   A <strong>política de cor</strong> define se cada tira segue a cor principal ou recebe
                   uma seleção própria no Pedido de Venda; a identidade técnica fica fixa aqui por UUID.
