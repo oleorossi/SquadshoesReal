@@ -126,6 +126,7 @@ const ProducaoKanban = lazy(() => import("./pages/ProducaoKanban"));
 const ProducaoKanbanGestao = lazy(() => import("./pages/ProducaoKanbanGestao"));
 const ProducaoEstouro = lazy(() => import("./pages/ProducaoEstouro"));
 const ProducaoSetoresConfig = lazy(() => import("./pages/ProducaoSetoresConfig"));
+const MotorProducao = lazy(() => import("./pages/MotorProducao"));
 const ProducaoApontamento = lazy(() => import("./pages/Setores"));
 const CalculadoraGrade = lazy(() => import("./pages/CalculadoraGrade"));
 const ProducaoAnalises = lazy(() => import("./pages/ProducaoAnalises"));
@@ -901,6 +902,12 @@ const router = createBrowserRouter([
       {
         path: "producao/setores",
         element: <ProducaoSetoresConfig />,
+      },
+      {
+        // Motor de produção: menu único (prazos, plano, sequência, compras,
+        // Ateliê, capacidade, equipe, chaves). Deep link: /motor?tab=prazos.
+        path: "motor",
+        element: <MotorProducao />,
       },
       {
         path: "producao/apontamento",

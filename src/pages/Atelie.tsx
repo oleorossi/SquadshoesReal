@@ -42,7 +42,7 @@ import {
 } from '@/hooks/useAtelier';
 import { AtelierExecutionDefaultControl, AtelierSectorAdmin } from '@/components/atelier/AtelierAdminPanel';
 import { AtelierOperacao } from '@/components/atelier/AtelierOperacao';
-import { MotorPrazosPanel, MotorPrazosResumo } from '@/components/atelier/MotorPrazosPanel';
+import { MotorPrazosResumo } from '@/components/atelier/MotorPrazosPanel';
 import { useMotorConfig } from '@/hooks/useMotorConfig';
 import { parseReferencePrepDays, prepSourceLabel } from '@/lib/motorConfig';
 import { toast } from 'sonner';
@@ -86,7 +86,8 @@ export function CadastroView() {
 
   return (
     <div className="space-y-4">
-      <MotorPrazosPanel />
+      {/* Prazos do motor moraram aqui; agora ficam em Motor de produção › Prazos. */}
+      <MotorPrazosResumo />
       <Tabs value={sector} onValueChange={(v) => setSector(v as AtelierSector)}>
         <TabsList className="h-auto flex-wrap gap-1 bg-muted/50 p-0.5">
           {ATELIER_SECTORS.map((s) => (

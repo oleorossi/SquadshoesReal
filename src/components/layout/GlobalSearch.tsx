@@ -225,6 +225,14 @@ const QUICK_ACTIONS: { label: string; path: string; permPath: string; keywords: 
   { label: 'Novo cliente', path: '/clients', permPath: '/clients', keywords: 'novo cliente cadastrar' },
   { label: 'Ir para Diagnósticos', path: '/system-diagnostics', permPath: '/system-diagnostics', keywords: 'diagnostico diagnosticos sistema' },
   { label: 'Ajuste de estoque', path: '/ajuste-estoque', permPath: '/ajuste-estoque', keywords: 'ajuste estoque ajustar' },
+  // Motor de produção (/motor): cada aba achável pelo que a pessoa digita.
+  { label: 'Prazos do motor', path: '/motor?tab=prazos', permPath: '/motor', keywords: 'prazos prazo motor prestador dias uteis lead oc faturamento' },
+  { label: 'Plano e agenda do motor', path: '/motor?tab=plano', permPath: '/motor', keywords: 'plano agenda motor fim previsto ordem unica' },
+  { label: 'Sequência do motor', path: '/motor?tab=sequencia', permPath: '/motor', keywords: 'sequencia fila liberacao motor' },
+  { label: 'Compras do motor (OCs priorizadas)', path: '/motor?tab=compras', permPath: '/motor', keywords: 'compras oc ocs rascunho comprar ate motor prioridade' },
+  { label: 'Ateliê e reservas do motor', path: '/motor?tab=atelie', permPath: '/motor', keywords: 'atelie reservas reserva kit prestador volta motor' },
+  { label: 'Capacidade e equipe por setor', path: '/motor?tab=capacidade', permPath: '/motor', keywords: 'capacidade equipe setor setores prestador motor' },
+  { label: 'Configurações do motor', path: '/motor?tab=config', permPath: '/motor', keywords: 'configuracoes configuracao motor automatico urgente chaves' },
   { label: 'Imprimir fichas de operador', path: '/imprimir-fichas', permPath: '/imprimir-fichas', keywords: 'imprimir fichas operador' },
 ];
 
