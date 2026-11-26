@@ -585,6 +585,28 @@ export async function findSheetNameCollision(
 }
 
 /** Traduz 23505 do índice de nome pra mensagem acionável (não o texto cru do Postgres). */
+
+const STRAP_SAVE_ERRORS: Array<[RegExp, string]> = [
+  [/Esta tira é comprada pronta e não usa material base/i,
+    'Esta tira é comprada pronta (ex.: Strass) e não usa napa. Selecione o grupo de estoque acabado, como TIRA STRASS 6MM ou 15MM. A cor é escolhida no pedido.'],
+  [/Grupo comprado pronto nao pertence ao catalogo ativo desta medida/i,
+    'Esta tira pronta não precisa de material base. Selecione o grupo de estoque acabado. Se o Hub estiver incompleto, o grupo com SKU ativo já basta.'],
+  [/Medida da tira sem producao interna cadastrada/i,
+    'Esta medida ainda não tem receita de napa no Hub. Se for tira pronta (Strass ou elástico acabado), selecione o grupo de estoque — ela não é artesanal. Se for artesanal, cadastre o rendimento no Hub de Tiras.'],
+  [/Linha STRASS por UUID explicito/i,
+    'Strass é tira comprada pronta e não usa napa. Selecione o grupo de estoque acabado (TIRA STRASS 6MM ou 15MM).'],
+  [/Tira comprada pronta exige color_mode select_on_order/i,
+    'Tira comprada pronta exige que a cor seja escolhida no pedido. Selecione de novo o grupo de estoque da tira e salve.'],
+];
+
+export function formatTechnicalSheetStrapSaveError(message: string | null | undefined): string | null {
+  const text = String(message || '');
+  for (const [pattern, friendly] of STRAP_SAVE_ERRORS) {
+    if (pattern.test(text)) return friendly;
+  }
+  return null;
+}
+
 export function formatSheetNameUniqueViolation(
   error: { code?: string; message?: string } | null | undefined,
   attemptedName?: string | null,
@@ -685,7 +707,11 @@ export function useAddSheet() {
         .select()
         .single();
       if (error) {
-        throw new Error(formatSheetNameUniqueViolation(error, name) || error.message);
+        throw new Error(
+          formatSheetNameUniqueViolation(error, name)
+          || formatTechnicalSheetStrapSaveError(error.message)
+          || error.message,
+        );
       }
 
       // Kit de materiais base da categoria → linhas na Precificação (rascunho).
@@ -745,7 +771,9 @@ export function useUpdateSheet() {
       if (error) {
         console.error('[useUpdateSheet] erro Supabase:', { id, payload, error });
         throw new Error(
-          formatSheetNameUniqueViolation(error, (data as any)?.name) || error.message,
+          formatSheetNameUniqueViolation(error, data.name)
+          || formatTechnicalSheetStrapSaveError(error.message)
+          || error.message,
         );
       }
       if (!updated || updated.length === 0) {

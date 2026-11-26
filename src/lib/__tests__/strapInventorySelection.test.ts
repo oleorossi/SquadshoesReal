@@ -91,4 +91,63 @@ describe('strapInventorySelection', () => {
     });
     expect(hasTechnicalStrapLineIdentity(line, [], [])).toBe(true);
   });
+
+  it('Strass sem largura no cadastro, origem comprar_pronto, casa a medida pelo nome', () => {
+    const strassType = 'type-strass';
+    const strassMeasure = 'measure-15';
+    const groupId = '6e43bbda-0f1f-412c-8d4a-ec009114530d';
+    const strassCatalog: StrapInventoryCatalogLike = {
+      types: [{ id: strassType, name: 'TIRA STRASS', active: true }],
+      measures: [{
+        id: strassMeasure,
+        strap_type_id: strassType,
+        active: true,
+        finished_width_mm: 15,
+        origem_padrao: 'sempre_sku_acabado',
+        display_name: '15 mm',
+      }],
+    };
+    const group = {
+      id: groupId,
+      name: 'TIRA STRASS 15MM',
+      dimensions_width: 0,
+      strap_origin: 'comprar_pronto' as const,
+      strap_uses_napa: false,
+      is_artisanal_strap: true,
+    };
+    expect(isStrapInventorySelectableGroup(group, new Set())).toBe(true);
+    expect(resolveHubMeasureForStockGroup(group, null, strassCatalog)?.id).toBe(strassMeasure);
+    const line = applyStockStrapGroupToLine(
+      { technical_strap_line_id: LINE_ID, id: LINE_ID, label: 'TIRA 1' },
+      group,
+      'COMPONENTES › TIRA STRASS 15MM',
+      strassCatalog,
+      'COMPONENTES',
+    );
+    expect(line).toMatchObject({
+      group_id: groupId,
+      identity_basis: 'finished_product_group',
+      identity_group_id: groupId,
+      measure_id: strassMeasure,
+      strap_type_id: strassType,
+      color_mode: 'select_on_order',
+      internal_production_enabled: false,
+    });
+  });
+
+  it('strap_uses_napa=false força tira pronta mesmo sem origem no grupo', () => {
+    const groupId = 'c45ff936-5ac5-49b5-98c4-4aed5e10e82d';
+    const line = applyStockStrapGroupToLine(
+      { technical_strap_line_id: LINE_ID, id: LINE_ID, label: 'TIRA 1' },
+      { id: groupId, name: 'TIRA STRASS 6MM', dimensions_width: 0, strap_uses_napa: false },
+      'TIRA STRASS 6MM',
+      null,
+    );
+    expect(line).toMatchObject({
+      identity_basis: 'finished_product_group',
+      identity_group_id: groupId,
+      measure_id: null,
+      internal_production_enabled: false,
+    });
+  });
 });

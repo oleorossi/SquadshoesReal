@@ -57,9 +57,14 @@ function buyReadyGroupsFromInventory(
   const widthNorm = width > 0 ? widthLeafToken(width) : '';
 
   const groupIds = new Set<string>();
+  const groupNameById = new Map(catalog.groups.map((group) => [group.id, group.name]));
   for (const product of catalog.products) {
     if (product.active === false || product.unit !== 'm' || !product.group_id) continue;
-    if (!normalizeForSearch(product.name).includes(typeNorm)) continue;
+    const productNorm = normalizeForSearch(product.name);
+    const groupNorm = normalizeForSearch(groupNameById.get(product.group_id) || '');
+    // SKUs de Strass 15MM se chamam só pela cor ("Cristal com fundo branco");
+    // a família está no nome do grupo.
+    if (!productNorm.includes(typeNorm) && !groupNorm.includes(typeNorm)) continue;
     groupIds.add(product.group_id);
   }
   if (groupIds.size === 0) return [];
@@ -68,11 +73,15 @@ function buyReadyGroupsFromInventory(
   // Com bitola explícita, só a folha daquela largura (ex.: "25MM" ou
   // "ELÁSTICO ESPECIAL G 25MM"). Sem bitola, qualquer folha da família —
   // nunca o container homônimo da família.
-  // Folhas do piloto ELÁSTICO ESPECIAL G se chamam só "25MM". Não usar
-  // endsWith: "TIRA STRASS 6MM" também termina em "6mm" e reativaria Strass
-  // inválido via inventário.
+  // Folhas do piloto ELÁSTICO ESPECIAL G se chamam só "25MM". Também aceita
+  // "TIRA STRASS 15MM" quando os SKUs já filtraram a família pelo typeName.
   const picked = widthNorm
-    ? candidates.filter((group) => normalizeForSearch(group.name) === widthNorm)
+    ? candidates.filter((group) => {
+      const nameNorm = normalizeForSearch(group.name);
+      return nameNorm === widthNorm
+        || nameNorm.endsWith(` ${widthNorm}`)
+        || nameNorm.endsWith(widthNorm);
+    })
     : candidates.filter((group) => normalizeForSearch(group.name) !== typeNorm);
 
   return picked
@@ -100,11 +109,15 @@ export function technicalStrapSourcePolicy(
   const type = catalog.types.find(entry => entry.id === measure?.strap_type_id && entry.active !== false);
   if (!measure || !type) return unavailable;
   const activeVariants = catalog.variants.filter(variant => variant.measure_id === measure.id && variant.status === 'active');
-  const allowsReferenceBase = activeVariants.some(variant => (
-    strapIdentityBasis(variant) === 'reference_base' && variant.internal_production_enabled === true
-  )) || catalog.recipes.some(recipe => recipe.measure_id === measure.id && recipe.status === 'approved'
-    && recipe.valid_from != null && Date.parse(recipe.valid_from) <= now
-    && (recipe.valid_to == null || Date.parse(recipe.valid_to) > now));
+  // Tira pronta (sempre_sku_acabado) nunca vira artesanal por receita/variante
+  // residual no Hub — é o caso do Strass 15 mm, que tinha receitas de napa.
+  const allowsReferenceBase = measure.origem_padrao === 'sempre_sku_acabado'
+    ? false
+    : activeVariants.some(variant => (
+      strapIdentityBasis(variant) === 'reference_base' && variant.internal_production_enabled === true
+    )) || catalog.recipes.some(recipe => recipe.measure_id === measure.id && recipe.status === 'approved'
+      && recipe.valid_from != null && Date.parse(recipe.valid_from) <= now
+      && (recipe.valid_to == null || Date.parse(recipe.valid_to) > now));
   const finishedGroupIds = new Set(activeVariants
     .filter(variant => variant.identity_basis === 'finished_product_group'
       && catalog.products.some(product => product.id === variant.finished_product_id
@@ -159,15 +172,18 @@ export function applyTechnicalStrapMeasureWithSource<T extends TechnicalStrapLin
   const measured = applyCanonicalTechnicalStrapMeasure(line, measure);
   const policy = technicalStrapSourcePolicy(catalog, measure.id);
   const basis = strapIdentityBasis(line);
-  const nextBasis = basis === 'reference_base' && policy.allowsReferenceBase
-    ? 'reference_base'
-    : basis === 'finished_product_group' && policy.finishedGroups.length > 0
-      ? 'finished_product_group'
-      : policy.allowsReferenceBase
-        ? 'reference_base'
-        : policy.finishedGroups.length > 0
-          ? 'finished_product_group'
-          : null;
+  const readyMade = measure.origem_padrao === 'sempre_sku_acabado' || !policy.allowsReferenceBase;
+  const nextBasis = readyMade
+    ? 'finished_product_group'
+    : basis === 'reference_base' && policy.allowsReferenceBase
+      ? 'reference_base'
+      : basis === 'finished_product_group' && policy.finishedGroups.length > 0
+        ? 'finished_product_group'
+        : policy.allowsReferenceBase
+          ? 'reference_base'
+          : policy.finishedGroups.length > 0
+            ? 'finished_product_group'
+            : null;
   if (!nextBasis) return measured;
   const selectedGroup = policy.finishedGroups.find(group => group.id === line.identity_group_id);
   const groupId = nextBasis === 'finished_product_group'

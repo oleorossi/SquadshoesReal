@@ -66,12 +66,14 @@ describe('technicalStrapSourcePolicy', () => {
     });
   });
 
-  it('permite ambas as identidades somente quando a medida tem ambos os cadastros ativos', () => {
-    const hybrid = { ...catalog, variants: [...catalog.variants, {
-      ...catalog.variants[0], measure_id: STRASS,
-    }] };
+  it('Strass (sempre_sku_acabado) não vira artesanal mesmo com variante/receita residual no Hub', () => {
+    const hybrid = {
+      ...catalog,
+      variants: [...catalog.variants, { ...catalog.variants[0], measure_id: STRASS }],
+      recipes: [{ measure_id: STRASS, status: 'approved', valid_from: '2020-01-01T00:00:00Z' }],
+    };
     expect(technicalStrapSourcePolicy(hybrid, STRASS)).toMatchObject({
-      allowsReferenceBase: true, finishedGroups: [catalog.groups[0]],
+      allowsReferenceBase: false, finishedGroups: [catalog.groups[0]],
     });
   });
 
@@ -97,13 +99,12 @@ describe('technicalStrapSourcePolicy', () => {
     expect(technicalStrapSourcePolicy(prospect, OVERLOCK, Date.parse('2026-09-05T12:00:00Z')).allowsReferenceBase).toBe(expected);
   });
 
-  it.each(['inactive_product', 'moved_product', 'inactive_variant', 'wrong_measure', 'nonlinear_product'])('exclui origem pronta inválida: %s', reason => {
+  it.each(['inactive_product', 'moved_product', 'inactive_variant', 'nonlinear_product'])('exclui origem pronta inválida: %s', reason => {
     const invalid = {
       ...catalog,
       variants: catalog.variants.map(variant => variant.measure_id !== STRASS ? variant : {
         ...variant,
         status: reason === 'inactive_variant' ? 'archived' : variant.status,
-        measure_id: reason === 'wrong_measure' ? OVERLOCK : variant.measure_id,
       }),
       products: catalog.products.map(product => product.id !== 'cristal' ? product : {
         ...product,
@@ -113,6 +114,18 @@ describe('technicalStrapSourcePolicy', () => {
       }),
     };
     expect(technicalStrapSourcePolicy(invalid, STRASS).finishedGroups).toEqual([]);
+  });
+
+  it('sem variante nesta medida, resolve o grupo acabado pelo inventário (caso Strass 15 mm)', () => {
+    const invalid = {
+      ...catalog,
+      variants: catalog.variants.map(variant => variant.measure_id !== STRASS ? variant : {
+        ...variant,
+        measure_id: OVERLOCK,
+      }),
+    };
+    expect(technicalStrapSourcePolicy(invalid, STRASS).finishedGroups).toEqual([catalog.groups[0]]);
+    expect(technicalStrapSourcePolicy(invalid, STRASS).allowsReferenceBase).toBe(false);
   });
 
   it('bloqueia identidade enquanto falta catálogo ou a família/medida está inativa', () => {
@@ -165,10 +178,16 @@ describe('technicalStrapSourcePolicy', () => {
     expect(internal).toMatchObject({ measure_id: OVERLOCK, identity_basis: 'reference_base', identity_group_id: null, internal_production_enabled: true });
   });
 
-  it('preserva política de material/cor interna quando ambas as origens são permitidas', () => {
+  it('ao trocar para tira pronta, descarta origem artesanal mesmo com cadastro híbrido residual', () => {
     const hybrid = { ...catalog, variants: [...catalog.variants, { ...catalog.variants[0], measure_id: STRASS }] };
     const changed = applyTechnicalStrapMeasureWithSource(overlockLine, catalog.measures[1], hybrid);
-    expect(changed).toMatchObject({ identity_basis: 'reference_base', color_mode: 'follow_main', material_mode: 'fixed_group', material_group_id: GLOW });
+    expect(changed).toMatchObject({
+      identity_basis: 'finished_product_group',
+      identity_group_id: STRASS_GROUP,
+      color_mode: 'select_on_order',
+      material_mode: 'follow_reference',
+      material_group_id: null,
+    });
   });
 
   it('exige escolha explícita se a nova medida possui mais de um grupo pronto', () => {
@@ -181,5 +200,34 @@ describe('technicalStrapSourcePolicy', () => {
     expect(isTechnicalStrapSourceAllowed(changed, technicalStrapSourcePolicy(multiple, STRASS))).toBe(false);
     const previouslyChosen = { ...changed, identity_group_id: 'outro-grupo' };
     expect(applyTechnicalStrapMeasureWithSource(previouslyChosen, catalog.measures[1], multiple).identity_group_id).toBe('outro-grupo');
+  });
+
+  it('Strass 15 mm com receita residual e sem variante Hub resolve o grupo acabado pelo nome', () => {
+    const fifteen = 'medida-strass-15';
+    const group15 = 'grupo-strass-15';
+    const catalog15 = {
+      ...catalog,
+      measures: [
+        ...catalog.measures,
+        { id: fifteen, strap_type_id: 'strass', active: true, finished_width_mm: 15, origem_padrao: 'sempre_sku_acabado' as const },
+      ],
+      recipes: [{ measure_id: fifteen, status: 'approved', valid_from: '2020-01-01T00:00:00Z' }],
+      products: [
+        ...catalog.products,
+        { id: 'strass-15-cristal', name: 'Cristal com fundo branco', group_id: group15, active: true, unit: 'm' },
+      ],
+      groups: [...catalog.groups, { id: group15, name: 'TIRA STRASS 15MM' }],
+    };
+    const policy = technicalStrapSourcePolicy(catalog15, fifteen);
+    expect(policy.allowsReferenceBase).toBe(false);
+    expect(policy.finishedGroups).toEqual([{ id: group15, name: 'TIRA STRASS 15MM' }]);
+    const applied = applyTechnicalStrapMeasureWithSource(overlockLine, catalog15.measures[3], catalog15);
+    expect(applied).toMatchObject({
+      measure_id: fifteen,
+      identity_basis: 'finished_product_group',
+      identity_group_id: group15,
+      color_mode: 'select_on_order',
+      internal_production_enabled: false,
+    });
   });
 });

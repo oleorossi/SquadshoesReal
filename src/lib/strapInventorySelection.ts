@@ -30,6 +30,7 @@ export interface StrapInventoryGroupLike {
   is_family?: boolean | null;
   is_artisanal_strap?: boolean | null;
   strap_origin?: 'comprar_pronto' | 'fabrica' | 'prestador' | null;
+  strap_uses_napa?: boolean | null;
   consumption_unit?: string | null;
   dimensions_width?: number | null;
 }
@@ -49,45 +50,59 @@ export function isStrapInventorySelectableGroup(
   return linearUnit && width > 0 && width < ROLL_WIDTH_FLOOR_MM;
 }
 
+
+/** Largura da bitola: cadastro, ou o "NMM" no nome (ex.: TIRA STRASS 15MM). */
+export function strapInventoryGroupWidthMm(group: StrapInventoryGroupLike): number {
+  const width = Number(group.dimensions_width);
+  if (width > 0) return width;
+  const match = String(group.name || '').match(/(\d+(?:[.,]\d+)?)\s*mm\b/i);
+  if (!match) return 0;
+  return Number(match[1].replace(',', '.'));
+}
+
 export function resolveHubMeasureForStockGroup(
   group: StrapInventoryGroupLike,
   familyName: string | null | undefined,
   catalog: StrapInventoryCatalogLike | null | undefined,
 ): TechnicalStrapMeasureLike | null {
   if (!catalog) return null;
-  const width = Number(group.dimensions_width);
+  const width = strapInventoryGroupWidthMm(group);
   const familyNorm = normalizeForSearch(familyName || '');
   const groupNorm = normalizeForSearch(group.name || '');
   const activeTypes = (catalog.types || []).filter((type) => type.active !== false);
 
-  const candidates = (catalog.measures || []).filter((measure) => {
-    if (measure.active === false) return false;
-    if (!(width > 0) || Number(measure.finished_width_mm) !== width) return false;
+  const scored = (catalog.measures || []).flatMap((measure) => {
+    if (measure.active === false) return [];
+    if (!(width > 0) || Number(measure.finished_width_mm) !== width) return [];
     const type = activeTypes.find((entry) => entry.id === measure.strap_type_id);
-    if (!type) return false;
+    if (!type) return [];
     const typeNorm = normalizeForSearch(type.name || '');
-    if (familyNorm && typeNorm === familyNorm) return true;
-    // Folha "TIRA CHATA 25MM" / "ELÁSTICO ESPECIAL G 25MM" sem família.
-    if (!familyNorm && typeNorm && groupNorm.includes(typeNorm)) return true;
-    return false;
+    if (!typeNorm) return [];
+    const familyMatch = familyNorm && typeNorm === familyNorm;
+    const nameMatch = groupNorm.includes(typeNorm);
+    if (!familyMatch && !nameMatch) return [];
+    return [{ measure, typeLen: typeNorm.length, familyMatch }];
   });
 
-  if (candidates.length === 1) return candidates[0];
-  if (candidates.length === 0) return null;
-  // Prefer buy-ready when several match (não deveria).
-  return candidates.find((measure) => measure.origem_padrao === 'sempre_sku_acabado')
-    || candidates[0];
+  if (scored.length === 0) return null;
+  scored.sort((left, right) => (
+    Number(right.familyMatch) - Number(left.familyMatch)
+    || right.typeLen - left.typeLen
+    || Number(right.measure.origem_padrao === 'sempre_sku_acabado')
+      - Number(left.measure.origem_padrao === 'sempre_sku_acabado')
+  ));
+  return scored[0].measure;
 }
 
 function prefersBuyReady(
   group: StrapInventoryGroupLike,
   measure: TechnicalStrapMeasureLike | null,
 ): boolean {
-  if (group.strap_origin === 'comprar_pronto') return true;
+  if (group.strap_origin === 'comprar_pronto' || group.strap_uses_napa === false) return true;
   if (group.strap_origin === 'fabrica' || group.strap_origin === 'prestador') return false;
   if (measure?.origem_padrao === 'sempre_sku_acabado') return true;
   // Sem Hub e sem origem no grupo: fita estreita = SKU acabado (piloto elástico).
-  const width = Number(group.dimensions_width);
+  const width = strapInventoryGroupWidthMm(group);
   return width > 0 && width < ROLL_WIDTH_FLOOR_MM;
 }
 

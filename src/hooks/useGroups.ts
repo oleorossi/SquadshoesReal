@@ -49,6 +49,8 @@ export type ProductGroup = {
   is_artisanal_strap?: boolean;
   /** Origem operacional da tira: comprar_pronto | fabrica | prestador. */
   strap_origin?: 'comprar_pronto' | 'fabrica' | 'prestador' | null;
+  /** false = tira comprada pronta, sem napa-base (ex.: Strass). */
+  strap_uses_napa?: boolean | null;
   /** Mão de obra do prestador/fábrica (R$/m de tira). */
   strap_labor_cost_per_m?: number | null;
   /** Prestador padrão quando origem = prestador. */

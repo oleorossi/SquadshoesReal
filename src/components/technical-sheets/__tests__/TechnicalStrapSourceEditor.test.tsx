@@ -81,7 +81,7 @@ describe('TechnicalStrapSourceEditor', () => {
       identity_group_id: 'strass6',
       color_mode: 'select_on_order',
     });
-    expect(screen.getByText(/Comprar pronto — grupo de estoque selecionado/i)).toBeInTheDocument();
+    expect(screen.getByText(/Comprar pronto — tira acabada, sem napa e sem OS de Ateliê/i)).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: /Grupo acabado/i })).not.toBeInTheDocument();
   });
 });
