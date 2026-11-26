@@ -9,9 +9,9 @@ import { toast } from 'sonner';
  * - Rollups de estoque por grupo-folha (read model SQL get_group_stock_rollups).
  * - Sugestões de família opt-in (suggest_group_families) — read-only, não aplica nada.
  * - Mutations de organização: criar família, mover grupos p/ família, mover itens
- *   entre grupos, desvincular subgrupo. Os invariantes (container/profundidade/
- *   mono-setor) são garantidos por triggers no banco; aqui só disparamos os writes
- *   e traduzimos o erro PT-BR do trigger no toast.
+ *   entre grupos, desvincular subgrupo. Os invariantes (container/profundidade)
+ *   são garantidos por triggers no banco; a família é tipológica e pode receber
+ *   subgrupos de setores diferentes, sem reclassificar o setor do subgrupo.
  */
 
 export type GroupStockRollup = {
@@ -91,8 +91,8 @@ export function useCreateFamily() {
 
 /**
  * Move grupos-folha para uma família (ou desvincula, se familyId === null).
- * Vínculo não reclassifica setor: a UI oferece apenas famílias do mesmo setor e
- * o banco recusa qualquer drift. Ao desvincular, mantém o setor atual.
+ * Vínculo não reclassifica setor: o subgrupo mantém o próprio setor de aplicação
+ * mesmo quando a família tem outro setor-padrão. Ao desvincular, mantém o setor atual.
  */
 export function useMoveGroupsToFamily() {
   const qc = useQueryClient();

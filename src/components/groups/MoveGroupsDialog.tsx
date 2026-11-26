@@ -19,10 +19,9 @@ interface Props {
 const UNLINK = '__unlink__';
 
 /**
- * Move em massa os grupos-folha selecionados para uma família (ou desvincula).
- * Alvos válidos = famílias do MESMO setor, sem itens diretos e fora da seleção.
- * Reclassificar setor é uma ação separada porque materiais de área podem exigir
- * largura antes da mudança.
+ * Move em massa os subgrupos selecionados para uma família (ou desvincula).
+ * A família é tipológica: pode receber subgrupos de setores diferentes.
+ * O setor de cada subgrupo não muda — reclassificar aplicação é ação separada.
  */
 export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, selectedIds, onDone }: Props) {
   const move = useMoveGroupsToFamily();
@@ -33,15 +32,12 @@ export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, 
     () => new Set(Array.from(selectedIds).map((id) => byId.get(id)?.sector || '—')),
     [selectedIds, byId],
   );
-  const commonSector = selectedSectors.size === 1 ? Array.from(selectedSectors)[0] : null;
 
-  // Alvos: famílias do mesmo setor e sem itens diretos, fora da seleção.
+  // Alvos: qualquer família sem itens diretos, fora da seleção.
   const targetsBySector = useMemo(() => {
     const roots = groups.filter(g =>
-      commonSector != null &&
       !g.parent_group_id &&
       !selectedIds.has(g.id) &&
-      (g.sector || '—') === commonSector &&
       (g.is_family === true || groups.some((candidate) => candidate.parent_group_id === g.id)) &&
       (rollups.get(g.id)?.item_count ?? 0) === 0,
     );
@@ -59,7 +55,7 @@ export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, 
       const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
     });
-  }, [groups, rollups, selectedIds, commonSector]);
+  }, [groups, rollups, selectedIds]);
 
   const targetFamily = target && target !== UNLINK ? byId.get(target) : null;
 
@@ -82,8 +78,8 @@ export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, 
     <Dialog open={open} onOpenChange={(v) => { if (!v) setTarget(''); onOpenChange(v); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Mover {selectedIds.size} grupo(s)</DialogTitle>
-          <DialogDescription>Escolha a família de destino ou desvincule (tornar soltos direto no setor).</DialogDescription>
+          <DialogTitle>Mover {selectedIds.size} subgrupo(s)</DialogTitle>
+          <DialogDescription>Escolha a família de destino. O setor de cada subgrupo não muda; só a organização visual e o vínculo de família.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -104,15 +100,15 @@ export default function MoveGroupsDialog({ open, onOpenChange, groups, rollups, 
             </SelectContent>
           </Select>
 
-          {!commonSector && target !== UNLINK && (
-            <p className="rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
-              A seleção reúne setores diferentes. Selecione grupos de um único setor para vinculá-los à mesma família.
+          {targetFamily && Array.from(selectedSectors).some((sector) => sector !== (targetFamily.sector || '—')) && (
+            <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              A família <strong>{targetFamily.name}</strong> tem setor-padrão {sectorLabel(targetFamily.sector)}. Os subgrupos selecionados mantêm o próprio setor de aplicação.
             </p>
           )}
 
-          {commonSector && targetsBySector.length === 0 && target !== UNLINK && (
+          {targetsBySector.length === 0 && target !== UNLINK && (
             <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-              Nenhuma família disponível em <strong>{sectorLabel(commonSector)}</strong>. Crie a família nesse setor antes de mover os grupos.
+              Nenhuma família disponível. Crie a família principal antes de mover os subgrupos.
             </p>
           )}
         </div>

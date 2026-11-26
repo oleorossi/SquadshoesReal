@@ -99,6 +99,55 @@ export type SectorNode = {
   looseLeaves: ProductGroup[];
 };
 
+export type FamilyTree = {
+  families: { family: ProductGroup; children: ProductGroup[] }[];
+  looseBySector: { sector: string; leaves: ProductGroup[] }[];
+};
+
+/**
+ * Árvore Família → Subgrupo (cores vivem dentro do subgrupo).
+ * O setor é um atributo do subgrupo, não a raiz. Famílias com filhos de
+ * setores diferentes aparecem uma única vez. Grupos soltos ficam em
+ * "Sem família", agrupados só para leitura pelo setor de aplicação.
+ */
+export function buildFamilyTree(groups: ProductGroup[]): FamilyTree {
+  const childrenByParent = new Map<string | null, ProductGroup[]>();
+  for (const g of groups) {
+    const k = g.parent_group_id ?? null;
+    if (!childrenByParent.has(k)) childrenByParent.set(k, []);
+    childrenByParent.get(k)!.push(g);
+  }
+  const byName = (a: ProductGroup, b: ProductGroup) => a.name.localeCompare(b.name, 'pt-BR');
+  const roots = (childrenByParent.get(null) ?? []).slice().sort(byName);
+
+  const families: FamilyTree['families'] = [];
+  const loose: ProductGroup[] = [];
+  for (const root of roots) {
+    const kids = (childrenByParent.get(root.id) ?? []).slice().sort(byName);
+    if (root.is_family === true || kids.length > 0) families.push({ family: root, children: kids });
+    else loose.push(root);
+  }
+
+  const sectorMap = new Map<string, ProductGroup[]>();
+  for (const leaf of loose) {
+    const sector = leaf.sector || '—';
+    if (!sectorMap.has(sector)) sectorMap.set(sector, []);
+    sectorMap.get(sector)!.push(leaf);
+  }
+  const order = SECTOR_OPTIONS.map(o => o.value);
+  const looseBySector = Array.from(sectorMap.entries())
+    .sort((a, b) => {
+      const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
+      if (ia === -1 && ib === -1) return a[0].localeCompare(b[0], 'pt-BR');
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    })
+    .map(([sector, leaves]) => ({ sector, leaves }));
+
+  return { families, looseBySector };
+}
+
 /** Monta a árvore por setor (setor = raiz renderizada), na ordem de SECTOR_OPTIONS. */
 export function buildSectorTree(groups: ProductGroup[]): SectorNode[] {
   const childrenByParent = new Map<string | null, ProductGroup[]>();

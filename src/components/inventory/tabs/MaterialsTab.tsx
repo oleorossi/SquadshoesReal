@@ -579,7 +579,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
                   <DropdownMenuLabel>Organização</DropdownMenuLabel>
                   {/* Porta única de criação (spec grupo-cor-obrigatoria.md): o
                       grupo de setor com cor já nasce com as cores. */}
-                  <DropdownMenuItem onClick={() => setGroupDialogOpen(true)}>
+                  <DropdownMenuItem onClick={() => navigate('/estoque?tab=organization&criar=1')}>
                     <Layers className="h-4 w-4 mr-2" /> Novo grupo
                   </DropdownMenuItem>
                 </>}
@@ -592,7 +592,7 @@ function MaterialsTabInner({ defaultGroupName, title = 'Material' }: { defaultGr
               size="sm"
               className="h-9 gap-1.5 shrink-0 whitespace-nowrap"
               onClick={() => navigate('/estoque?tab=organization')}
-              title="Abrir a árvore de grupos (Setor → Família → Grupo)"
+              title="Abrir a árvore de grupos (Família → Subgrupo → Cores)"
             >
               <Layers className="h-4 w-4" />
               <span className="hidden sm:inline">Organizar grupos</span>

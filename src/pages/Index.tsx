@@ -142,7 +142,7 @@ export default function Index() {
             className="min-w-[145px] justify-start gap-2 border border-transparent px-3 py-2 text-left font-sans normal-case tracking-normal data-[state=active]:border-foreground/20 data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <Layers className="h-4 w-4 shrink-0" />
-            <span><span className="block text-xs font-semibold">Organização</span><span className="block text-[9px] font-normal text-muted-foreground">setor, família e grupo</span></span>
+            <span><span className="block text-xs font-semibold">Organização</span><span className="block text-[9px] font-normal text-muted-foreground">família, subgrupo e cores</span></span>
           </TabsTrigger>
           <TabsTrigger
             value="overview"

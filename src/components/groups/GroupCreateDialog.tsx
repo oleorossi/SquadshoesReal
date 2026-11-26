@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -13,7 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAddGroup, useGroups, type ProductGroup } from "@/hooks/useGroups";
 import { useProducts } from "@/hooks/useProducts";
 import { flattenGroupTree } from "@/lib/groupHierarchy";
-import { organizationSectorOptions, sectorLabel, sectorOfGroup, MATERIAL_BASE_SECTOR } from "@/lib/categoryFromGroup";
+import { organizationSectorOptions, MATERIAL_BASE_SECTOR } from "@/lib/categoryFromGroup";
 import { getFootwearSectorGuide } from "@/lib/footwearMaterialTaxonomy";
 import { AREA_STOCK_UNITS, colorRequirement, createGroupWithColors, normalizeColorList } from "@/lib/createGroupWithColors";
 import { isAreaStockUnit } from "@/lib/areaGeometry";
@@ -36,9 +37,15 @@ interface GroupCreateDialogProps {
   lockHierarchy?: boolean;
   /** Título do diálogo (default "Novo Grupo de Material"). */
   titleText?: string;
+  /** Força o formulário de família principal (raiz, sem itens). */
+  asFamily?: boolean;
+  /** Tela inicial: escolher o que criar, família, subgrupo ou só uma cor. */
+  intent?: 'pick' | 'family' | 'subgroup' | 'color';
   /** Grupo (não-família) criado: o pai abre a janela do grupo nesta aba —
    *  `colors` quando nasceu com cor, `items` quando o setor não tem cor. */
   onCreated?: (group: ProductGroup, tab: GroupEditTab) => void;
+  /** Fluxo "Nova variação de cor": o usuário escolhe o subgrupo e o painel abre o diálogo certo. */
+  onPickColorGroup?: (group: ProductGroup) => void;
 }
 
 /** Setores cujo material é cortado de bobina/placa e tem consumo em dm²/par: sem
@@ -49,8 +56,13 @@ const AREA_SECTORS = new Set(['Cabedal', 'Forração da Palmilha', 'Palmilha']);
  *  sugestão visível e editável — nunca deduzida em silêncio. */
 const suggestedStockUnit = (sector: string | undefined) => (AREA_SECTORS.has(sector ?? '') ? 'm' : '');
 
-export default function GroupCreateDialog({ open, onOpenChange, initialSector, initialParentId, lockHierarchy, titleText, onCreated }: GroupCreateDialogProps) {
-  const isFamilyCreation = Boolean(lockHierarchy && initialSector && initialParentId == null);
+export default function GroupCreateDialog({ open, onOpenChange, initialSector, initialParentId, lockHierarchy, titleText, asFamily, intent, onCreated, onPickColorGroup }: GroupCreateDialogProps) {
+  const [pickedFamily, setPickedFamily] = useState(false);
+  const isFamilyCreation = Boolean(asFamily || intent === 'family' || pickedFamily || (lockHierarchy && initialParentId == null));
+  const [step, setStep] = useState<'pick' | 'form' | 'color'>(
+    intent === 'color' ? 'color' : (asFamily || lockHierarchy || intent === 'family' || intent === 'subgroup' ? 'form' : 'pick'),
+  );
+  const [colorSearch, setColorSearch] = useState('');
   const qc = useQueryClient();
   const [form, setForm] = useState({
     name: "",
@@ -64,6 +76,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
     dimensions_unit: 'mm' as string,
     parent_group_id: (initialParentId ?? "") as string,
     is_artisanal_strap: !isFamilyCreation && initialSector === MATERIAL_BASE_SECTOR,
+    strap_origin: (!isFamilyCreation && initialSector === MATERIAL_BASE_SECTOR ? 'prestador' : '') as '' | 'comprar_pronto' | 'fabrica' | 'prestador',
   });
    const [duplicateMatch, setDuplicateMatch] = useState<ProductGroup | null>(null);
    const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
@@ -81,11 +94,17 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
    const parentOptions = useMemo(
      () => flattenGroupTree(allGroups).filter((candidate) => (
        !candidate.parent_group_id
-       && sectorOfGroup(candidate) === form.sector
        && (candidate.is_family === true || candidate.childCount > 0)
        && (itemCountByGroup.get(candidate.id) || 0) === 0
      )),
-     [allGroups, form.sector, itemCountByGroup],
+     [allGroups, itemCountByGroup],
+   );
+   const leafGroups = useMemo(
+     () => allGroups
+       .filter((group) => group.is_family !== true && !allGroups.some((candidate) => candidate.parent_group_id === group.id))
+       .slice()
+       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+     [allGroups],
    );
    const checkDuplicateName = (name: string) => {
      if (!name.trim()) { setDuplicateMatch(null); return; }
@@ -166,6 +185,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
       sector: initialSector ?? "",
       auto_component_sheet: false,
       is_artisanal_strap: !isFamilyCreation && initialSector === MATERIAL_BASE_SECTOR,
+      strap_origin: (!isFamilyCreation && initialSector === MATERIAL_BASE_SECTOR ? 'prestador' : '') as '' | 'comprar_pronto' | 'fabrica' | 'prestador',
       dimensions_width: null,
       dimensions_length: null,
       dimensions_unit: 'mm',
@@ -226,6 +246,8 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             dimensions_unit: form.dimensions_width
               ? (form.dimensions_unit || 'mm')
               : null,
+            is_artisanal_strap: form.is_artisanal_strap,
+            strap_origin: form.strap_origin || null,
           },
           colors,
           unit: stockUnit,
@@ -255,6 +277,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         sector: form.sector,
         auto_component_sheet: form.is_artisanal_strap ? false : form.auto_component_sheet,
         is_artisanal_strap: form.is_artisanal_strap,
+        strap_origin: isFamilyCreation ? null : (form.strap_origin || null),
         dimensions_width: isFamilyCreation ? null : form.dimensions_width,
         dimensions_length: isFamilyCreation ? null : form.dimensions_length,
         dimensions_unit: !isFamilyCreation && form.dimensions_width
@@ -290,10 +313,55 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
           <DialogTitle className="text-base">{titleText ?? 'Novo Grupo de Material'}</DialogTitle>
         <DialogDescription className="text-xs">
           {isFamilyCreation
-            ? 'A família técnica organiza grupos da mesma natureza dentro deste setor e não recebe itens diretamente.'
-            : 'Classifique o material por aplicação, família técnica e grupo/linha.'}
+            ? 'A família principal (Forração, Tiras, Solados…) organiza os subgrupos técnicos e não recebe itens nem cores diretamente.'
+            : 'O subgrupo guarda as características técnicas (tipo, largura, origem). As cores entram depois, herdando esses dados.'}
         </DialogDescription>
         </DialogHeader>
+
+        {step !== 'form' && (
+          <div className="space-y-3 overflow-y-auto px-6 py-4">
+            {step === 'pick' && (
+              <>
+                <p className="text-xs text-muted-foreground">Escolha o que você quer cadastrar. A organização é Família → Subgrupo técnico → Variações de cor.</p>
+                <button type="button" className="w-full border border-foreground/15 bg-background px-3 py-3 text-left hover:border-primary" onClick={() => { setPickedFamily(true); setForm((f) => ({ ...f, is_artisanal_strap: false, strap_origin: '' as const })); setStep('form'); }}>
+                  <span className="block text-sm font-semibold">Nova família principal</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">Ex.: Forração, Tiras, Solados. Não recebe cor nem estoque direto.</span>
+                </button>
+                <button type="button" className="w-full border border-foreground/15 bg-background px-3 py-3 text-left hover:border-primary" onClick={() => setStep('form')}>
+                  <span className="block text-sm font-semibold">Novo subgrupo técnico</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">Ex.: Napa Soft, Tira Overlock 5 mm, Tira Strass 6 mm. Largura, origem e unidade ficam aqui.</span>
+                </button>
+                <button type="button" className="w-full border border-foreground/15 bg-background px-3 py-3 text-left hover:border-primary" onClick={() => setStep('color')}>
+                  <span className="block text-sm font-semibold">Nova variação de cor</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">Escolhe um subgrupo já existente. Só informa a cor; as características técnicas são herdadas.</span>
+                </button>
+              </>
+            )}
+            {step === 'color' && (
+              <>
+                <p className="text-xs text-muted-foreground">Escolha o subgrupo. A nova cor herda largura, origem e unidade dele.</p>
+                <SearchInput value={colorSearch} onChange={setColorSearch} placeholder="Buscar subgrupo…" />
+                <div className="max-h-72 space-y-1 overflow-y-auto">
+                  {leafGroups
+                    .filter((group) => !colorSearch.trim() || group.name.toLowerCase().includes(colorSearch.trim().toLowerCase()))
+                    .map((group) => (
+                      <button
+                        key={group.id}
+                        type="button"
+                        className="flex w-full items-center justify-between border border-transparent px-2 py-2 text-left text-sm hover:border-foreground/20 hover:bg-muted/40"
+                        onClick={() => onPickColorGroup?.(group)}
+                      >
+                        <span className="font-medium">{group.name}</span>
+                        <span className="font-mono text-[10px] uppercase text-muted-foreground">{group.sector}</span>
+                      </button>
+                    ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {step === 'form' && (
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-3">
             {isFamilyCreation && sectorGuide && (
@@ -382,7 +450,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
               <Label htmlFor="group-sector">Setor *</Label>
               <Select
                 value={form.sector || undefined}
-                disabled={lockHierarchy}
+                disabled={lockHierarchy && isFamilyCreation}
                 onValueChange={(v) => {
                   setForm((f) => {
                     const enteringBase = v === MATERIAL_BASE_SECTOR;
@@ -532,48 +600,64 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
                 placeholder="Descrição opcional"
               />
             </div>
-            {!lockHierarchy && <div>
+            {!isFamilyCreation && <div>
               <Label htmlFor="group-parent" className="flex items-center gap-1.5">
-                <Layers className="h-3.5 w-3.5" /> Família técnica
+                <Layers className="h-3.5 w-3.5" /> Família principal
               </Label>
               <Select
                 value={form.parent_group_id || "__root__"}
-                disabled={lockHierarchy}
-                onValueChange={(v) => setForm((f) => ({ ...f, parent_group_id: v === "__root__" ? "" : v }))}
+                disabled={Boolean(lockHierarchy && initialParentId)}
+                onValueChange={(v) => setForm((f) => {
+                  if (v === "__root__") return { ...f, parent_group_id: "" };
+                  const parent = allGroups.find((group) => group.id === v);
+                  return {
+                    ...f,
+                    parent_group_id: v,
+                    sector: f.sector || parent?.sector || "",
+                  };
+                })}
               >
                 <SelectTrigger id="group-parent" className="mt-1">
-                  <SelectValue placeholder="Sem pai (grupo raiz)" />
+                  <SelectValue placeholder="Sem família (subgrupo solto)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__root__">Sem família (grupo solto)</SelectItem>
+                  <SelectItem value="__root__">Sem família (subgrupo solto)</SelectItem>
                   {parentOptions.map((g) => (
                     <SelectItem key={g.id} value={g.id}>
-                      {g.name}
+                      {g.name}{g.sector ? ` · setor padrão ${g.sector}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
-                A família descreve a natureza do material; o grupo descreve a linha técnica/comercial.
+                A família diz o que o material é (Tiras, Forração). O setor abaixo diz onde ele é aplicado e pode ser diferente da família — por exemplo Strass em Tiras, com setor Componentes.
               </p>
             </div>}
 
-            {!isFamilyCreation && <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
-              <Switch
-                id="is-artisanal-strap"
-                checked={form.is_artisanal_strap}
-                onCheckedChange={(v) => setForm((f) => ({
-                  ...f,
-                  is_artisanal_strap: v,
-                  auto_component_sheet: v ? false : f.auto_component_sheet,
-                }))}
-              />
-              <Label htmlFor="is-artisanal-strap" className="cursor-pointer text-sm">
-                Tira acabada (Hub) — não é a napa de origem. Desliga a ficha de componente automática.
-                {form.sector === MATERIAL_BASE_SECTOR
-                  ? ' Obrigatória neste setor: a napa (Soft vs Madrid) é escolhida pela variante da ficha.'
-                  : ' Tira comprada pronta (STRASS) fica em Componentes; tira cortada de napa vai em Material Base.'}
-              </Label>
+            {!isFamilyCreation && <div className="space-y-2 rounded-lg border p-3 bg-muted/30">
+              <p className="text-sm font-medium text-foreground">Tipo de tira</p>
+              <p className="text-xs text-muted-foreground">As características técnicas ficam no subgrupo. Depois, cada cor só herda esses dados. Tira comprada pronta (STRASS) fica em Componentes; tira cortada de napa vai em Material Base.</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <Button type="button" variant={!form.is_artisanal_strap && !form.strap_origin ? 'default' : 'outline'} className="h-auto whitespace-normal py-2 text-xs" onClick={() => setForm((f) => ({ ...f, is_artisanal_strap: false, strap_origin: '' }))}>Não é tira</Button>
+                <Button id="is-artisanal-strap" type="button" variant={form.is_artisanal_strap ? 'default' : 'outline'} className="h-auto whitespace-normal py-2 text-xs" onClick={() => setForm((f) => ({ ...f, is_artisanal_strap: true, strap_origin: f.strap_origin === 'comprar_pronto' || !f.strap_origin ? 'prestador' : f.strap_origin, auto_component_sheet: false }))}>Tira artesanal — Tira acabada (Hub)</Button>
+                <Button type="button" variant={!form.is_artisanal_strap && form.strap_origin === 'comprar_pronto' ? 'default' : 'outline'} className="h-auto whitespace-normal py-2 text-xs" onClick={() => setForm((f) => ({ ...f, is_artisanal_strap: false, strap_origin: 'comprar_pronto', auto_component_sheet: false }))}>Tira pronta (Strass)</Button>
+              </div>
+              {form.is_artisanal_strap && (
+                <Select value={form.strap_origin || 'prestador'} onValueChange={(v) => setForm((f) => ({ ...f, strap_origin: v as 'fabrica' | 'prestador' }))}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Origem" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fabrica">Produzida na fábrica</SelectItem>
+                    <SelectItem value="prestador">Produzida no prestador</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              {(form.is_artisanal_strap || form.strap_origin === 'comprar_pronto') && (
+                <WidthOnlyField
+                  value={form.dimensions_width}
+                  onChange={(n) => setForm((f) => ({ ...f, dimensions_width: n, dimensions_unit: 'mm' }))}
+                  required
+                />
+              )}
             </div>}
 
             {!isFamilyCreation && <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
@@ -646,6 +730,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             <p className="px-6 pb-3 text-right text-xs text-muted-foreground">{colorBlocker}</p>
           )}
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -155,11 +155,18 @@ export function recommendVariantTemplate(
 export function quickVariantEligibility(group: ProductGroup, products: Product[]): string | null {
   if (group.is_family) return 'Famílias técnicas não recebem itens diretamente.';
   const active = products.filter(product => product.active !== false);
+  // Tira artesanal (napa + receita) continua no diálogo de tira / Hub.
+  // Tira pronta (Strass, strap_origin=comprar_pronto) é só variação de cor
+  // e usa este atalho — o nome "TIRA ..." sozinho não pode bloquear.
   if (
-    group.is_artisanal_strap
-    || active.some(product => product.is_artisanal === true)
-    || /TIRA|ELASTIC|TRANC/.test(normalizeQuickVariantColor(group.name || ''))
-  ) return 'Variações de tira devem ser criadas no Hub de Tiras.';
+    group.strap_origin !== 'comprar_pronto'
+    && (
+      group.is_artisanal_strap
+      || group.strap_origin === 'fabrica'
+      || group.strap_origin === 'prestador'
+      || active.some(product => product.is_artisanal === true)
+    )
+  ) return 'Variações de tira artesanal devem ser criadas no fluxo de tira (napa e receita).';
   if (group.is_color_agnostic) return 'Este grupo não usa cor como identidade do item.';
   if (!group.shared_specs && !group.is_bom_color_source) {
     return 'Configure o grupo como linha com variantes antes de usar este atalho.';

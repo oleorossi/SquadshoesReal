@@ -26,17 +26,12 @@ import MoveGroupsDialog from '@/components/groups/MoveGroupsDialog';
 import FamilySuggestionsDialog from '@/components/groups/FamilySuggestionsDialog';
 import { ProductFormDialog } from '@/components/inventory/ProductFormDialog';
 import CreateStrapProductDialog from '@/components/sale-orders/CreateStrapProductDialog';
-import { canUseQuickGroupVariantForRoles } from '@/lib/quickGroupVariant';
+import { canUseQuickGroupVariantForRoles, recommendVariantTemplate } from '@/lib/quickGroupVariant';
+import { addColorModeForGroup } from '@/lib/stockGroupKind';
+import { buildStockFamilyReorganizationPlan } from '@/lib/stockFamilyReorganization';
+import QuickColorVariantDialog from '@/components/groups/QuickColorVariantDialog';
 
-/**
- * Grupo de tira/elástico/trança: o item novo aqui é uma COR de tira, que precisa
- * de napa-base + receita de corte. O ProductFormDialog genérico não pede nada
- * disso e deixava a tira nascer sem vínculo (consumo 0 calado). Encaminhar pro
- * diálogo de tira encurta o caminho — antes ele só existia dentro de um PV.
- */
-const isStrapLikeGroup = (name?: string | null) => /tira|el[áa]stic|tran[çc]/i.test(name || '');
-
-type CreateCtx = { key: number; sector?: string; parentId?: string | null; lock?: boolean; title?: string };
+type CreateCtx = { key: number; sector?: string; parentId?: string | null; lock?: boolean; title?: string; asFamily?: boolean; intent?: 'pick' | 'family' | 'subgroup' | 'color' };
 
 interface Props {
   /** Path para gate de permissão (useCan): '/grupos' ou '/estoque'. */
@@ -82,6 +77,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
   const [addOpen, setAddOpen] = useState(false);
   const [addGroupId, setAddGroupId] = useState<string | undefined>(undefined);
   const [strapGroup, setStrapGroup] = useState<ProductGroup | null>(null);
+  const [colorGroup, setColorGroup] = useState<ProductGroup | null>(null);
   const keyRef = useRef(0);
 
   const toggleLeaf = (id: string) => {
@@ -152,7 +148,11 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
 
   const openAddGlobal = () => { setAddGroupId(undefined); setAddOpen(true); };
   const openAddToGroup = (g: ProductGroup) => {
-    if (isStrapLikeGroup(g.name)) { setStrapGroup(g); return; }
+    const groupItems = products.filter((product) => product.group_id === g.id);
+    const template = recommendVariantTemplate(groupItems as Product[]).product;
+    const mode = addColorModeForGroup(g, { hasTemplate: Boolean(template) });
+    if (mode === 'artisanal-strap') { setStrapGroup(g); return; }
+    if (mode === 'quick-color' && template) { setColorGroup(g); return; }
     setAddGroupId(g.id); setAddOpen(true);
   };
   const openEditItem = (item: ProductLite) => navigate(`/estoque/${item.id}`);
@@ -192,9 +192,15 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
               </Button>
             )}
             {perm.canCreate && (
-              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => openCreate({ title: 'Novo Grupo de Material' })}>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => openCreate({ asFamily: true, intent: 'family', title: 'Nova família principal' })}>
                 <FolderOpen className="h-4 w-4" />
-                <span className="hidden sm:inline">Novo grupo</span>
+                <span className="hidden sm:inline">Nova família</span>
+              </Button>
+            )}
+            {perm.canCreate && (
+              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => openCreate({ intent: 'pick', title: 'Organizar estoque' })}>
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Novo subgrupo ou cor</span>
               </Button>
             )}
             {perm.canCreate && (
@@ -207,6 +213,40 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
         </div>
       </div>
 
+
+      {perm.canCreate && (() => {
+        const skuCounts = new Map<string, number>();
+        for (const product of products) {
+          if (product.group_id) skuCounts.set(product.group_id, (skuCounts.get(product.group_id) || 0) + 1);
+        }
+        const plan = buildStockFamilyReorganizationPlan(groups, skuCounts);
+        if (plan.length === 0) return null;
+        const moves = plan.filter((action) => action.kind === 'move_to_family').length;
+        const creates = plan.filter((action) => action.kind === 'create_family').length;
+        return (
+          <div className="border border-foreground/20 bg-muted/20 px-3 py-3 text-sm sm:px-4">
+            <p className="font-semibold text-foreground">Proposta de reorganização (não aplicada)</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Há {plan.length} ajuste(s) recomendado(s) nos cadastros atuais
+              {creates ? ` · ${creates} família(s) nova(s)` : ''}
+              {moves ? ` · ${moves} subgrupo(s) para mover` : ''}
+              . Nada será movido ou reclassificado sozinho — o setor e o estoque de cada item permanecem como estão até a sua autorização.
+            </p>
+            <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto font-mono text-[11px] text-muted-foreground">
+              {plan.slice(0, 12).map((action, index) => (
+                <li key={index}>
+                  {action.kind === 'create_family' && <>Criar família {action.name}</>}
+                  {action.kind === 'rename_group' && <>Renomear {action.from} → {action.to}</>}
+                  {action.kind === 'move_to_family' && <>Mover {action.name} {action.fromFamily ? `de ${action.fromFamily} ` : ''}para {action.toFamily} (setor {action.sectorStays} se mantém{action.skuCount ? ` · ${action.skuCount} SKUs` : ''})</>}
+                  {action.kind === 'fill_width' && <>Preencher largura de {action.name}: {action.from} → {action.to} mm</>}
+                </li>
+              ))}
+              {plan.length > 12 && <li>… e mais {plan.length - 12}.</li>}
+            </ul>
+          </div>
+        );
+      })()}
+
       {isLoading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">Carregando…</div>
       ) : groups.length === 0 ? (
@@ -214,7 +254,7 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
           icon={FolderOpen}
           title="Nenhum grupo cadastrado"
           description="Crie o primeiro grupo para organizar o estoque por setor e família."
-          action={perm.canCreate ? <Button onClick={() => openCreate({ title: 'Novo Grupo de Material' })} className="gap-2"><Plus className="h-4 w-4" />Novo grupo</Button> : undefined}
+          action={perm.canCreate ? <Button onClick={() => openCreate({ intent: 'pick', title: 'Organizar estoque' })} className="gap-2"><Plus className="h-4 w-4" />Nova família ou subgrupo</Button> : undefined}
         />
       ) : (
         <div>
@@ -251,8 +291,11 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
           initialSector={createCtx.sector}
           initialParentId={createCtx.parentId}
           lockHierarchy={createCtx.lock}
+          asFamily={createCtx.asFamily}
+          intent={createCtx.intent}
           titleText={createCtx.title}
           onCreated={(group, tab) => { setEditTab(tab); setEditGroup(group); }}
+          onPickColorGroup={(group) => { setCreateCtx(null); openAddToGroup(group); }}
         />
       )}
 
@@ -297,6 +340,17 @@ export default function GroupOrganizationPanel({ permPath, extraActions }: Props
           groupName={strapGroup.name}
           color=""
           onCreated={() => setStrapGroup(null)}
+        />
+      )}
+
+      {colorGroup && (
+        <QuickColorVariantDialog
+          open
+          onOpenChange={(o) => { if (!o) setColorGroup(null); }}
+          group={colorGroup}
+          template={recommendVariantTemplate(products.filter((product) => product.group_id === colorGroup.id) as Product[]).product}
+          products={products.filter((product) => product.group_id === colorGroup.id) as Product[]}
+          onCreated={() => setColorGroup(null)}
         />
       )}
 

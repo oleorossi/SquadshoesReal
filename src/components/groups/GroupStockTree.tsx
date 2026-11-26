@@ -9,7 +9,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import DeleteConfirmButton from '@/components/ui/delete-confirm-button';
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { GroupStockRollup } from '@/hooks/useGroupOrganization';
-import { buildGroupMetrics, buildSectorTree, type NodeMetrics } from '@/lib/groupRollup';
+import { buildFamilyTree, buildGroupMetrics, buildSectorTree, type NodeMetrics } from '@/lib/groupRollup';
+import { addColorActionLabel, subgroupTechnicalLabel } from '@/lib/stockGroupKind';
 import { sectorLabel } from '@/lib/categoryFromGroup';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { formatCurrency, formatMoney, formatNumber } from '@/lib/utils';
@@ -193,7 +194,7 @@ function DetailPanel({ group, items, onEditItem, onAddItem, canCreate, selectedP
           onClick={() => onAddItem(group)}
           className={`mt-3 inline-flex items-center gap-1.5 border border-dashed border-foreground/30 px-2.5 py-1.5 text-xs font-semibold text-primary hover:border-primary hover:bg-primary/5 ${FOCUS}`}
         >
-          <Plus className="h-3.5 w-3.5" /> Adicionar material em {group.name}
+          <Plus className="h-3.5 w-3.5" /> {addColorActionLabel(group)} em {group.name}
         </button>
       )}
     </div>
@@ -205,6 +206,8 @@ export default function GroupStockTree(props: Props) {
 
   const { byGroup, bySector } = useMemo(() => buildGroupMetrics(groups, rollups), [groups, rollups]);
   const sectorTree = useMemo(() => buildSectorTree(groups), [groups]);
+  const familyTree = useMemo(() => buildFamilyTree(groups), [groups]);
+  const [viewMode, setViewMode] = useState<'familia' | 'setor'>('familia');
   const itemsByGroup = useMemo(() => {
     const m = new Map<string, ProductLite[]>();
     for (const p of products) {
@@ -262,6 +265,11 @@ export default function GroupStockTree(props: Props) {
             <span className="min-w-0">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="truncate text-sm font-semibold text-foreground">{g.name}</span>
+                {subgroupTechnicalLabel(g) && (
+                  <span className="truncate border border-foreground/15 bg-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
+                    {subgroupTechnicalLabel(g)}
+                  </span>
+                )}
                 <BelowMinBadge count={m.belowMin} />
               </span>
               <span className="mt-1 flex flex-wrap gap-x-3 font-mono text-[9px] uppercase text-muted-foreground md:hidden">
@@ -309,7 +317,7 @@ export default function GroupStockTree(props: Props) {
             {collapsed ? <CaretRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <CaretDown className="h-3.5 w-3.5 shrink-0 text-primary" />}
             {collapsed ? <Folder className="h-4 w-4 shrink-0 text-muted-foreground" /> : <FolderOpen className="h-4 w-4 shrink-0 text-foreground" />}
             <span className="truncate text-[10px] font-bold uppercase tracking-[0.1em] text-foreground">{family.name}</span>
-            <span className="inline-flex h-4 shrink-0 items-center gap-1 border border-foreground/15 bg-background px-1.5 font-mono text-[9px] text-muted-foreground"><Layers className="h-2.5 w-2.5" />{children.length}</span>
+            <span className="inline-flex h-4 shrink-0 items-center gap-1 border border-foreground/15 bg-background px-1.5 font-mono text-[9px] text-muted-foreground"><Layers className="h-2.5 w-2.5" />{children.length} subgrupo{children.length === 1 ? '' : 's'}</span>
             <BelowMinBadge count={m.belowMin} />
           </button>
           <div className="hidden text-right font-mono text-[10px] tabular-nums text-muted-foreground md:block">{m.itemCount}</div>
@@ -371,7 +379,49 @@ export default function GroupStockTree(props: Props) {
     );
   }).filter(Boolean);
 
-  if (sectorBlocks.length === 0 && f) {
+  const familyBlocks = (() => {
+    const visibleFamilies = f
+      ? familyTree.families.filter((entry) => searchMatchesAllTerms(f, entry.family.name) || entry.children.some(leafMatches))
+      : familyTree.families;
+    const visibleLoose = familyTree.looseBySector
+      .map((bucket) => ({
+        ...bucket,
+        leaves: f ? bucket.leaves.filter(leafMatches) : bucket.leaves,
+      }))
+      .filter((bucket) => bucket.leaves.length > 0);
+    if (f && visibleFamilies.length === 0 && visibleLoose.length === 0) return [];
+    return [
+      ...visibleFamilies.map((entry) => familyBlock(entry.family, entry.children)),
+      (visibleLoose.length > 0 || (!f && familyTree.looseBySector.length > 0)) && (
+        <section key="sem-familia" className="border-t-2 border-foreground/70">
+          <div className="grid gap-4 bg-card px-3 py-4 sm:px-5 lg:grid-cols-[minmax(240px,1fr)_minmax(330px,1.25fr)] lg:items-end">
+            <div className="min-w-0">
+              <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-primary">Ainda sem família principal</p>
+              <h3 className="mt-1 font-display text-2xl uppercase leading-none text-foreground sm:text-3xl">Sem família</h3>
+              <p className="mt-2 max-w-xl text-xs text-muted-foreground">Subgrupos soltos. Selecione e use Mover para família, ou aguarde a proposta de reorganização.</p>
+            </div>
+          </div>
+          <div>
+            <div className={`${ROW} hidden border-t border-foreground/30 bg-foreground/[0.035] px-5 py-1.5 font-mono text-[8px] font-semibold uppercase tracking-[0.13em] text-muted-foreground md:grid`}>
+              <span /><span>Subgrupo / cores</span><span className="text-right">Itens</span><span className="text-right">Valor</span><span>Reserva / livre</span><span className="text-right">Ações</span>
+            </div>
+            {visibleLoose.map((bucket) => (
+              <div key={bucket.sector}>
+                <div className="border-t border-foreground/15 bg-muted/20 px-3 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:px-5">
+                  Aplicação: {sectorLabel(bucket.sector)}
+                </div>
+                {bucket.leaves.map((leaf) => leafRow(leaf, 0))}
+              </div>
+            ))}
+          </div>
+        </section>
+      ),
+    ].filter(Boolean);
+  })();
+
+  const treeBlocks = viewMode === 'familia' ? familyBlocks : sectorBlocks;
+
+  if (treeBlocks.length === 0 && f) {
     return (
       <EmptyState
         size="sm"
@@ -390,7 +440,11 @@ export default function GroupStockTree(props: Props) {
           <div>
             <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-primary">Ficha geral · posição atual</p>
             <h2 className="mt-1 font-display text-3xl uppercase leading-none text-foreground sm:text-4xl">Controle de almoxarifado</h2>
-            <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">Setores, famílias e grupos em uma folha contínua para conferência de saldo, reserva e reposição.</p>
+            <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">Família → Subgrupo → Cores. As características técnicas ficam no subgrupo; entre uma cor e outra muda só a cor (e o saldo).</p>
+            <div className="mt-3 inline-flex border border-foreground/20 bg-background p-0.5">
+              <button type="button" onClick={() => setViewMode('familia')} className={`px-2.5 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide ${viewMode === 'familia' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}>Por família</button>
+              <button type="button" onClick={() => setViewMode('setor')} className={`px-2.5 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide ${viewMode === 'setor' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}>Por setor</button>
+            </div>
           </div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-[0.75fr_0.75fr_1.5fr_0.8fr]">
             <DocumentMetric value={String(groups.length)} label="grupos" />
@@ -400,7 +454,7 @@ export default function GroupStockTree(props: Props) {
           </dl>
         </div>
       </header>
-      {sectorBlocks}
+      {treeBlocks}
     </div>
   );
 }
