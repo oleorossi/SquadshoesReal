@@ -210,6 +210,24 @@ export type OpenPoWithSourcePvs = OpenPoCandidate & {
 };
 
 /**
+ * Escolha da OC na Entrada por NF.
+ *
+ * - `undefined` = ainda não tocou no seletor → usa a sugestão.
+ * - `null` = escolheu "Nenhuma — não receber pela OC" (não cair na sugestão).
+ * - `string` = OC explícita.
+ *
+ * `selectedPoId || defaultPo.id` trata os dois primeiros iguais e faz o
+ * seletor voltar sozinho para a OC sugerida.
+ */
+export function resolveEffectivePurchaseOrderId(
+  selection: string | null | undefined,
+  defaultPoId: string | null | undefined,
+): string | null {
+  if (selection === undefined) return defaultPoId ?? null;
+  return selection;
+}
+
+/**
  * Prefere OC ligada aos PVs do contexto (Relatório de Pendência); senão
  * quase-entregue com overlap; senão overlap; senão quase-entregue do fornecedor.
  */

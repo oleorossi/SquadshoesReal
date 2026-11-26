@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { confirmNfEntrada } from '@/lib/nfEntradaConfirm';
+import { confirmNfEntrada, stockCreditQtyFromNfItem } from '@/lib/nfEntradaConfirm';
 import type { ParsedNFe } from '@/lib/nfeParser';
 
 const parsed: ParsedNFe = {
@@ -40,5 +40,29 @@ describe('confirmNfEntrada', () => {
   it('recusa NF sem item selecionado', async () => {
     await expect(confirmNfEntrada({ ...base, includedIndexes: [], purchaseOrderStatus: 'sent', draftConfirmed: false }))
       .rejects.toThrow(/ao menos um item/);
+  });
+});
+
+describe('stockCreditQtyFromNfItem', () => {
+  it('converte CX → kg pelo conversion_rate (não credita caixa como quilo)', () => {
+    expect(stockCreditQtyFromNfItem(2, 'CX', 100, {
+      unit: 'kg',
+      purchase_unit: 'cx',
+      conversion_rate: 25,
+      name: 'ADESIVO',
+    })).toBe(50);
+  });
+
+  it('unidade igual não converte', () => {
+    expect(stockCreditQtyFromNfItem(12, 'MTL', 8, { unit: 'm', name: 'NAPA' })).toBe(12);
+  });
+
+  it('bloqueia quando falta conversão em vez de gravar a qtd da NF crua', () => {
+    expect(() => stockCreditQtyFromNfItem(3, 'RL', 200, {
+      unit: 'm',
+      purchase_unit: 'rl',
+      conversion_rate: 1,
+      name: 'NAPA ROLO',
+    })).toThrow(/Taxa de conversão|não pôde ser convertida|Configure/i);
   });
 });

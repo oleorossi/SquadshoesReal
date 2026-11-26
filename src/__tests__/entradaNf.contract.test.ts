@@ -47,6 +47,21 @@ describe('Entrada por NF · contrato', () => {
     expect(APP).toContain('EntradaNfPage');
   });
 
+  it('Nenhuma no seletor de OC não cai de volta na sugestão', () => {
+    expect(RECEIPT).toContain('resolveEffectivePurchaseOrderId');
+    expect(PAGE).toContain('resolveEffectivePurchaseOrderId');
+    expect(PAGE).toContain('setSelectedPoId(undefined)');
+    expect(PAGE).toMatch(/v === '_none' \? null/);
+    expect(PAGE).not.toMatch(/selectedPoId \|\| defaultPo/);
+  });
+
+  it('entrada avulsa converte unidade da NF antes de creditar estoque', () => {
+    expect(CONFIRM).toContain('stockCreditQtyFromNfItem');
+    expect(CONFIRM).toContain('convertNfToStockUnit');
+    expect(CONFIRM).toContain('NF_CONVERSION_PRODUCT_SELECT');
+    expect(CONFIRM).not.toMatch(/newQty: oldQty \+ Number\(it\.quantity\)/);
+  });
+
   it('reaproveita o casamento e o comando receive, sem SEFAZ', () => {
     expect(PAGE).toContain('parseNFeXML');
     expect(PAGE).toContain('buildNfPoPreviewLines');

@@ -11,6 +11,11 @@ import {
 } from '@/lib/nfPoReceipt';
 import { createProductWithStock } from '@/lib/stockCommand';
 import { adjustStockSafe } from '@/lib/stockAdjustments';
+import {
+  convertNfToStockUnit,
+  NF_CONVERSION_PRODUCT_SELECT,
+  toNfConversionProduct,
+} from '@/lib/nfUnitConversion';
 import { executePurchaseOrderCommand, purchaseOrderLogicalKey } from '@/services/purchaseOrderCommandService';
 
 export type UnmatchedResolution =
@@ -56,6 +61,52 @@ export type ConfirmNfEntradaResult = {
 
 function digits(cnpj: string): string {
   return (cnpj || '').replace(/\D/g, '');
+}
+
+const PRODUCT_CREDIT_SELECT = `id, quantity, name, ${NF_CONVERSION_PRODUCT_SELECT}`;
+
+/** Quantidade a creditar no estoque a partir da linha da NF (mesma regra do XmlImportDialog). */
+export function stockCreditQtyFromNfItem(
+  nfQty: number,
+  nfUnit: string,
+  nfUnitPrice: number,
+  product: unknown,
+): number {
+  const conv = convertNfToStockUnit(nfQty, nfUnit, nfUnitPrice, toNfConversionProduct(product));
+  if (conv.needsConfig) {
+    throw new Error(conv.reason || 'Falta conversão de unidade para lançar no estoque.');
+  }
+  return conv.qty;
+}
+
+async function creditNfItemToStock(opts: {
+  productId: string;
+  item: ParsedNFe['items'][number];
+  invoiceNumber: string;
+  reasonSuffix: string;
+}): Promise<void> {
+  const { data: product, error } = await supabase
+    .from('products')
+    .select(PRODUCT_CREDIT_SELECT)
+    .eq('id', opts.productId)
+    .single();
+  if (error || !product) {
+    throw new Error(`Produto ${opts.item.productName} não encontrado após o cadastro.`);
+  }
+  const addQty = stockCreditQtyFromNfItem(
+    Number(opts.item.quantity),
+    opts.item.unit,
+    opts.item.unitPrice,
+    product,
+  );
+  const oldQty = Number(product.quantity) || 0;
+  const stockResult = await adjustStockSafe({
+    productId: opts.productId,
+    expectedPrevious: oldQty,
+    newQty: oldQty + addQty,
+    reason: `Entrada via NF ${opts.invoiceNumber} — ${opts.reasonSuffix} (${opts.item.productName})`,
+  });
+  if (!stockResult.success) throw new Error(stockResult.errorMessage || 'Falha na entrada avulsa');
 }
 
 export async function confirmNfEntrada(input: ConfirmNfEntradaInput): Promise<ConfirmNfEntradaResult> {
@@ -136,6 +187,21 @@ export async function confirmNfEntrada(input: ConfirmNfEntradaInput): Promise<Co
     indexToProduct.set(idx, created.product_id);
   }
 
+  if (!input.purchaseOrderId && input.creditWithoutPo) {
+    for (const idx of input.includedIndexes) {
+      const productId = indexToProduct.get(idx);
+      if (!productId) continue;
+      const it = input.parsed.items[idx];
+      const { data: product, error } = await supabase
+        .from('products')
+        .select(PRODUCT_CREDIT_SELECT)
+        .eq('id', productId)
+        .single();
+      if (error || !product) throw new Error(`Produto ${it.productName} não encontrado.`);
+      stockCreditQtyFromNfItem(Number(it.quantity), it.unit, it.unitPrice, product);
+    }
+  }
+
   const { data: invoice, error: invErr } = await supabase
     .from('invoices')
     .insert({
@@ -210,20 +276,12 @@ export async function confirmNfEntrada(input: ConfirmNfEntradaInput): Promise<Co
       const productId = indexToProduct.get(idx);
       if (!productId || receivedProductIds.has(productId)) continue;
       const it = input.parsed.items[idx];
-      const { data: product, error } = await supabase
-        .from('products')
-        .select('id, quantity')
-        .eq('id', productId)
-        .single();
-      if (error || !product) throw new Error(`Produto ${it.productName} não encontrado após o cadastro.`);
-      const oldQty = Number(product.quantity) || 0;
-      const stockResult = await adjustStockSafe({
+      await creditNfItemToStock({
         productId,
-        expectedPrevious: oldQty,
-        newQty: oldQty + Number(it.quantity),
-        reason: `Entrada via NF ${input.parsed.invoiceNumber} — item sem linha na OC (${it.productName})`,
+        item: it,
+        invoiceNumber: input.parsed.invoiceNumber,
+        reasonSuffix: 'item sem linha na OC',
       });
-      if (!stockResult.success) throw new Error(stockResult.errorMessage || 'Falha na entrada avulsa');
       stockOnlyCount += 1;
     }
 
@@ -237,20 +295,12 @@ export async function confirmNfEntrada(input: ConfirmNfEntradaInput): Promise<Co
       const productId = indexToProduct.get(idx);
       if (!productId) continue;
       const it = input.parsed.items[idx];
-      const { data: product, error } = await supabase
-        .from('products')
-        .select('id, quantity')
-        .eq('id', productId)
-        .single();
-      if (error || !product) throw new Error(`Produto ${it.productName} não encontrado.`);
-      const oldQty = Number(product.quantity) || 0;
-      const stockResult = await adjustStockSafe({
+      await creditNfItemToStock({
         productId,
-        expectedPrevious: oldQty,
-        newQty: oldQty + Number(it.quantity),
-        reason: `Entrada via NF ${input.parsed.invoiceNumber} — sem OC (${it.productName})`,
+        item: it,
+        invoiceNumber: input.parsed.invoiceNumber,
+        reasonSuffix: 'sem OC',
       });
-      if (!stockResult.success) throw new Error(stockResult.errorMessage || 'Falha na entrada sem OC');
       stockOnlyCount += 1;
     }
     await supabase

@@ -25,6 +25,7 @@ import {
   parseNfProductName,
   pickDefaultPurchaseOrder,
   overlappingOpenPos,
+  resolveEffectivePurchaseOrderId,
   type OpenPoCandidate,
   type OpenPoItem,
   type OpenPoWithSourcePvs,
@@ -104,7 +105,8 @@ export default function EntradaNfPage() {
   const [xmlRaw, setXmlRaw] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
-  const [selectedPoId, setSelectedPoId] = useState<string | null>(null);
+  /** undefined = auto (sugestão); null = Nenhuma; string = OC explícita. */
+  const [selectedPoId, setSelectedPoId] = useState<string | null | undefined>(undefined);
   const [draftConfirmed, setDraftConfirmed] = useState(false);
   const [createSupplier, setCreateSupplier] = useState(true);
   const [resolutions, setResolutions] = useState<Record<number, UnmatchedResolution>>({});
@@ -197,7 +199,7 @@ export default function EntradaNfPage() {
     [overlapping, openOrders, matchedProductIds, todayIso],
   );
 
-  const effectivePoId = selectedPoId || defaultPo?.id || null;
+  const effectivePoId = resolveEffectivePurchaseOrderId(selectedPoId, defaultPo?.id);
   const selectedPo = openOrders.find((o) => o.id === effectivePoId) ?? null;
 
   const previewLines: NfPoPreviewLine[] = useMemo(() => {
@@ -243,7 +245,7 @@ export default function EntradaNfPage() {
         setXmlRaw(xml);
         setParsed(data);
         setExcluded(new Set());
-        setSelectedPoId(null);
+        setSelectedPoId(undefined);
         setDraftConfirmed(false);
         setResolutions({});
         setCreateSupplier(true);
@@ -258,7 +260,7 @@ export default function EntradaNfPage() {
     setParsed(null);
     setXmlRaw('');
     setExcluded(new Set());
-    setSelectedPoId(null);
+    setSelectedPoId(undefined);
     setDraftConfirmed(false);
     setResolutions({});
   };

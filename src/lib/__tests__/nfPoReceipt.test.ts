@@ -12,6 +12,7 @@ import {
   parseNfProductName,
   pickDefaultPurchaseOrder,
   overlappingOpenPos,
+  resolveEffectivePurchaseOrderId,
   RECEIVABLE_PO_STATUSES,
 } from '@/lib/nfPoReceipt';
 
@@ -128,6 +129,21 @@ describe('pickDefaultPurchaseOrder + receipts', () => {
       { item_id: 'ia', quantity: 8, expected_received_quantity: 2 },
     ]);
     expect(buildReceiveReceipts(itemsA, new Set(['cola']))).toEqual([]);
+  });
+});
+
+describe('resolveEffectivePurchaseOrderId', () => {
+  it('sem toque no seletor usa a OC sugerida', () => {
+    expect(resolveEffectivePurchaseOrderId(undefined, 'po-sug')).toBe('po-sug');
+    expect(resolveEffectivePurchaseOrderId(undefined, null)).toBeNull();
+  });
+
+  it('Nenhuma não cai de volta na sugestão', () => {
+    expect(resolveEffectivePurchaseOrderId(null, 'po-sug')).toBeNull();
+  });
+
+  it('OC explícita ganha da sugestão', () => {
+    expect(resolveEffectivePurchaseOrderId('po-b', 'po-sug')).toBe('po-b');
   });
 });
 
