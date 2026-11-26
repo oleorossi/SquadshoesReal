@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -275,7 +276,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
         description: form.description,
         sector: form.sector,
         auto_component_sheet: form.is_artisanal_strap ? false : form.auto_component_sheet,
-        is_artisanal_strap: isFamilyCreation ? false : form.is_artisanal_strap,
+        is_artisanal_strap: form.is_artisanal_strap,
         strap_origin: isFamilyCreation ? null : (form.strap_origin || null),
         dimensions_width: isFamilyCreation ? null : form.dimensions_width,
         dimensions_length: isFamilyCreation ? null : form.dimensions_length,
@@ -322,7 +323,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             {step === 'pick' && (
               <>
                 <p className="text-xs text-muted-foreground">Escolha o que você quer cadastrar. A organização é Família → Subgrupo técnico → Variações de cor.</p>
-                <button type="button" className="w-full border border-foreground/15 bg-background px-3 py-3 text-left hover:border-primary" onClick={() => { setPickedFamily(true); setStep('form'); }}>
+                <button type="button" className="w-full border border-foreground/15 bg-background px-3 py-3 text-left hover:border-primary" onClick={() => { setPickedFamily(true); setForm((f) => ({ ...f, is_artisanal_strap: false, strap_origin: '' as const })); setStep('form'); }}>
                   <span className="block text-sm font-semibold">Nova família principal</span>
                   <span className="mt-1 block text-xs text-muted-foreground">Ex.: Forração, Tiras, Solados. Não recebe cor nem estoque direto.</span>
                 </button>
@@ -339,7 +340,7 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
             {step === 'color' && (
               <>
                 <p className="text-xs text-muted-foreground">Escolha o subgrupo. A nova cor herda largura, origem e unidade dele.</p>
-                <Input value={colorSearch} onChange={(e) => setColorSearch(e.target.value)} placeholder="Buscar subgrupo…" />
+                <SearchInput value={colorSearch} onChange={setColorSearch} placeholder="Buscar subgrupo…" />
                 <div className="max-h-72 space-y-1 overflow-y-auto">
                   {leafGroups
                     .filter((group) => !colorSearch.trim() || group.name.toLowerCase().includes(colorSearch.trim().toLowerCase()))
@@ -635,10 +636,10 @@ export default function GroupCreateDialog({ open, onOpenChange, initialSector, i
 
             {!isFamilyCreation && <div className="space-y-2 rounded-lg border p-3 bg-muted/30">
               <p className="text-sm font-medium text-foreground">Tipo de tira</p>
-              <p className="text-xs text-muted-foreground">As características técnicas ficam no subgrupo. Depois, cada cor só herda esses dados.</p>
+              <p className="text-xs text-muted-foreground">As características técnicas ficam no subgrupo. Depois, cada cor só herda esses dados. Tira comprada pronta (STRASS) fica em Componentes; tira cortada de napa vai em Material Base.</p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <Button type="button" variant={!form.is_artisanal_strap && !form.strap_origin ? 'default' : 'outline'} className="h-auto whitespace-normal py-2 text-xs" onClick={() => setForm((f) => ({ ...f, is_artisanal_strap: false, strap_origin: '' }))}>Não é tira</Button>
-                <Button type="button" variant={form.is_artisanal_strap ? 'default' : 'outline'} className="h-auto whitespace-normal py-2 text-xs" onClick={() => setForm((f) => ({ ...f, is_artisanal_strap: true, strap_origin: f.strap_origin === 'comprar_pronto' || !f.strap_origin ? 'prestador' : f.strap_origin, auto_component_sheet: false }))}>Tira artesanal</Button>
+                <Button id="is-artisanal-strap" type="button" variant={form.is_artisanal_strap ? 'default' : 'outline'} className="h-auto whitespace-normal py-2 text-xs" onClick={() => setForm((f) => ({ ...f, is_artisanal_strap: true, strap_origin: f.strap_origin === 'comprar_pronto' || !f.strap_origin ? 'prestador' : f.strap_origin, auto_component_sheet: false }))}>Tira artesanal — Tira acabada (Hub)</Button>
                 <Button type="button" variant={!form.is_artisanal_strap && form.strap_origin === 'comprar_pronto' ? 'default' : 'outline'} className="h-auto whitespace-normal py-2 text-xs" onClick={() => setForm((f) => ({ ...f, is_artisanal_strap: false, strap_origin: 'comprar_pronto', auto_component_sheet: false }))}>Tira pronta (Strass)</Button>
               </div>
               {form.is_artisanal_strap && (
