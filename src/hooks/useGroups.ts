@@ -87,6 +87,7 @@ export function useAddGroup() {
       auto_component_sheet?: boolean;
       /** Grupo de tira acabada (Hub). Força auto_component_sheet=false no banco. */
       is_artisanal_strap?: boolean;
+      strap_origin?: 'comprar_pronto' | 'fabrica' | 'prestador' | null;
       /** Largura útil do material (mm). O GRUPO é a fonte: o item herda na
        *  criação e só diverge de propósito. Sem ela o dm²/par não vira metro. */
       dimensions_width?: number | null;

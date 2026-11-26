@@ -205,10 +205,10 @@ describe('SaleOrderStrapColorCreateDialog', () => {
     expect(mocks.refetch).toHaveBeenCalledTimes(2);
   });
 
-  it('não oferece cadastro genérico para grupo de tira comprada pronta', async () => {
+  it('não oferece cadastro genérico para grupo de tira artesanal', async () => {
     mocks.group = { ...group, is_artisanal_strap: true };
     mount(<SaleOrderStrapColorCreateDialog open onOpenChange={vi.fn()} context={context} onCreated={vi.fn()} />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Hub de Tiras');
+    expect(await screen.findByRole('alert')).toHaveTextContent('tira artesanal');
     expect(screen.getByRole('button', { name: 'Continuar com este item' })).toBeDisabled();
     expect(mocks.create).not.toHaveBeenCalled();
   });

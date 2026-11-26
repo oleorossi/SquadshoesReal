@@ -13,7 +13,7 @@ export default function Groups() {
       <EditorialPageHeader
         sectionLabel="ESTOQUE · GRUPOS"
         title="Grupos de Estoque"
-        description="Organize o estoque em Setor → Família → Grupo, com saldo, valor e reservas por nível"
+        description="Organize o estoque em Família → Subgrupo técnico → Cores, com saldo, valor e reservas por nível"
       />
       <StrapTypeClassificationPanel />
       <GroupOrganizationPanel permPath="/grupos" />

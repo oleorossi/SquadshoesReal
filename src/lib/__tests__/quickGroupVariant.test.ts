@@ -124,8 +124,10 @@ describe('cadastro rápido de variação do grupo', () => {
     const items = [product()];
     expect(quickVariantEligibility(group(), items)).toBeNull();
     expect(quickVariantEligibility(group({ is_family: true }), items)).toContain('Famílias');
-    expect(quickVariantEligibility(group({ is_artisanal_strap: true }), items)).toContain('Hub de Tiras');
-    expect(quickVariantEligibility(group({ name: 'TIRA CHATA 16MM' }), items)).toContain('Hub de Tiras');
+    expect(quickVariantEligibility(group({ is_artisanal_strap: true }), items)).toContain('tira artesanal');
+    expect(quickVariantEligibility(group({ name: 'TIRA CHATA 16MM', strap_origin: 'prestador', is_artisanal_strap: true }), items)).toContain('tira artesanal');
+    expect(quickVariantEligibility(group({ name: 'TIRA STRASS 6MM', strap_origin: 'comprar_pronto', is_artisanal_strap: false }), items)).toBeNull();
+    expect(quickVariantEligibility(group({ name: 'TIRA CHATA 16MM' }), items)).toBeNull();
     expect(quickVariantEligibility(group(), [product({ name: 'NAPA SOFT - PRETO' }), product({ name: 'NAPA ONÇA - ONÇA', color: 'ONÇA' })])).toContain('mistura materiais');
     expect(quickVariantEligibility(group({ is_color_agnostic: true }), items)).toContain('não usa cor');
     expect(quickVariantEligibility(group({ shared_specs: false, is_bom_color_source: false }), items)).toContain('linha com variantes');

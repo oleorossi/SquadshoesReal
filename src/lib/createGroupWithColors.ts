@@ -95,6 +95,8 @@ export interface CreateGroupWithColorsInput {
     dimensions_length?: number | null;
     dimensions_thickness?: number | null;
     dimensions_unit: string | null;
+    is_artisanal_strap?: boolean;
+    strap_origin?: 'comprar_pronto' | 'fabrica' | 'prestador' | null;
   };
   colors: string[];
   /** Unidade-base de estoque — escolha explícita, nunca inferida. */
@@ -127,7 +129,8 @@ export async function createGroupWithColors(input: CreateGroupWithColorsInput): 
       description: input.group.description,
       sector: input.group.sector,
       auto_component_sheet: input.group.auto_component_sheet,
-      is_artisanal_strap: false,
+      is_artisanal_strap: input.group.is_artisanal_strap === true,
+      strap_origin: input.group.strap_origin || null,
       parent_group_id: input.group.parent_group_id,
       is_family: false,
       is_color_agnostic: false,

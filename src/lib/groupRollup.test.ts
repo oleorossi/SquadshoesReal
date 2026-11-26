@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ProductGroup } from '@/hooks/useGroups';
 import type { GroupStockRollup } from '@/hooks/useGroupOrganization';
 import { organizationSectorOptions } from '@/lib/categoryFromGroup';
-import { buildGroupMetrics, buildSectorTree } from '@/lib/groupRollup';
+import { buildFamilyTree, buildGroupMetrics, buildSectorTree } from '@/lib/groupRollup';
 
 const ORG_SECTORS = organizationSectorOptions().length;
 
@@ -52,5 +52,34 @@ describe('famílias técnicas explícitas', () => {
     expect(metrics.isLeaf('family')).toBe(false);
     expect(metrics.byGroup.get('family')?.itemCount).toBe(0);
     expect(metrics.bySector.get('Cabedal')?.itemCount).toBe(2);
+  });
+});
+
+
+describe('árvore Família → Subgrupo', () => {
+  it('junta subgrupos de setores diferentes na mesma família', () => {
+    const family = group({ id: 'tiras', name: 'TIRAS', is_family: true, sector: 'Material Base' });
+    const overlock = group({ id: 'ov', name: 'TIRA OVERLOCK 5MM', parent_group_id: 'tiras', sector: 'Material Base' });
+    const strass = group({ id: 'st', name: 'TIRA STRASS 6MM', parent_group_id: 'tiras', sector: 'Componente' });
+    const tree = buildFamilyTree([family, overlock, strass]);
+
+    expect(tree.families).toHaveLength(1);
+    expect(tree.families[0].family).toEqual(family);
+    expect(tree.families[0].children.map((child) => child.name)).toEqual([
+      'TIRA OVERLOCK 5MM',
+      'TIRA STRASS 6MM',
+    ]);
+    expect(tree.looseBySector).toEqual([]);
+  });
+
+  it('mantém família vazia e agrupa soltos pelo setor só para leitura', () => {
+    const family = group({ id: 'forro', name: 'FORRAÇÃO', is_family: true, sector: 'Forração da Palmilha' });
+    const soft = group({ id: 'soft', name: 'NAPA SOFT', sector: 'Forração da Palmilha' });
+    const tree = buildFamilyTree([family, soft]);
+
+    expect(tree.families).toEqual([{ family, children: [] }]);
+    expect(tree.looseBySector).toEqual([
+      { sector: 'Forração da Palmilha', leaves: [soft] },
+    ]);
   });
 });

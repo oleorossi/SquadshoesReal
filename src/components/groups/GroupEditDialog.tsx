@@ -631,7 +631,6 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
   const familyOptions = useMemo(
     () => groupsWithDepth.filter((candidate) => {
       if (candidate.id === group.id || descendantIds.has(candidate.id) || candidate.parent_group_id) return false;
-      if (sectorOfGroup(candidate) !== sector) return false;
       const childCount = childrenByParent.get(candidate.id)?.length || 0;
       return candidate.is_family === true || childCount > 0 || candidate.id === parentGroupId;
     }),
@@ -642,7 +641,6 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
     () => availableToLinkAsChild.filter((candidate) => (
       !candidate.parent_group_id
       && candidate.is_family !== true
-      && sectorOfGroup(candidate) === sector
       && (childrenByParent.get(candidate.id)?.length || 0) === 0
     )),
     [availableToLinkAsChild, childrenByParent, sector],
@@ -1388,7 +1386,6 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                           onClick={() => {
                             setSector(option.value);
                             if (option.value === MATERIAL_BASE_SECTOR && !isContainer) setIsArtisanalStrap(true);
-                            if (selectedFamily && sectorOfGroup(selectedFamily) !== option.value) setParentGroupId('');
                           }}
                           className={`min-h-[70px] border px-3 py-2.5 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-foreground/15 bg-background hover:border-foreground/40'}`}
                         >
@@ -1525,7 +1522,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                           <Button type="button" size="sm" variant="outline" disabled={!isFamilyPersisted || sectorChanged} className="h-8 gap-1.5 text-xs"><Link2 className="h-3.5 w-3.5" /> Vincular grupo existente</Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-80 p-0" align="end">
-                          <Command shouldFilter={false} label="Buscar grupo do mesmo setor...">
+                          <Command shouldFilter={false} label="Buscar subgrupo para vincular...">
                             <SearchLocatorStrip
                               label="Localizar grupo"
                               matchedCount={linkableCap.totalMatched}
@@ -1533,7 +1530,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                               hasQuery={!!linkChildSearch.trim()}
                             />
                             <CommandInput
-                              placeholder="Buscar grupo do mesmo setor..."
+                              placeholder="Buscar subgrupo para vincular..."
                               value={linkChildSearch}
                               onValueChange={setLinkChildSearch}
                             />
@@ -1581,7 +1578,7 @@ export default function GroupEditDialog({ open, onOpenChange, group, initialTab 
                   </CardHeader>
                   <CardContent>
                     {childrenGroups.length === 0 ? (
-                      <div className="border border-dashed border-foreground/20 px-3 py-5 text-center text-xs text-muted-foreground">Família vazia. Crie uma largura (mm) ou vincule um grupo/linha do mesmo setor.</div>
+                      <div className="border border-dashed border-foreground/20 px-3 py-5 text-center text-xs text-muted-foreground">Família vazia. Crie um subgrupo técnico ou vincule um grupo já cadastrado. O setor de aplicação de cada subgrupo pode ser diferente.</div>
                     ) : (
                       <div className="divide-y divide-foreground/10 border-y border-foreground/15">
                         {childrenGroups.map((child) => (
