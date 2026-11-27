@@ -35,14 +35,19 @@ import { DiagnosticsFab } from '@/components/DiagnosticsFab';
 import InboundAllocationHost from '@/components/inventory/InboundAllocationHost';
 import { useArtisanalStrapPurchaseOrderApprovalCount } from '@/hooks/useArtisanalStraps';
 
-const QuickActionsFAB = () => {
+export function QuickActionsFAB() {
   const navigate = useNavigate();
   const location = useLocation();
-  if (location.pathname === '/terceirizados' || location.pathname === '/atelie') return null;
   const { canAccessRoute } = useAccessControl();
   const canCreateSales = canAccessRoute('/sales');
   const canManageOrders = canAccessRoute('/orders');
   const canManageStock = canAccessRoute('/estoque');
+
+  // Some no Ateliê para não cobrir a barra de abas. Os hooks acima precisam
+  // rodar ANTES deste return: o FAB permanece montado no AppLayout ao navegar
+  // de outra rota para /terceirizados, e o early-return condicional disparava
+  // React error #300 (Rendered fewer hooks than expected).
+  if (location.pathname === '/terceirizados' || location.pathname === '/atelie') return null;
 
   // O FAB não pode oferecer um atalho que o RouteGuard bloquearia ao clicar.
   if (!canCreateSales && !canManageOrders && !canManageStock) return null;
