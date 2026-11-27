@@ -96,7 +96,7 @@ function maskElements(src) {
     const body = value.replace(/\bfallback\s*=\s*\{[^}]*\}/g, '');
     const comps = [...body.matchAll(/<\s*([A-Z][\w.]*)/g)].map((x) => x[1]);
     const comp = comps.find((c) => !WRAPPERS.has(c)) || comps[0] || 'inline';
-    const isRedirect = /<\s*(Navigate|LegacyRouteRedirect|LegacyInventoryRedirect|PedidosRedirect|RootRedirect)\b/.test(body);
+    const isRedirect = /<\s*(Navigate|LegacyRouteRedirect|LegacyInventoryRedirect|PedidosRedirect|RootRedirect|PlanejamentoToMotorRedirect)\b/.test(body);
     const target = (body.match(/\bto\s*=\s*["'{]?\s*["']?([^"'}\s]+)/) || [])[1] || null;
     out.push(`${m[1]}: "${comp}${isRedirect ? '|redirect' : ''}${target ? '|' + target : ''}"`);
     i = end;
@@ -604,14 +604,15 @@ const ROLES_QUE_VEEM_TUDO = new Set(['admin', 'gerente', 'consulta']);
  * trabalho diário pra busca. Decisão de 30/07/2026 — o limite existe pra
  * evitar catálogo, não pra esconder ferramenta que a pessoa abre todo dia.
  *
- * PCP e Comercial (18/11/2026): o dono pediu o menu inteiro agrupado pelo
- * fluxo da fábrica, com o grupo recolhível. PCP junta ficha, grade e MRP;
- * Comercial junta pedido, cliente e tabela de preço. Cortar no 5º item
- * esconderia tela que ele mandou ficar no setor.
+ * Engenharia (ex-PCP) e Comercial (18/11/2026, reorg 27/11/2026): o dono
+ * pediu o menu inteiro agrupado pelo fluxo da fábrica, com o grupo recolhível.
+ * Engenharia junta fichas, materiais base, solados, silks e tiras; Comercial
+ * junta pedido, cliente e tabela de preço. Cortar no 5º item esconderia tela
+ * que ele mandou ficar no setor.
  */
 const LIMITE_DISPENSADO = new Map([
   ['Produção', 'telas de uso diário do chão de fábrica (dono, 30/08/2026)'],
-  ['PCP', 'ficha, grade e MRP no mesmo setor recolhível (dono, 18/11/2026)'],
+  ['Engenharia', 'fichas, materiais base, solados, silks e tiras no mesmo setor recolhível (dono, 27/11/2026)'],
   ['Comercial', 'pedido, cliente e tabela de preço no mesmo setor (dono, 18/11/2026)'],
 ]);
 const groupOverflow = (() => {

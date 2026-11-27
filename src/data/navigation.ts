@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UsersThree, Briefcase, Ruler, Compass, ShieldCheck, Lightning as Zap, ShoppingBag, Basket, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, CalendarBlank, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock, Storefront, CheckCircle, Notebook, FileArrowUp } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UsersThree, Briefcase, Ruler, Compass, ShieldCheck, Lightning as Zap, ShoppingBag, Basket, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock, Storefront, CheckCircle, Notebook, FileArrowUp } from '@phosphor-icons/react';
 
 /**
  * Superfícies de descoberta.
@@ -82,14 +82,13 @@ export const navigationCatalog: NavigationResource[] = [
   // capacidade, equipe e chaves). As abas entram na busca como ações rápidas
   // (GlobalSearch) com a permissão de /motor — sem destino concedível extra.
   { path: '/motor', label: 'Motor de produção', group: 'Produção', icon: Cpu, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/MotorProducao') },
-  { path: '/producao/sequencia', label: 'Sequência', group: 'Produção', icon: RouteIcon, surfaces: ['command'], preload: () => import('@/pages/ProducaoSequencia') },
-  { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: CalendarBlank, surfaces: ['command'], preload: () => import('@/pages/ProducaoPlanejamento') },
+  // /producao/sequencia, /producao/planejamento e /producao/setores saíram do
+  // catálogo: são só redirect pra /motor?tab=… (não podem aparecer no menu).
   { path: '/producao/corte-lookahead', label: 'Corte', group: 'Produção', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoCorteLookahead') },
   // Mantém o path concedível histórico para não invalidar permissões por item;
   // a rota redireciona imediatamente para a Central em Modo Gestão.
   { path: '/producao/kanban', label: 'Central de Produção', group: 'Produção', icon: Kanban, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoKanban') },
   { path: '/producao/estouro', label: 'Estouro', group: 'Produção', icon: AlertTriangle, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoEstouro') },
-  { path: '/producao/setores', label: 'Setores', group: 'Produção', icon: Factory, surfaces: ['command'] /* configuração global do motor, não entrada diária */, preload: () => import('@/pages/ProducaoSetoresConfig') },
   { path: '/producao/apontamento', label: 'Apontamento', group: 'Produção', icon: ListChecks, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Setores') },
   { path: '/producao/calculadora-grade', label: 'Grade', group: 'Produção', icon: Calculator, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/CalculadoraGrade') },
   { path: '/imprimir-fichas', label: 'Fichas de OP', group: 'Produção', icon: Printer, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PrintWorkSheets') },

@@ -103,8 +103,8 @@ describe('resolveMobileNavMeta', () => {
 
   it('usa o rótulo e o grupo do catálogo', () => {
     expect(resolveMobileNavMeta('/sales')).toEqual({ label: 'Pedidos', group: 'Comercial' });
-    expect(resolveMobileNavMeta('/producao/planejamento')).toEqual({
-      label: 'Planejamento',
+    expect(resolveMobileNavMeta('/motor')).toEqual({
+      label: 'Motor de produção',
       group: 'Produção',
     });
     expect(resolveMobileNavMeta('/terceirizados')).toEqual({
