@@ -5,6 +5,7 @@ import {
   buildGradeSummaryText,
   formatGradeQuantity,
   GRADE_PRINT_WINDOW_FEATURES,
+  gradePrintDeliveryOptions,
 } from '../gradeCalculatorView';
 
 const draft = {
@@ -90,5 +91,20 @@ describe('GRADE_PRINT_WINDOW_FEATURES', () => {
   it('abre a prévia em janela larga, no formato paisagem', () => {
     expect(GRADE_PRINT_WINDOW_FEATURES).toContain('width=1400');
     expect(GRADE_PRINT_WINDOW_FEATURES).toContain('height=900');
+  });
+});
+
+describe('gradePrintDeliveryOptions', () => {
+  it('entrega a impressão sempre em paisagem, com nome estável', () => {
+    expect(gradePrintDeliveryOptions('ROSADO')).toEqual({
+      filename: 'calculadora-grade-rosado',
+      title: 'Calculadora Grade',
+      landscape: true,
+    });
+    expect(gradePrintDeliveryOptions('  ')).toEqual({
+      filename: 'calculadora-grade',
+      title: 'Calculadora Grade',
+      landscape: true,
+    });
   });
 });

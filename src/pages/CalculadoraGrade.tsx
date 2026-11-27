@@ -44,11 +44,13 @@ import {
   sanitizeQuantityMap,
   validateGradeRange,
 } from '@/lib/gradeCalculator';
+import { deliverHtmlDocument } from '@/lib/htmlPrintDelivery';
+import { isIosBrowser } from '@/lib/iosDevice';
 import {
   buildGradePrintHtml,
   buildGradeSummaryText,
   formatGradeQuantity,
-  GRADE_PRINT_WINDOW_FEATURES,
+  gradePrintDeliveryOptions,
 } from '@/lib/gradeCalculatorView';
 
 interface CalculatorDraft {
@@ -155,19 +157,13 @@ export default function CalculadoraGrade() {
     }
   };
 
-  const printSummary = () => {
-    const printWindow = window.open('', '_blank', GRADE_PRINT_WINDOW_FEATURES);
-    if (!printWindow) {
+  const printSummary = async () => {
+    const html = buildGradePrintHtml(draft, calculation);
+    const ok = await deliverHtmlDocument(html, gradePrintDeliveryOptions(draft.model));
+    // No iOS o printHtmlAsPdf já avisa o erro. No restante, a aba pode ter sido bloqueada.
+    if (!ok && !isIosBrowser()) {
       toast.error('Libere as janelas deste site para imprimir.');
-      return;
     }
-    printWindow.document.open();
-    printWindow.document.write(buildGradePrintHtml(draft, calculation));
-    printWindow.document.close();
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 300);
   };
 
   const clearCalculator = () => {

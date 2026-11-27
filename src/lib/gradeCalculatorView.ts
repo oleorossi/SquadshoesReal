@@ -3,6 +3,26 @@ import { escapeHtml } from '@/lib/htmlUtils';
 
 export const GRADE_PRINT_WINDOW_FEATURES = 'width=1400,height=900';
 
+export function gradePrintDeliveryOptions(model = ''): {
+  filename: string;
+  title: string;
+  landscape: true;
+} {
+  const slug = model
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return {
+    filename: slug ? `calculadora-grade-${slug}` : 'calculadora-grade',
+    title: 'Calculadora Grade',
+    landscape: true,
+  };
+}
+
 export function formatGradeQuantity(value: number): string {
   return value.toLocaleString('pt-BR');
 }
