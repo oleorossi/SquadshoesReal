@@ -52,7 +52,20 @@ import {
   registeredBaseMaterialColorsForGroup,
 } from '@/lib/officialStrapColors';
 import { isPurchasedReadyStrap } from '@/lib/strapIdentity';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { StrapIdentityTrail } from './StrapIdentityTrail';
+
+interface UntypedQueryResult {
+  data: unknown;
+  error: unknown;
+}
+
+interface UntypedSupabaseClient {
+  rpc: (name: string, params?: Record<string, unknown>) => PromiseLike<UntypedQueryResult>;
+}
+
+const db = supabase as unknown as UntypedSupabaseClient;
 
 export type ArtisanalStrapEditorMode = 'create' | 'edit' | 'review';
 export type ArtisanalStrapEditorOrigin =
@@ -437,11 +450,31 @@ export function ArtisanalStrapEditor({
     .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
   const creatingFinishedProduct = form.identityBasis === 'finished_product_group'
     && !form.finishedProductId;
+  // Napa-base nunca entra em "comprado pronto" — forçava cor canônica no
+  // cadastro de medida. Critério: flag false, nome NAPA*, ou candidata a
+  // napa-base SEM ser família de tira. Grupo de tira sem flag (legado) fica.
+  const isNapaMaterialGroup = (group: { id: string; name: string; is_artisanal_strap?: boolean | null }) => {
+    if (group.is_artisanal_strap === true) return false;
+    if (group.is_artisanal_strap === false) return true;
+    if (/^napa\b/i.test(group.name || '')) return true;
+    return napaBaseGroups.some((napa) => napa.id === group.id)
+      && !/^tira\b/i.test(group.name || '');
+  };
   const finishedIdentityGroups = catalog.groups
-    .filter((group) => group.id === form.identityGroupId || catalog.products.some((product) => (
-      product.group_id === group.id && product.active !== false && product.unit === 'm'
-    )))
+    .filter((group) => {
+      if (group.id === form.identityGroupId) return !isNapaMaterialGroup(group);
+      if (isNapaMaterialGroup(group)) return false;
+      return catalog.products.some((product) => (
+        product.group_id === group.id && product.active !== false && product.unit === 'm'
+      ));
+    })
     .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
+  const inheritedBaseColors = form.identityBasis === 'reference_base'
+    ? registeredBaseMaterialColorsForGroup(catalog, form.baseGroupId)
+    : [];
+  const prestadorInheritsColors = form.identityBasis === 'reference_base'
+    && form.internalProductionEnabled
+    && !variant;
   const currentRecipe = catalog.recipes.find((item) => item.id === form.recipeId);
   const widthProfile = catalog.width_profiles
     .filter((item) => item.base_group_id === form.baseGroupId && item.status === 'approved')
@@ -505,27 +538,40 @@ export function ArtisanalStrapEditor({
     if (form.identityBasis === 'finished_product_group' && !form.identityGroupId) {
       return 'Selecione o grupo próprio da tira comprada pronta.';
     }
-    // Cor derivada (produto com mapeamento): o campo está bloqueado — nunca
-    // peça "Selecione a cor canônica" nesse estado. Sem produto / sem mapeamento
-    // a cor está liberada e a mensagem abaixo vale.
-    if (purchasedColorIsDerived && !form.colorId) {
-      return finishedProductColorLabel
-        ? `A cor "${finishedProductColorLabel}" cadastrada no produto acabado não corresponde a nenhuma cor canônica nem a um alias aprovado. Cadastre essa identidade de cor antes de salvar.`
-        : 'O produto acabado selecionado não tem cor cadastrada, então a cor canônica não pode ser derivada. Informe a cor do produto no Estoque antes de salvar.';
+    // Prestador novo: a cor vem da napa (herdada). Não exige seletor — o writer
+    // do PV materializa a variante na cor do pedido. Edição de variante já
+    // existente continua exigindo a cor gravada.
+    if (!prestadorInheritsColors) {
+      // Cor derivada (produto com mapeamento): o campo está bloqueado — nunca
+      // peça "Selecione a cor canônica" nesse estado. Sem produto / sem mapeamento
+      // a cor está liberada e a mensagem abaixo vale.
+      if (purchasedColorIsDerived && !form.colorId) {
+        return finishedProductColorLabel
+          ? `A cor "${finishedProductColorLabel}" cadastrada no produto acabado não corresponde a nenhuma cor canônica nem a um alias aprovado. Cadastre essa identidade de cor antes de salvar.`
+          : 'O produto acabado selecionado não tem cor cadastrada, então a cor canônica não pode ser derivada. Informe a cor do produto no Estoque antes de salvar.';
+      }
+      if (!form.colorId) {
+        return creatingFinishedProduct
+          ? 'Selecione a cor canônica — ela será gravada no produto acabado novo.'
+          : form.identityBasis === 'finished_product_group' && form.finishedProductId
+            ? 'Selecione a cor canônica do produto acabado (ainda sem cor mapeada no estoque).'
+            : 'Selecione a cor canônica.';
+      }
+      if (!selectedColorIsAvailable) {
+        return form.identityBasis === 'finished_product_group'
+          ? creatingFinishedProduct || !finishedProductDerivedColor
+            ? 'A cor selecionada precisa estar ativa no catálogo canônico.'
+            : 'A cor selecionada não possui produto ativo no grupo acabado.'
+          : 'A cor selecionada não está cadastrada em um produto ativo desta napa-base.';
+      }
+    } else if (form.baseGroupId && inheritedBaseColors.length === 0) {
+      return 'A napa-base ainda não tem cores ativas no estoque. Cadastre as cores da napa — a tira herda delas.';
     }
-    if (!form.colorId) {
-      return creatingFinishedProduct
-        ? 'Selecione a cor canônica — ela será gravada no produto acabado novo.'
-        : form.identityBasis === 'finished_product_group' && form.finishedProductId
-          ? 'Selecione a cor canônica do produto acabado (ainda sem cor mapeada no estoque).'
-          : 'Selecione a cor canônica.';
-    }
-    if (!selectedColorIsAvailable) {
-      return form.identityBasis === 'finished_product_group'
-        ? creatingFinishedProduct || !finishedProductDerivedColor
-          ? 'A cor selecionada precisa estar ativa no catálogo canônico.'
-          : 'A cor selecionada não possui produto ativo no grupo acabado.'
-        : 'A cor selecionada não está cadastrada em um produto ativo desta napa-base.';
+    if (form.identityBasis === 'finished_product_group' && form.identityGroupId) {
+      const finishedGroup = catalog.groups.find((item) => item.id === form.identityGroupId);
+      if (finishedGroup && isNapaMaterialGroup(finishedGroup)) {
+        return 'Napa não é produto comprado pronto. Mude para Prestador e escolha a napa em Material-base.';
+      }
     }
     if (purchasedReady && form.internalProductionEnabled) {
       return 'Tira identificada pelo grupo acabado não pode ter origem Prestador.';
@@ -536,7 +582,10 @@ export function ArtisanalStrapEditor({
     )) {
       return 'A revisão nominal exige exatamente o produto e o grupo informados no diagnóstico.';
     }
-    if (!form.finishedProductId && (!form.productName.trim() || !form.sku.trim())) {
+    // Prestador novo sem cor: não cria SKU aqui — variantes nascem na cor do PV.
+    if (!prestadorInheritsColors
+      && !form.finishedProductId
+      && (!form.productName.trim() || !form.sku.trim())) {
       return form.identityBasis === 'finished_product_group'
         ? 'Selecione um produto do grupo ou informe nome e SKU para criar o acabado.'
         : 'Informe nome e SKU inequívocos para o produto acabado.';
@@ -555,7 +604,11 @@ export function ArtisanalStrapEditor({
     if (purchasedReady && (!form.purchaseEnabled || form.includeRecipe)) {
       return 'Tira comprada pronta exige compra habilitada e nenhuma receita interna.';
     }
-    if (effectiveReplenishmentMode === 'internal' && !form.recipeId) {
+    // Prestador novo (cores herdadas) cadastra tipo/medida aqui; o rendimento
+    // fica na janela "Tipo, medida e rendimento" — não exige recipeId.
+    if (!prestadorInheritsColors
+      && effectiveReplenishmentMode === 'internal'
+      && !form.recipeId) {
       return 'Sem conversão cadastrada (aba Receitas) nem compra pronta habilitada, a tira não tem como ser abastecida.';
     }
     if (form.purchaseEnabled) {
@@ -573,7 +626,10 @@ export function ArtisanalStrapEditor({
       }
       if (form.preparationDays < 0) return 'Os dias de preparo não podem ser negativos.';
     }
-    if (!form.reason.trim()) return 'Informe o motivo para a trilha de auditoria.';
+    // Prestador novo sem variante: motivo opcional (não há bundle de SKU).
+    if (!prestadorInheritsColors && !form.reason.trim()) {
+      return 'Informe o motivo para a trilha de auditoria.';
+    }
     return null;
   };
 
@@ -582,6 +638,58 @@ export function ArtisanalStrapEditor({
     if (error) {
       setValidationError(error);
       document.getElementById('strap-editor-reason')?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+
+    // Prestador novo: grava tipo/medida + origem/MO. Sem SKU por cor — o PV
+    // materializa a variante na cor da napa do pedido.
+    if (prestadorInheritsColors) {
+      try {
+        let typeId = form.typeId;
+        if (!typeId) {
+          const typeResult = await db.rpc('save_artisanal_strap_type', {
+            p_name: form.typeName.trim(),
+            p_id: null,
+            p_active: true,
+            p_reason: form.reason.trim() || 'Hub: tipo Prestador (cores herdadas)',
+          });
+          if (typeResult.error) throw typeResult.error;
+          typeId = String(typeResult.data ?? '');
+          if (!typeId) throw new Error('Não foi possível criar o tipo de tira.');
+        }
+
+        let measureId = form.measureId;
+        if (!measureId) {
+          const measureResult = await db.rpc('save_artisanal_strap_measure', {
+            p_strap_type_id: typeId,
+            p_display_name: form.measureName.trim(),
+            p_finished_width_mm: form.finishedWidthMm,
+            p_id: null,
+            p_active: true,
+            p_reason: form.reason.trim() || 'Hub: medida Prestador (cores herdadas)',
+          });
+          if (measureResult.error) throw measureResult.error;
+          measureId = String(measureResult.data ?? '');
+          if (!measureId) throw new Error('Não foi possível criar a medida.');
+        }
+
+        await saveArtisanalStrapMeasureHubFields(
+          measureId,
+          {
+            origemPadrao: form.origemPadrao,
+            precoArtesanalPerM: form.precoArtesanalPerM > 0 ? form.precoArtesanalPerM : null,
+            precoPrestadorPerM: form.precoPrestadorPerM > 0 ? form.precoPrestadorPerM : null,
+          },
+          form.reason.trim() || 'Cadastro Prestador — cores herdadas da napa',
+        );
+        void queryClient.invalidateQueries({ queryKey: ['artisanal-strap-catalog'] });
+        toast.success(
+          `Medida salva. ${inheritedBaseColors.length} cor(es) herdada(s) de ${selectedBase?.name || 'napa'} — sem cadastrar cor aqui.`,
+        );
+        onOpenChange(false);
+      } catch (saveError: unknown) {
+        setValidationError(describePostgrestError(saveError));
+      }
       return;
     }
 
@@ -747,9 +855,15 @@ export function ArtisanalStrapEditor({
                     value={form.identityBasis === 'reference_base' && form.internalProductionEnabled
                       ? 'internal'
                       : 'buy_ready'}
-                    onValueChange={(value) => setIdentityBasis(
-                      value === 'internal' ? 'reference_base' : 'finished_product_group',
-                    )}
+                    onValueChange={(value) => {
+                      const nextBasis = value === 'internal' ? 'reference_base' : 'finished_product_group';
+                      setIdentityBasis(nextBasis);
+                      if (nextBasis === 'reference_base') {
+                        setField('origemPadrao', 'sempre_fabrica');
+                      } else if (form.origemPadrao === 'sempre_fabrica') {
+                        setField('origemPadrao', 'sempre_sku_acabado');
+                      }
+                    }}
                     disabled={readOnly || identityLocked || exactBuyReadyProductPrefill}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -835,7 +949,17 @@ export function ArtisanalStrapEditor({
                   <Label>Origem padrão *</Label>
                   <Select
                     value={hubOrigemPadraoChoice(form.origemPadrao)}
-                    onValueChange={(value) => setField('origemPadrao', normalizeStrapOrigemPadrao(value))}
+                    onValueChange={(value) => {
+                      const next = normalizeStrapOrigemPadrao(value);
+                      setField('origemPadrao', next);
+                      // Origem Prestador ⇒ identidade napa-base (cores herdadas).
+                      // Origem Comprar pronto ⇒ grupo acabado (cor do SKU).
+                      if (next === 'sempre_fabrica' && form.identityBasis === 'finished_product_group') {
+                        setIdentityBasis('reference_base');
+                      } else if (next === 'sempre_sku_acabado' && form.identityBasis === 'reference_base') {
+                        setIdentityBasis('finished_product_group');
+                      }
+                    }}
                     disabled={readOnly}
                   >
                     <SelectTrigger aria-label="Origem padrão"><SelectValue /></SelectTrigger>
@@ -925,6 +1049,31 @@ export function ArtisanalStrapEditor({
                   </div>
                 )}
 
+                {prestadorInheritsColors ? (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label>Cores herdadas do material</Label>
+                    {!form.baseGroupId ? (
+                      <p className="text-xs text-muted-foreground">
+                        Escolha a napa-base acima — as cores ativas dela definem a tira. Não há seletor de cor neste cadastro.
+                      </p>
+                    ) : inheritedBaseColors.length === 0 ? (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Nenhum produto ativo desta napa-base possui cor cadastrada. Cadastre as cores em Estoque.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap gap-1.5">
+                          {inheritedBaseColors.map((color) => (
+                            <Badge key={color.id} variant="secondary">{color.name}</Badge>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Somente leitura. No pedido, a cor da napa define a tira — sem cadastrar cor por medida.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                ) : (
                 <div className="space-y-1.5">
                   <Label>Cor canônica *</Label>
                   <Select
@@ -1013,11 +1162,13 @@ export function ArtisanalStrapEditor({
                     </Alert>
                   )}
                 </div>
+                )}
               </div>
             </section>
 
             <Separator />
 
+            {!prestadorInheritsColors && (
             <section className="space-y-3" aria-labelledby="strap-editor-product">
               <div className="flex items-center gap-2">
                 <Package className="h-4 w-4 text-primary" />
@@ -1113,6 +1264,15 @@ export function ArtisanalStrapEditor({
                 </div>
               </div>
             </section>
+            )}
+
+            {prestadorInheritsColors && (
+              <div className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
+                Prestador não cria SKU por cor nesta janela. Cadastre o rendimento em
+                {' '}<span className="font-semibold text-foreground">Tipo, medida e rendimento</span>
+                ; as cores seguem a napa escolhida no pedido.
+              </div>
+            )}
 
             <Separator />
 

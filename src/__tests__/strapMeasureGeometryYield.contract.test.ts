@@ -38,23 +38,25 @@ describe('strap measure geometry yield (Hub Configuração)', () => {
     expect(hook).toContain("rpc('list_strap_measure_yield_board'");
   });
 
-  it('janela de preenchimento é wizard 2 passos: rendimento + cores (= variante Hub)', () => {
+  it('janela de preenchimento grava só rendimento — cores herdadas da napa', () => {
     const fill = read('src/components/artisanal-straps/MeasureGeometryFillSheet.tsx');
     const ensure = read('src/lib/ensureStrapMeasureStockGroup.ts');
     const bindMig = read('supabase/migrations/20270101044200_bind-strap-finished-product-group.sql');
 
     expect(fill).toContain('Salvar rendimento');
-    expect(fill).toContain('Concluir cores');
+    expect(fill).toContain('As cores saem do material');
     expect(fill).toContain('Napas que recebem este rendimento');
     expect(fill).toContain('useSetStrapMeasureGeometryYield');
     expect(fill).toContain('Sugestão teórica');
     expect(fill).toContain('DEFAULT_STRAP_NAPA_GEOMETRY');
     expect(fill).toContain('ensureStrapMeasureStockGroup');
-    expect(fill).toContain('save_artisanal_strap_catalog_bundle');
-    expect(fill).toContain('bind_strap_finished_product_group');
-    expect(fill).toContain("identity_basis: 'reference_base'");
+    // Não força passo de cor / SKU por cor no cadastro da medida.
+    expect(fill).not.toContain('Concluir cores');
+    expect(fill).not.toContain('Escolha ao menos uma cor canônica');
+    expect(fill).not.toContain('save_artisanal_strap_catalog_bundle');
     expect(ensure).toContain('strapStockGroupName');
     expect(ensure).toContain('strap_hub_measure_group_map');
+    // Bind de SKU×cor permanece disponível para Comprar pronto / atalhos, não no wizard.
     expect(bindMig).toContain('bind_strap_finished_product_group');
 
     // Conversão por napa fica só no caminho legado (legacyRecipeId).

@@ -41,8 +41,11 @@ describe('conversão de tiras independente de cor', () => {
     expect(conversionEditor).not.toContain('finishedProductId');
   });
 
-  it('mantém a cor no estoque e impede o editor de variante de regravar a receita', () => {
+  it('mantém a cor no estoque comprado pronto e herda cores no Prestador', () => {
     expect(stockEditor).toContain('Cor canônica *');
+    expect(stockEditor).toContain('Cores herdadas do material');
+    expect(stockEditor).toContain('prestadorInheritsColors');
+    expect(stockEditor).toContain('isNapaMaterialGroup');
     expect(stockEditor).toContain('recipe: undefined');
     expect(stockEditor).toContain('use a aba Receitas');
   });
