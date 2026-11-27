@@ -29,7 +29,7 @@ const EXTRA_ALIASES: Record<string, string[]> = {
   '/producao/kanban': ['modo gestão', 'kanban', 'gestão', 'central de produção'],
   '/producao/estouro': ['estouro de produção'],
   '/producao/calculadora-grade': ['calculadora grade', 'calculadora de grade'],
-  '/imprimir-fichas': ['imprimir fichas', 'fichas de operador'],
+  '/imprimir-fichas': ['imprimir fichas', 'fichas de operador', 'cartão do montador', 'cartao do montador', 'cartãozinho'],
   '/ajuste-estoque': ['ajustes', 'ajuste de estoque'],
   '/estoque/qualidade': ['qualidade de estoque'],
   '/purchase-orders': ['ordens de compra', 'ordem de compra', 'OC'],

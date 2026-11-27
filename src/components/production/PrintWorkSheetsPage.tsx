@@ -7,11 +7,12 @@ import { toast } from 'sonner';
 import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle } from '@phosphor-icons/react';
+import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle, QrCode } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { PalmilhaUnifiedWorkSheet } from '@/components/production/PalmilhaUnifiedWorkSheet';
 import { CartaoFisico } from '@/components/production/CartaoFisico';
+import { CartaoMontador } from '@/components/production/CartaoMontador';
 import { CartaoCaixaTransporte } from '@/components/production/CartaoCaixaTransporte';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import { listAviamentoHeroEligibleGroups } from '@/components/production/worksheet/aviamentoHeroPhoto';
@@ -46,6 +47,8 @@ import {
   isCaixaTransporteSector,
 } from '@/lib/caixaTransporteConfig';
 import { clampPageRange } from '@/lib/printPageRange';
+import { chunkCartaoMontadorPages, type FichaCartaoRow } from '@/lib/fichaCartoes';
+import { useEnsureFichaCartoes } from '@/hooks/useEnsureFichaCartoes';
 import type { SectorAlert } from '@/components/production/worksheet/SectorAlerts';
 import { SolagemWorkSheet, type SoleColorBand } from '@/components/production/SolagemWorkSheet';
 import { ExpedicaoWorkSheet, type ExpedicaoCustomerGroup, type ExpedicaoOrder } from '@/components/production/ExpedicaoWorkSheet';
@@ -702,6 +705,8 @@ interface PrintWorkSheetsPageProps {
   /** Abre já no modo CARTÃO (atalho "Cartões de lote" da tela de seleção).
    *  O modo é de VISUALIZAÇÃO — o preview mostra os cartões antes de imprimir. */
   initialCartao?: boolean;
+  /** Abre já no formato Cartão do Montador (Palmilha, código único persistido). */
+  initialCartaoMontador?: boolean;
 }
 
 // 'Corte Cabedal' adicionado em 2026-05-12 como 3ª sub-etapa de Corte
@@ -976,7 +981,7 @@ const PRINT_OWNED_QUERY_KEY_ROOTS = new Set<string>([
   'sole_group_packaging_v3',
 ]);
 
-const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: PrintWorkSheetsPageProps) => {
+const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, initialCartaoMontador }: PrintWorkSheetsPageProps) => {
   useWarmPdfRenderer();
   const coarsePointer = useIsCoarsePointer();
   // Fluxo unificado (2026-05-18): chips toggleáveis com state interno —
@@ -1001,13 +1006,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   // Modo FARDO (spec cartao-fisico-corrugado): 1 cartão por corrugado
   // cheio (12/15/18) por OP, nos 3 setores do fluxo cabedal
   // (Corte Cabedal · Costura Cabedal · Aviamento).
-  const [cartao, setCartao] = useState(!!initialCartao);
+  const [cartao, setCartao] = useState(!!initialCartao && !initialCartaoMontador);
   // Modo CAIXA DE TRANSPORTE (spec cartao-caixa-transporte): mutuamente
   // exclusivo com A4 e Cartão físico — um setor de caixa por vez.
   const [caixaSector, setCaixaSector] = useState<CaixaTransporteSector | null>(null);
-  const isCaixa = caixaSector != null;
-  const isCartao = cartao && !isCaixa;
-  const isA4 = !cartao && !isCaixa;
+  const [cartaoMontador, setCartaoMontador] = useState(!!initialCartaoMontador);
+  const isCartaoMontador = cartaoMontador && !cartao && caixaSector == null;
+  const isCaixa = caixaSector != null && !isCartaoMontador;
+  const isCartao = cartao && !isCaixa && !isCartaoMontador;
+  const isA4 = !cartao && !isCaixa && !isCartaoMontador;
 
   // Faixa De/Até de folhas físicas (1-based). `pageTo === null` = Todas.
   const [pageFrom, setPageFrom] = useState(1);
@@ -1160,12 +1167,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const setFormatA4 = () => {
     setCartao(false);
     setCaixaSector(null);
+    setCartaoMontador(false);
     resetPageRange();
     setActiveSectors(new Set(DEFAULT_A4_SECTORS));
   };
   const setFormatFardo = () => {
     setCartao(true);
     setCaixaSector(null);
+    setCartaoMontador(false);
     resetPageRange();
     setActiveSectors((prev) => {
       const next = new Set<string>();
@@ -1178,8 +1187,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const setFormatCaixa = (sector: CaixaTransporteSector = 'Palmilha') => {
     setCaixaSector(sector);
     setCartao(false);
+    setCartaoMontador(false);
     resetPageRange();
     setActiveSectors(new Set([sector]));
+  };
+  const setFormatMontador = () => {
+    setCartao(false);
+    setCaixaSector(null);
+    setCartaoMontador(true);
+    resetPageRange();
+    setActiveSectors(new Set(['Palmilha']));
   };
   // Aliases legados usados por atalhos/handlers internos.
   const setCartaoMode = (on: boolean) => {
@@ -3744,12 +3761,53 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     [cartaoCaixaCards],
   );
 
+  // ── Cartão do Montador: códigos persistidos na RPC idempotente ────────────
+  const montadorOrderIds = useMemo(
+    () => printOrders.map((order: { id?: string; op_id?: string }) => String(order.id || order.op_id || '')).filter(Boolean),
+    [printOrders],
+  );
+  const {
+    data: fichaCartoesRows = [],
+    isLoading: fichaCartoesLoading,
+    isError: fichaCartoesError,
+    error: fichaCartoesErrorObj,
+    refetch: refetchFichaCartoes,
+  } = useEnsureFichaCartoes(montadorOrderIds, isCartaoMontador);
+
+  const cartaoMontadorCards = useMemo(() => {
+    if (!isCartaoMontador) return [];
+    const metaById = new Map<string, (typeof printOrders)[number]>();
+    for (const order of printOrders) {
+      const id = String(order.id || order.op_id || '');
+      if (id) metaById.set(id, order);
+    }
+    return (fichaCartoesRows as FichaCartaoRow[]).map((row) => {
+      const order = metaById.get(row.order_id);
+      const pv = row.sales_order_number || order?.sale_order_number || '';
+      return {
+        ...row,
+        opNumber: row.op_number || order?.op_number || '',
+        pvLabel: pv || undefined,
+        clientName: (order?.client_name || (pv ? clientNameByPv.get(pv) : '') || '') || undefined,
+        referenceLabel: [order?.reference_code, order?.reference_name].filter(Boolean)[0] || undefined,
+        color: order?.color || undefined,
+      };
+    });
+  }, [isCartaoMontador, fichaCartoesRows, printOrders, clientNameByPv]);
+
+  const cartaoMontadorPages = useMemo(
+    () => chunkCartaoMontadorPages(cartaoMontadorCards),
+    [cartaoMontadorCards],
+  );
+
   // Total de folhas físicas do maço (cartão/caixa = wrappers; A4 = nós .pagi-page).
   const documentPageTotal = isCaixa
     ? cartaoCaixaPages.length
     : isCartao
       ? cartaoFisicoPages.length
-      : a4PageTotal;
+      : isCartaoMontador
+        ? cartaoMontadorPages.length
+        : a4PageTotal;
   const pageRange = useMemo(
     () => clampPageRange(
       pageFrom,
@@ -3766,6 +3824,10 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const cartaoCaixaPagesInRange = useMemo(
     () => cartaoCaixaPages.slice(pageRange.from - 1, pageRange.to),
     [cartaoCaixaPages, pageRange.from, pageRange.to],
+  );
+  const cartaoMontadorPagesInRange = useMemo(
+    () => cartaoMontadorPages.slice(pageRange.from - 1, pageRange.to),
+    [cartaoMontadorPages, pageRange.from, pageRange.to],
   );
 
   // Reset De/Até → Todas ao mudar setores (modo já reseta em setCartaoMode).
@@ -3823,6 +3885,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const sheetCount = useMemo(() => {
     if (isCaixa) return cartaoCaixaCards.length;
     if (isCartao) return cartaoFisicoCards.length;
+    if (isCartaoMontador) return cartaoMontadorCards.length;
     let total = 0;
     if (activePalmilhaMode && (silkMontageGroups || []).length > 0) total += 1;
     if (activeSectors.has('Corte Palmilha') && palmilhaGroups.length > 0) total += 1;
@@ -3869,7 +3932,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
     // das deps de propósito (mesmo padrão dos memos vizinhos); os dados que
     // elas leem chegam via silkMontageGroups/upperSectorGroups/groupedWorksheets.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCaixa, isCartao, cartaoCaixaCards, cartaoFisicoCards, activeSectors, activePalmilhaMode, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, costuraCabedalGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportBundle]);
+  }, [isCaixa, isCartao, isCartaoMontador, cartaoCaixaCards, cartaoFisicoCards, cartaoMontadorCards, activeSectors, activePalmilhaMode, palmilhaGroups, solagemData, silkMontageGroups, upperSectorGroups, costuraCabedalGroups, aviamentoGroups, groupedWorksheets, acabamentoOrders.length, expedicaoGroups, reportBundle]);
 
   const today = new Date().toLocaleDateString('pt-BR');
   const printPairCount = printOrders.reduce((total, order) => total + (Number(order.total_pairs) || 0), 0);
@@ -3877,35 +3940,46 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
   const hasAmbiguousConsumptionRouting = ambiguousConsumptionMaterials.length > 0;
   // Cartão físico / caixa não usam consumo de materiais — não esperam nem
   // bloqueiam por consumptionLoading / roteamento ambíguo.
-  const skipConsumptionGate = isCartao || isCaixa;
+  const skipConsumptionGate = isCartao || isCaixa || isCartaoMontador;
   const printBlocked = activeSectors.size === 0
     || sheetCount === 0
     || initialQueriesLoading
+    || (isCartaoMontador && (fichaCartoesLoading || fichaCartoesError))
     || (!skipConsumptionGate && consumptionLoading)
     || (skipConsumptionGate ? failedQueries > 0 : failedPrintQueryCount > 0)
     || (!skipConsumptionGate && hasAmbiguousConsumptionRouting);
-  const printBlockedTitle = (!skipConsumptionGate && consumptionLoading)
-    ? 'O consumo dos materiais ainda está sendo calculado'
-    : (skipConsumptionGate ? failedQueries > 0 : failedPrintQueryCount > 0)
-      ? 'Consultas de dados falharam — recarregue a página antes de imprimir'
-      : (!skipConsumptionGate && hasAmbiguousConsumptionRouting)
-        ? 'Há materiais com mais de um setor configurado — corrija a ficha técnica antes de imprimir'
-        : undefined;
+  const printBlockedTitle = (isCartaoMontador && fichaCartoesLoading)
+    ? 'Gerando os códigos únicos dos cartões…'
+    : (isCartaoMontador && fichaCartoesError)
+      ? (fichaCartoesErrorObj instanceof Error
+        ? fichaCartoesErrorObj.message
+        : 'Não foi possível gerar os códigos dos cartões. Tente de novo.')
+    : (!skipConsumptionGate && consumptionLoading)
+      ? 'O consumo dos materiais ainda está sendo calculado'
+      : (skipConsumptionGate ? failedQueries > 0 : failedPrintQueryCount > 0)
+        ? 'Consultas de dados falharam — recarregue a página antes de imprimir'
+        : (!skipConsumptionGate && hasAmbiguousConsumptionRouting)
+          ? 'Há materiais com mais de um setor configurado — corrija a ficha técnica antes de imprimir'
+          : undefined;
 
-  const formatModeKey = isCaixa ? `cx-${caixaSector}` : isCartao ? 'c' : 'a4';
+  const formatModeKey = isCaixa ? `cx-${caixaSector}` : isCartao ? 'c' : isCartaoMontador ? 'm' : 'a4';
   const headerTitle = isCaixa
     ? `Caixa ${caixaSector || 'Palmilha'}`
     : isCartao
       ? 'Fardo'
-      : 'Fichas de operador';
+      : isCartaoMontador
+        ? 'Cartão do Montador'
+        : 'Fichas de operador';
   const headerSubtitle = isCaixa
     ? 'Caixa de transporte por OP — até 6 cartões por A4 paisagem (parcial incluso).'
     : isCartao
       ? (fardoRemainderPairs > 0
         ? `Um cartão por corrugado cheio (12/15/18), por OP. ${fardoRemainderPairs.toLocaleString('pt-BR')} par${fardoRemainderPairs === 1 ? '' : 'es'} de sobra sem cartão.`
         : 'Um cartão por corrugado cheio (12/15/18), por OP — acompanha o fardo na saída do setor.')
-      : 'Revise a rota e o conteúdo antes de emitir o arquivo.';
-  const countLabel = (isCartao || isCaixa) ? 'CARTÕES' : 'FICHAS';
+      : isCartaoMontador
+        ? 'Um cartão por ficha cheia (12/15/18) e um cartão da sobra quando houver. Código único persistido — reimprimir reutiliza o mesmo código.'
+        : 'Revise a rota e o conteúdo antes de emitir o arquivo.';
+  const countLabel = (isCartao || isCaixa || isCartaoMontador) ? 'CARTÕES' : 'FICHAS';
 
   return (
     <PrintPageRangeProvider
@@ -3923,7 +3997,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
       <style>{printStyles}</style>
       {/* Modo CARTÃO / CAIXA: A4 PAISAGEM. Injetado SÓ nesses modos porque
           troca a orientação do @page, que é global. */}
-      {isCartao && <style>{cartaoStyles}</style>}
+      {(isCartao || isCartaoMontador) && <style>{cartaoStyles}</style>}
       {isCaixa && <style>{caixaStyles}</style>}
 
       {/* ── Painel de conferência (no-print) ── */}
@@ -3987,6 +4061,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 title="Caixa de transporte: Palmilha (8), Costura Cabedal (30→Aviamento), Aviamento (30→Colagem)"
               >
                 <Cards className="h-3.5 w-3.5" /> Caixa
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormatMontador()}
+                aria-pressed={isCartaoMontador}
+                className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isCartaoMontador ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Cartão do Montador: 1 cartão por ficha (12/15/18) + sobra, com código único e QR, recortável em A4 horizontal (15/folha)"
+              >
+                <QrCode className="h-3.5 w-3.5" /> Cartão do Montador
               </button>
             </div>
 
@@ -4103,6 +4186,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         )}
 
         {/* 2º nível: chips de setor (A4 multi, Fardo multi, Caixa seleção única). */}
+        {isCartaoMontador && (
+          <div className="border-t border-border/70 px-4 py-3 text-xs text-muted-foreground">
+            Setor: <span className="font-semibold text-foreground">Palmilha</span>
+            {' — '}os cartõezinhos nascem na emissão desta gestão e o montador guarda um por ficha até o fim do pedido.
+          </div>
+        )}
+        {!isCartaoMontador && (
         <div className="border-t border-border/70 px-4 py-3">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -4147,6 +4237,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
             </div>
           </div>
         </div>
+        )}
 
         {/* Foto grande por referência — só A4 · Aviamento, refs com imagem. */}
         {showAviamentoHeroToolbar && (
@@ -4260,9 +4351,24 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
         </div>
       </section>
 
+      {isCartaoMontador && (fichaCartoesLoading || fichaCartoesError) && (
+        <div className="no-print flex items-center justify-between gap-3 border border-border bg-muted/30 px-4 py-3 text-sm">
+          <p className="min-w-0 text-foreground">
+            {fichaCartoesLoading
+              ? 'Gerando os códigos únicos dos cartões no banco (reimpressão reutiliza os mesmos códigos)…'
+              : printBlockedTitle}
+          </p>
+          {fichaCartoesError && (
+            <Button type="button" variant="outline" size="sm" onClick={() => { void refetchFichaCartoes(); }}>
+              Tentar de novo
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* ── Print area ── */}
       <div className="worksheet-preview-shell">
-      <div className={`print-area space-y-0${isCartao ? ' cartao-grid' : ''}${isCaixa ? ' caixa-grid' : ''}`}>
+      <div className={`print-area space-y-0${(isCartao || isCartaoMontador) ? ' cartao-grid' : ''}${isCaixa ? ' caixa-grid' : ''}`}>
       {/* Saída invertida (2026-07-24): durante o print, o provider liga a
           inversão nas páginas de cada PaginatedSheet e o ReversibleStack
           inverte a ordem dos maços de setor — juntos, reversão completa do
@@ -4322,6 +4428,27 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao }: 
                 lotLabel={card.lotLabel}
                 lotCode={card.lotCode}
                 parcial={card.parcial}
+              />
+            ))}
+          </div>
+        ))}
+
+        {/* Cartão do Montador — 15 por A4 paisagem, com linha de recorte. */}
+        {isCartaoMontador && cartaoMontadorPagesInRange.map((pageCards, pageIdx) => (
+          <div key={`montador-page-${pageRange.from - 1 + pageIdx}`} className="cartao-page">
+            {pageCards.map((card) => (
+              <CartaoMontador
+                key={card.id || `${card.order_id}-${card.ficha_index}-${card.codigo}`}
+                codigo={card.codigo}
+                opNumber={card.opNumber}
+                pvLabel={card.pvLabel}
+                clientName={card.clientName}
+                referenceLabel={card.referenceLabel}
+                color={card.color}
+                fichaIndex={card.ficha_index}
+                totalFichas={card.total_fichas}
+                pares={card.pares}
+                isSobra={card.is_sobra}
               />
             ))}
           </div>
