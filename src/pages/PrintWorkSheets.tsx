@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle, Cards, ArrowRight, Stack } from '@phosphor-icons/react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle, Cards, ArrowRight, Stack, QrCode } from '@phosphor-icons/react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { printOperatorFichasFromRows } from '@/lib/printOperatorFichas';
@@ -125,6 +125,7 @@ export default function PrintWorkSheets() {
   // Atalho "Fardo" (legado: "Cartão físico"): entra na tela de impressão JÁ
   // nesse formato, ainda passando pelo preview.
   const [openAsCartao, setOpenAsCartao] = useState(false);
+  const [openAsMontador, setOpenAsMontador] = useState(false);
 
   const { data: rows = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['print_worksheets_orders', statusFilter],
@@ -273,6 +274,7 @@ export default function PrintWorkSheets() {
         onBack={() => setShowPrintView(false)}
         initialSectors={deepLinkSectors ?? undefined}
         initialCartao={openAsCartao}
+        initialCartaoMontador={openAsMontador}
       />
     );
   }
@@ -291,9 +293,12 @@ export default function PrintWorkSheets() {
       actionLabel,
     });
 
-  const openPreview = (asCartao: boolean) => {
-    if (!confirmSelection(asCartao ? 'Gerar cartão físico de' : 'Revisar fichas de')) return;
-    setOpenAsCartao(asCartao);
+  const openPreview = (asCartao: boolean, asMontador = false) => {
+    if (!confirmSelection(
+      asMontador ? 'Gerar cartão do montador de' : asCartao ? 'Gerar cartão físico de' : 'Revisar fichas de',
+    )) return;
+    setOpenAsCartao(asCartao && !asMontador);
+    setOpenAsMontador(asMontador);
     setShowPrintView(true);
   };
 
@@ -383,6 +388,15 @@ export default function PrintWorkSheets() {
                 >
                   Revisar e gerar fichas
                   <ArrowRight className="h-4 w-4" weight="bold" />
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={selectedOrders.length === 0}
+                  onClick={() => openPreview(false, true)}
+                  className="gap-2 border-primary/40"
+                  title="Cartão do Montador: 1 cartão por ficha (12/15/18) + sobra, com código único e QR para o montador guardar"
+                >
+                  <QrCode className="h-4 w-4" /> Cartão do Montador
                 </Button>
                 <Button
                   variant="outline"
