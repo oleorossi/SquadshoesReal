@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyProportionalSizeFill,
   clampSizeQuantity,
   formatSizeBreakdown,
   knifeOverMessage,
@@ -207,3 +208,87 @@ describe('lançamento por faixa de faca', () => {
 function sum(grade: Record<string, number>): number {
   return Object.values(grade).reduce((acc, value) => acc + value, 0);
 }
+
+describe('pré-preenchimento proporcional da grade', () => {
+  const sizes = ['27', '28', '29', '30', '31', '32', '33', '34', '35'];
+  const gradeTotal = { '27': 75, '28': 150, '29': 150, '30': 150, '31': 75, '32': 75, '33': 75, '34': 75, '35': 75 };
+  const caps = { ...gradeTotal };
+  const current = { ...gradeTotal };
+  const base = {
+    sizes, current, gradeTotal, caps,
+    pinned: new Set<string>(),
+    enabled: true,
+    anchor: null as string | null,
+  };
+
+  it('ao digitar 23 no 27 preenche 28/29/30 com 46 e os demais com 23 (total 276)', () => {
+    const res = applyProportionalSizeFill({ ...base, editedSize: '27', editedValue: 23 });
+    expect(res.next).toEqual({
+      '27': 23, '28': 46, '29': 46, '30': 46, '31': 23, '32': 23, '33': 23, '34': 23, '35': 23,
+    });
+    expect(Object.values(res.next).reduce((s, n) => s + n, 0)).toBe(276);
+    expect(res.anchor).toBe('27');
+  });
+
+  it('corrigir o âncora 27 de 23 para 25 recalcula 50 e 25', () => {
+    const first = applyProportionalSizeFill({ ...base, editedSize: '27', editedValue: 23 });
+    const res = applyProportionalSizeFill({
+      ...base, current: first.next, anchor: first.anchor, editedSize: '27', editedValue: 25,
+    });
+    expect(res.next).toEqual({
+      '27': 25, '28': 50, '29': 50, '30': 50, '31': 25, '32': 25, '33': 25, '34': 25, '35': 25,
+    });
+  });
+
+  it('editar outro tamanho pinça só ele e não estraga os demais', () => {
+    const first = applyProportionalSizeFill({ ...base, editedSize: '27', editedValue: 23 });
+    const res = applyProportionalSizeFill({
+      ...base,
+      current: first.next,
+      anchor: first.anchor,
+      pinned: first.pinned,
+      editedSize: '30',
+      editedValue: 40,
+    });
+    expect(res.next['30']).toBe(40);
+    expect(res.next['27']).toBe(23);
+    expect(res.next['28']).toBe(46);
+    expect(res.pinned.has('30')).toBe(true);
+  });
+
+  it('recalcular o âncora preserva o tamanho pinçado', () => {
+    const first = applyProportionalSizeFill({ ...base, editedSize: '27', editedValue: 23 });
+    const pinned = applyProportionalSizeFill({
+      ...base, current: first.next, anchor: first.anchor, pinned: first.pinned,
+      editedSize: '30', editedValue: 40,
+    });
+    const res = applyProportionalSizeFill({
+      ...base, current: pinned.next, anchor: pinned.anchor, pinned: pinned.pinned,
+      editedSize: '27', editedValue: 25,
+    });
+    expect(res.next['27']).toBe(25);
+    expect(res.next['30']).toBe(40);
+    expect(res.next['28']).toBe(50);
+  });
+
+  it('apagar o campo ou valor inválido vira 0, sem NaN', () => {
+    const first = applyProportionalSizeFill({ ...base, editedSize: '27', editedValue: 23 });
+    for (const editedValue of [0, Number.NaN, Number.POSITIVE_INFINITY, undefined as unknown as number]) {
+      const res = applyProportionalSizeFill({
+        ...base, current: first.next, anchor: '27', editedSize: '27', editedValue,
+      });
+      expect(Object.values(res.next).every(n => Number.isFinite(n))).toBe(true);
+      expect(res.next['27']).toBe(0);
+      expect(res.next['28']).toBe(0);
+    }
+  });
+
+  it('com o modo desligado, só o tamanho editado muda', () => {
+    const res = applyProportionalSizeFill({
+      ...base, enabled: false, editedSize: '27', editedValue: 23,
+    });
+    expect(res.next['27']).toBe(23);
+    expect(res.next['28']).toBe(150);
+    expect(res.anchor).toBeNull();
+  });
+});
