@@ -78,6 +78,7 @@ import {
   listBuyReadyStrapGaps,
   purchasedReadySkusForGroup,
   purchasedReadyStockGroupId,
+  purchasedReadyStrapProductForColor,
   strapLineIsPvBuyReadyChoice,
   strapLineNeedsBuyReadyHubCadastro,
   strapLineWantsBuyReady,
@@ -1005,8 +1006,8 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     if (changed) latestRef.current.onUpdate(latestRef.current.index, 'strap_sourcing', next);
   }, [item.strap_colors, preserveCommittedStrapSnapshot, strapLineByKey, strapSourcingMap]);
 
-  // Um único SKU ativo no grupo da tira pronta já é a identidade. Não pede
-  // medida nem cor do Hub.
+  // Pin automático do SKU da tira pronta: (1) único ativo no grupo sem medida
+  // Hub; (2) cor canônica resolve um único produto (writer 49800).
   useEffect(() => {
     if (preserveCommittedStrapSnapshot || !strapCatalog) return;
     const straps = item.strap_colors || [];
@@ -1015,26 +1016,36 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
     let changed = false;
     straps.forEach((strap, sIdx) => {
       const groupId = purchasedReadyStockGroupId(strap);
-      if (!groupId || (isUuid(strap.measure_id) && isUuid(strap.strap_type_id))) return;
-      const skus = purchasedReadySkusForGroup(strapCatalog, groupId);
-      if (skus.length !== 1) return;
-      const product = skus[0];
+      if (!groupId) return;
       const lineId = technicalStrapLineId(strap);
       const pinned = (strap as { finished_product_id?: string | null }).finished_product_id
         || getStrapSourcingSelection(nextSourcing, lineId)?.finished_product_id;
-      if (pinned === product.id) return;
-      const colorId = strapCatalog.colors.find((entry) =>
-        entry.active && entry.name.trim().toUpperCase() === String(product.color || '').trim().toUpperCase(),
-      )?.id || null;
+      const needsSkuPath = !isUuid(strap.measure_id) || !isUuid(strap.strap_type_id);
+      let product = null as ReturnType<typeof purchasedReadySkusForGroup>[number] | null;
+      let colorId: string | null = null;
+      if (needsSkuPath) {
+        const skus = purchasedReadySkusForGroup(strapCatalog, groupId);
+        if (skus.length !== 1) return;
+        product = skus[0];
+        colorId = strapCatalog.colors.find((entry) =>
+          entry.active && entry.name.trim().toUpperCase() === String(product?.color || '').trim().toUpperCase(),
+        )?.id || null;
+      } else {
+        colorId = strap.color_id || null;
+        if (!colorId) return;
+        product = purchasedReadyStrapProductForColor(strapCatalog, groupId, colorId);
+        if (!product) return;
+      }
+      if (!product || pinned === product.id) return;
       const snapshotIndex = lineId
         ? nextStraps.findIndex((entry) => technicalStrapLineId(entry) === lineId)
         : sIdx;
       if (snapshotIndex < 0) return;
       nextStraps = nextStraps.map((entry, index) => index === snapshotIndex ? {
         ...entry,
-        finished_product_id: product.id,
-        color: product.color || product.name || entry.color,
-        color_id: colorId,
+        finished_product_id: product!.id,
+        color: product!.color || product!.name || entry.color,
+        color_id: colorId || entry.color_id,
       } : entry);
       nextSourcing = setStrapSourcing(nextSourcing, lineId, {
         source_mode: 'buy_ready',
@@ -1614,7 +1625,7 @@ function SaleOrderItemFormInner({ item, index, references, canRemove, isAdmin, o
   // Uma origem histórica completa só é removida se a intenção de cor realmente mudou.
   // Reabrir um PV cujo alias/cor saiu do catálogo não pode apagar o UUID
   // congelado nem impedir uma edição não relacionada.
-  // Linhas finished_product_group ficam fora deste efeito e seguem independentes.
+  // finished_product_group: strapColorMode força select_on_order — fora daqui.
   useEffect(() => {
     const straps = (item.strap_colors as SaleOrderItemStrap[]) || [];
     const currentItemId = item.id || null;

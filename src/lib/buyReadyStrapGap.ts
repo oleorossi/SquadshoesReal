@@ -19,7 +19,11 @@ export interface BuyReadyStrapGapLine {
   identity_group_id?: string | null;
   group_id?: string | null;
   measure_id?: string | null;
+  strap_type_id?: string | null;
   color_id?: string | null;
+  color?: string | null;
+  finished_product_id?: string | null;
+  color_mode?: string | null;
   label?: string | null;
   group_name?: string | null;
   pv_origem?: string | null;
@@ -103,6 +107,34 @@ export function purchasedReadyStockGroupId(
   if (isUuid(identityGroupId)) return identityGroupId;
   const groupId = str(strap?.group_id);
   return isUuid(groupId) ? groupId : null;
+}
+
+/** Caminho sem medida Hub: a UI pede SKU, não cor. */
+export function purchasedReadyStrapNeedsSkuPicker(
+  strap: BuyReadyStrapGapLine | null | undefined,
+): boolean {
+  if (!purchasedReadyStockGroupId(strap)) return false;
+  return !isUuid(strap?.measure_id) || !isUuid(strap?.strap_type_id);
+}
+
+/**
+ * Writer 49800: finished_product_group aceita SKU pinado OU cor canônica
+ * (resolve o produto do grupo). Sem medida Hub a identidade é o SKU —
+ * com medida, a UI de cor basta (não exigir finished_product_id).
+ * `strapColorMode` força select_on_order neste basis — cor própria, não follow_main.
+ */
+export function purchasedReadyStrapMissingSaveIdentity(
+  strap: BuyReadyStrapGapLine | null | undefined,
+  opts?: {
+    finishedProductId?: string | null;
+  },
+): boolean {
+  if (!purchasedReadyStockGroupId(strap)) return false;
+  const pinned = opts?.finishedProductId || strap?.finished_product_id;
+  if (isUuid(pinned)) return false;
+  if (purchasedReadyStrapNeedsSkuPicker(strap)) return true;
+  // identidade acabada: strapColorMode força select_on_order — exige cor própria
+  return !String(strap?.color || '').trim() || !String(strap?.color_id || '').trim();
 }
 
 /** SKUs ativos em metros do grupo. A escolha do pedido é o produto, não a cor do Hub. */

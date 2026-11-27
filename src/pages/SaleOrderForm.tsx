@@ -90,7 +90,10 @@ import {
   SaleOrderCommandExecutionError,
 } from '@/lib/saleOrderCommand';
 import { strapColorMode } from '@/lib/technicalStrapLines';
-import { purchasedReadyStockGroupId } from '@/lib/buyReadyStrapGap';
+import {
+  purchasedReadyStrapMissingSaveIdentity,
+  purchasedReadyStrapNeedsSkuPicker,
+} from '@/lib/buyReadyStrapGap';
 import { getStrapSourcingSelection } from '@/lib/strapSourcing';
 import { copyItemStraps, loadStrapCopyContext } from '@/lib/copySaleOrderStraps';
 import { useArtisanalStrapCatalog } from '@/hooks/useArtisanalStraps';
@@ -709,16 +712,18 @@ export default function SaleOrderForm() {
         : [];
       const semCor = straps.filter((s) => {
         if (!s) return false;
-        // Tira comprada pronta com SKU do grupo não usa cor do Hub.
-        if (purchasedReadyStockGroupId(s)) {
-          const lineId = s.technical_strap_line_id || s.id;
-          const pinned = s.finished_product_id
-            || getStrapSourcingSelection(its[i].strap_sourcing, lineId)?.finished_product_id;
-          return !pinned;
-        }
-        // Somente reference_base + follow_main deriva a identidade da cor
-        // principal. Uma tira interna select_on_order precisa carregar texto e
-        // UUID canônicos da posição, assim como uma tira comprada pronta.
+        const lineId = s.technical_strap_line_id || s.id;
+        const pinned = s.finished_product_id
+          || getStrapSourcingSelection(its[i].strap_sourcing, lineId)?.finished_product_id;
+        // finished_product_group: writer 49800 aceita SKU pinado OU cor
+        // canônica. Exigir só SKU bloqueava fichas com medida (UI de cor).
+        if (purchasedReadyStrapMissingSaveIdentity(s, {
+          finishedProductId: pinned,
+        })) return true;
+        // Já coberta acima (tem identidade) — não cai no check genérico.
+        if (purchasedReadyStrapNeedsSkuPicker(s)
+            || s.identity_basis === 'finished_product_group') return false;
+        // follow_main deriva a cor principal; select_on_order precisa UUID.
         if (strapColorMode(s) === 'follow_main'
             && String(its[i].color || '').trim()) return false;
         return !String(s.color || '').trim() || !String(s.color_id || '').trim();
@@ -731,7 +736,7 @@ export default function SaleOrderForm() {
       const tiras = semCor
         .map((s) => String(s.label || s.group_name || 'TIRA').trim() || 'TIRA')
         .join(', ');
-      const faltaSku = semCor.some((s) => purchasedReadyStockGroupId(s));
+      const faltaSku = semCor.some((s) => purchasedReadyStrapNeedsSkuPicker(s));
       return faltaSku
         ? (
           `Selecione o SKU da tira comprada pronta no item ${i + 1} (${refLabel}): ${tiras}. ` +

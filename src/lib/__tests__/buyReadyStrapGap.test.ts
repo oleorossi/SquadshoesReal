@@ -6,6 +6,8 @@ import {
   listOrderBuyReadyStrapGaps,
   purchasedReadySkusForGroup,
   purchasedReadyStockGroupId,
+  purchasedReadyStrapMissingSaveIdentity,
+  purchasedReadyStrapNeedsSkuPicker,
   purchasedReadyStrapProductForColor,
   strapLineNeedsBuyReadyHubCadastro,
   strapLineWantsBuyReady,
@@ -69,6 +71,7 @@ describe('strapLineNeedsBuyReadyHubCadastro — D4/45600', () => {
 
 describe('tira comprada pronta pelo SKU do grupo', () => {
   const line = buyReadyLine({ measure_id: null, strap_type_id: null, color_id: null, color: '' });
+  const TYPE = '11111111-1111-4111-8111-111111111111';
 
   it('o grupo de estoque basta, sem medida do Hub', () => {
     expect(purchasedReadyStockGroupId(line)).toBe(GROUP);
@@ -86,6 +89,28 @@ describe('tira comprada pronta pelo SKU do grupo', () => {
     });
     expect(purchasedReadySkusForGroup(withExtra, GROUP).map((product) => product.id)).toEqual([PRODUCT]);
     expect(purchasedReadySkusForGroup(withExtra, null)).toEqual([]);
+  });
+
+  it('sem medida Hub exige SKU; com medida a cor canônica basta (sem finished_product_id)', () => {
+    expect(purchasedReadyStrapNeedsSkuPicker(line)).toBe(true);
+    expect(purchasedReadyStrapMissingSaveIdentity(line)).toBe(true);
+    expect(purchasedReadyStrapMissingSaveIdentity(line, {
+      finishedProductId: PRODUCT,
+    })).toBe(false);
+
+    const withMeasure = buyReadyLine({
+      measure_id: MEASURE,
+      strap_type_id: TYPE,
+      color_id: null,
+      color: '',
+    });
+    expect(purchasedReadyStrapNeedsSkuPicker(withMeasure)).toBe(false);
+    expect(purchasedReadyStrapMissingSaveIdentity(withMeasure)).toBe(true);
+    expect(purchasedReadyStrapMissingSaveIdentity({
+      ...withMeasure,
+      color_id: COLOR,
+      color: 'PRETO COM FUNDO PRETO',
+    })).toBe(false);
   });
 });
 
