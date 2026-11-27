@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
+import { kitShortageBlockMessage, kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
 
 describe('atelierKitShortage', () => {
   it('não marca falta sem débitos', () => {
@@ -14,7 +14,16 @@ describe('atelierKitShortage', () => {
       { product_name: 'ELÁSTICO', pending_qty: 12.5, component: 'Aviamento' },
     ];
     expect(lotHasKitShortage(debits)).toBe(true);
-    expect(kitShortageLabels(debits)).toEqual(['ELÁSTICO 12.5']);
+    expect(kitShortageLabels(debits)).toEqual(['ELÁSTICO: faltam 12,5']);
+  });
+
+  it('cita cor, unidade e estoque no bloqueio do cartão', () => {
+    const debits = [
+      { product_name: 'NAPA SOFT', color: 'NATURAL', unit: 'm', pending_qty: 48, available_qty: 0, component: 'Cabedal' },
+    ];
+    expect(kitShortageLabels(debits)).toEqual(['NAPA SOFT NATURAL: faltam 48 m (estoque 0 m)']);
+    expect(kitShortageBlockMessage(debits)).toContain('enviar com ressalva');
+    expect(kitShortageBlockMessage(debits)).toContain('NAPA SOFT NATURAL');
   });
 
   it('ignora pending nulo/zero', () => {

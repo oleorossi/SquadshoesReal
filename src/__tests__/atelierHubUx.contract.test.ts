@@ -77,6 +77,22 @@ describe('Gestão do Ateliê — UX do módulo único', () => {
     expect(board).toContain('md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4');
     expect(board).toContain('Confirmar corte');
     expect(board).toContain('Ver kit');
+    expect(board).toContain('Recebimento parcial');
+    expect(board).toContain('Confirmar retorno total');
+    expect(board).toContain('Ainda não enviado');
+    expect(board).toContain('kitShortageBlockMessage');
     expect(board).toContain('rounded-full border px-2 py-0.5 text-xs font-semibold');
+  });
+
+  it('a aba Receber e o diálogo registram parcial e retorno total do cabedal', () => {
+    const hub = read('src/pages/TerceirizadosHub.tsx');
+    const receber = read('src/components/atelier/AtelierReceberPanel.tsx');
+    const dialog = read('src/components/atelier/AtelierReceiptDialog.tsx');
+    expect(hub).toContain('<AtelierReceberPanel');
+    expect(receber).toContain('Recebimento parcial');
+    expect(receber).toContain('Confirmar retorno total');
+    expect(dialog).toContain('Registrar recebimento parcial');
+    expect(dialog).toContain('Confirmar retorno do cabedal');
+    expect(dialog).toContain('Saldo a receber');
   });
 });

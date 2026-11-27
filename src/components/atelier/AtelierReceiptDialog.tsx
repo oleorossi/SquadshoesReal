@@ -38,6 +38,8 @@ interface Props {
   job: AtelierLotJob | null;
   /** Parte já escolhida na tela de lançamento. */
   initialPartId?: string | null;
+  /** partial = informar quantos voltaram; total = preenche o saldo e confirma o retorno. */
+  intent?: 'partial' | 'total';
   onClose: () => void;
 }
 
@@ -47,7 +49,7 @@ function formatWhen(iso: string) {
   return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-export function AtelierReceiptDialog({ job, initialPartId = null, onClose }: Props) {
+export function AtelierReceiptDialog({ job, initialPartId = null, intent = 'partial', onClose }: Props) {
   const qc = useQueryClient();
   const open = !!job;
   const received = Number(job?.received_pairs) || 0;
@@ -159,7 +161,9 @@ export function AtelierReceiptDialog({ job, initialPartId = null, onClose }: Pro
         partId: activePart?.id ?? null,
         reworkPairs,
       });
-      toast.success(`${sector}: ${good} pares bons conferidos`);
+      toast.success(intent === 'total' && good === partRemaining
+        ? `${sector}: retorno total de ${good} pares confirmado`
+        : `${sector}: ${good} pares bons conferidos`);
       await refresh();
       onClose();
     } catch (error) {
@@ -225,9 +229,13 @@ export function AtelierReceiptDialog({ job, initialPartId = null, onClose }: Pro
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Conferir recebimento</DialogTitle>
+          <DialogTitle>{intent === 'total' ? 'Confirmar retorno do cabedal' : 'Registrar recebimento parcial'}</DialogTitle>
           <DialogDescription>
-            {job ? `${job.order_number}. O número sobe com o que você lançar agora.` : ''}
+            {job
+              ? (intent === 'total'
+                ? `${job.order_number}. Confirma o retorno dos ${partRemaining} pares que ainda estão fora, do total de ${pairs}.`
+                : `${job.order_number}. Informe quantos pares voltaram. Saldo a receber: ${partRemaining} de ${pairs}.`)
+              : ''}
           </DialogDescription>
         </DialogHeader>
         {job && (
@@ -392,7 +400,7 @@ export function AtelierReceiptDialog({ job, initialPartId = null, onClose }: Pro
           {job && partRemaining > 0 && (
             <Button type="button" size="sm" disabled={busy} onClick={() => void conferir()}>
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Conferir recebimento
+              {intent === 'total' ? 'Confirmar retorno total' : 'Registrar recebimento parcial'}
             </Button>
           )}
         </DialogFooter>

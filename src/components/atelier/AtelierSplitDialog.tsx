@@ -14,7 +14,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAccessControl } from '@/hooks/useAccessControl';
-import { atelierKeys, sendAtelierSplit, useAtelierOpenRates, type AtelierLotJob, type AtelierLotRow } from '@/hooks/useAtelier';
+import { atelierKeys, confirmAtelierOpenKitSend, sendAtelierSplit, useAtelierOpenRates, type AtelierLotJob, type AtelierLotRow } from '@/hooks/useAtelier';
+import { kitShortageBlockMessage } from '@/lib/atelierKitShortage';
 import { supabase } from '@/integrations/supabase/client';
 import { atelierOpenRatePrice, atelierRateLabel, atelierRateSector, atelierTodayISO } from '@/lib/atelierAdmin';
 import { atelierReturnDate, atelierSectorOffsetDays } from '@/lib/atelierBoard';
@@ -94,6 +95,9 @@ export function AtelierSplitDialog({ job, lot, contractors, onClose }: Props) {
   const today = atelierTodayISO();
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
+  const [kitAck, setKitAck] = useState(false);
+  const kitPending = !!lot && lot.kit_closed !== true;
+  useEffect(() => { setKitAck(false); }, [job?.id, lot?.id]);
 
   const remainingQuery = useQuery({
     queryKey: ['atelier-remaining-grade', job?.id ?? ''],
@@ -225,8 +229,13 @@ export function AtelierSplitDialog({ job, lot, contractors, onClose }: Props) {
       toast.error('Só admin ou gerência altera o R$/par');
       return;
     }
+    if (kitPending && !kitAck) {
+      toast.error('Confirme a ressalva do kit pendente para enviar sem debitar o estoque que falta');
+      return;
+    }
     setBusy(true);
     try {
+      if (kitPending && lot) await confirmAtelierOpenKitSend(lot.id);
       const data = await sendAtelierSplit({ jobId: job.id, parts });
       await qc.invalidateQueries({ queryKey: atelierKeys.all });
       const ids = data?.service_order_ids ?? [];
@@ -359,6 +368,17 @@ export function AtelierSplitDialog({ job, lot, contractors, onClose }: Props) {
           })}
         </div>
         {error && <p className="text-xs text-amber-700 dark:text-amber-400">{error}</p>}
+        {kitPending && (
+          <div className="space-y-2 rounded-md border border-red-500/40 bg-red-500/10 p-3">
+            <p className="text-sm font-medium text-red-700 dark:text-red-400">
+              {kitShortageBlockMessage(lot?.debits)}
+            </p>
+            <label className="flex items-start gap-2 text-xs text-foreground">
+              <Checkbox checked={kitAck} onCheckedChange={(v) => setKitAck(v === true)} aria-label="Confirmar envio com kit pendente" />
+              <span>Confirmo o envio com ressalva. O estoque que falta não será debitado e a OS será criada normalmente.</span>
+            </label>
+          </div>
+        )}
         <DialogFooter className="gap-2 sm:justify-between">
           <div className="flex gap-2">
             <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setRows((current) => [...current, blankRow()])}>
@@ -368,7 +388,7 @@ export function AtelierSplitDialog({ job, lot, contractors, onClose }: Props) {
               Distribuir pelo menor prazo
             </Button>
           </div>
-          <Button type="button" size="sm" className="h-9" disabled={busy || !!error} onClick={() => void send()}>
+          <Button type="button" size="sm" className="h-9" disabled={busy || !!error || (kitPending && !kitAck)} onClick={() => void send()}>
             <Truck className="h-3.5 w-3.5" /> Enviar tudo
           </Button>
         </DialogFooter>

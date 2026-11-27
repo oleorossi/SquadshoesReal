@@ -26,6 +26,7 @@ import { OsAtivasPanel, OsRedistribuicaoHistorico } from '@/components/contracto
 import { OutsourcingPlanPanel } from '@/components/contractors/OutsourcingPlanPanel';
 import { TerceirizacaoCoberturaPanel } from '@/components/contractors/TerceirizacaoCoberturaPanel';
 import { AtelierLancamento } from '@/components/atelier/AtelierLancamento';
+import { AtelierReceberPanel } from '@/components/atelier/AtelierReceberPanel';
 import { AtelierRelatorioView } from '@/components/atelier/AtelierRelatorioView';
 import { AtelierStrapsView } from '@/components/atelier/AtelierStrapsView';
 import { MotorPrazosResumo } from '@/components/atelier/MotorPrazosPanel';
@@ -98,8 +99,9 @@ export default function TerceirizadosHub() {
         </TabsContent>
         <TabsContent value="receber" className="mt-4 space-y-3">
           <p className="text-sm text-muted-foreground">
-            A conferência (bom, defeito e retrabalho) é a da OS que está na rua. Os pares abaixo são os que o motor ainda marca como enviados e não recebidos.
+            A conferência (bom, defeito e retrabalho) é a do job ou da OS que está na rua. Informe a quantidade parcial ou confirme o retorno total do cabedal.
           </p>
+          <AtelierReceberPanel />
           <ReceberResumo />
           <ContractorsPage embedded activeTab="orders" onActiveTabChange={() => undefined} />
         </TabsContent>
@@ -141,7 +143,7 @@ function TotaisDoMotor() {
 function ReceberResumo() {
   return (
     <p className="text-xs text-muted-foreground">
-      Abra a OS na lista e use Receber. O saldo da cor no Lançar e os totais do Planejar saem do mesmo motor.
+      Os cartões acima são os jobs do Ateliê com saldo a receber. A lista de OS abaixo também tem Receber, para a mesma conferência de pares.
     </p>
   );
 }
