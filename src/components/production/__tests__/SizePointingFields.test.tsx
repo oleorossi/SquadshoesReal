@@ -85,4 +85,13 @@ describe('contador ao vivo da numeração', () => {
     expect(screen.getByLabelText('Numeração 34')).toHaveValue('75');
     expect(screen.getByRole('alert')).toHaveTextContent('O 34 só tem 75 pares');
   });
+
+  it('a grade usa colunas responsivas, sem rolagem horizontal', () => {
+    render(<Harness />);
+    const grid = screen.getByTestId('size-pointing-grid');
+    expect(grid.className).toMatch(/grid/);
+    expect(grid.className).toMatch(/grid-cols-4/);
+    expect(grid.className).toMatch(/xl:grid-cols-12/);
+    expect(grid.className).not.toMatch(/overflow-x-auto/);
+  });
 });

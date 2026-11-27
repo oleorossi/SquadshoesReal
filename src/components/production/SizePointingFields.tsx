@@ -84,7 +84,8 @@ export function SizePointingFields({
       <div
         ref={scrollerRef}
         onKeyDown={onKeyDown}
-        className="flex gap-2 overflow-x-auto pb-1"
+        data-testid="size-pointing-grid"
+        className="grid min-w-0 grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12"
       >
         {sizes.map(size => {
           const cap = caps[size] || 0;
@@ -95,7 +96,7 @@ export function SizePointingFields({
           const finishedSize = !backward && cap === 0 && stillOwed === 0;
           const heldForLater = !backward && cap === 0 && stillOwed > 0;
           return (
-            <div key={size} className={`flex shrink-0 flex-col gap-1 ${kind === 'knife' ? 'w-[5.5rem]' : 'w-[4.75rem]'}`}>
+            <div key={size} className="flex min-w-0 flex-col gap-1">
               <span className="text-center font-mono text-sm font-semibold text-foreground">{size}</span>
               {hints?.[size] && (
                 <span className="text-center text-[10px] leading-tight text-muted-foreground">{hints[size]}</span>

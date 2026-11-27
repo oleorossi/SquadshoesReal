@@ -98,8 +98,10 @@ describe('deriveCard — setor PULADO não pode virar entrega completa', () => {
   it('anuncia os pares REALMENTE apontados, não o total nominal', () => {
     const card = deriveCard(queue(), opPulada(), FLOW)!;
     expect(card.column).toBe('Acabamento');
-    // ⚠ A regressão que este teste existe pra pegar: aqui já saiu 288.
-    expect(card.delivered).toBe(0);
+    // ⚠ A regressão original trocava o 180 pelo total nominal 288. Depois o
+    // pulo no meio (concluído com 0) passou a zerar a entrega. O número certo
+    // é o que a origem realmente apontou.
+    expect(card.delivered).toBe(180);
   });
 
   it('fica ÂMBAR — o sinal de parcial não pode desligar justamente aqui', () => {
@@ -119,7 +121,7 @@ describe('deriveCard — setor PULADO não pode virar entrega completa', () => {
     ];
     const card = deriveCard(queue({ quantity: 432 }), stages, FLOW)!;
     expect(card.column).toBe('Acabamento');
-    expect(card.delivered).toBe(0);
+    expect(card.delivered).toBe(408);
     expect(card.isPartial).toBe(true);
     expect(card.upstreamGap).toEqual({ sector: 'Palmilha · Fibra', missing: 24 });
   });
@@ -240,7 +242,9 @@ describe('deriveCards — setores em paralelo', () => {
     // ...caem no grupo da costura, todos com o buraco do Corte Forração visível
     expect(cards.map(c => c.column)).toEqual(['Acabamento Palmilha', 'Costura Cabedal', 'Aviamento']);
     for (const c of cards) {
-      expect(c.delivered).toBe(0);
+      // Palmilha · Fibra entregou o lote cheio; Forração foi pulada com 0.
+      // A entrega anunciada é a real (288), e o buraco da Forração mantém o âmbar.
+      expect(c.delivered).toBe(288);
       expect(c.isPartial).toBe(true);
       expect(c.upstreamGap).toEqual({ sector: 'Palmilha · Forração', missing: 288 });
     }
@@ -305,6 +309,26 @@ describe('deriveCards — regressões do code-review', () => {
     expect(cards.find(c => c.column === 'Palmilha · Fibra')!.delivered).toBe(180);
     expect(cards.find(c => c.column === 'Acabamento')!.upstreamGap)
       .toEqual({ sector: 'Palmilha · Fibra', missing: 108 });
+  });
+
+  it('pulo parcial (Fibra 276/900 → Acabamento Palmilha) deixa 624 pendentes na origem e 276 no destino', () => {
+    const stages = [
+      stage('Corte Palmilha', 1, { status: 'em_andamento', quantity_processed: 276, quantity_total: 900 }),
+      stage('Corte Forração', 2, { ...done(0), quantity_total: 900 }),
+      stage('Acabamento Palmilha', 3, { status: 'pendente', quantity_processed: 0, quantity_total: 900 }),
+    ];
+    const q = queue({ order_number: 'OP-2026-06199', quantity: 900 });
+    const cards = deriveCards(q, stages, FLOW, LEVEL);
+    const fibra = cards.find(c => c.column === 'Palmilha · Fibra');
+    const destino = cards.find(c => c.column === 'Acabamento Palmilha');
+    expect(fibra).toBeDefined();
+    expect(destino).toBeDefined();
+    expect(cards.find(c => c.column === 'Palmilha · Forração')).toBeUndefined();
+    expect(fibra!.delivered).toBe(276);
+    expect(fibra!.columnStage!.quantity_total - fibra!.delivered).toBe(624);
+    expect(destino!.delivered).toBe(276);
+    expect(destino!.isPartial).toBe(true);
+    expect(destino!.upstreamGap).toEqual({ sector: 'Palmilha · Fibra', missing: 624 });
   });
 
   it('dois setores FORA do cadastro não viram irmãos falsos', () => {

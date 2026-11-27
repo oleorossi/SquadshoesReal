@@ -5,6 +5,13 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
+  APONTAR_DIALOG_BODY,
+  APONTAR_DIALOG_FOOTER,
+  APONTAR_DIALOG_HEADER,
+  APONTAR_DIALOG_SHELL,
+  APONTAR_DIALOG_WARNING,
+} from '@/components/production/kanban/apontarDialogShell';
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
@@ -24,7 +31,7 @@ import {
 } from '@/hooks/useSaleOrderMaterialShortages';
 import { toast } from 'sonner';
 import { KanbanCardData } from './kanbanDerive';
-import { applyPointing, skipBlockedByPartial } from './pointingPlan';
+import { applyPointing } from './pointingPlan';
 import { buildBulkMoveBatch, uniqueCardsByOrder } from './bulkMovePlan';
 
 interface StepResult {
@@ -219,10 +226,6 @@ export function BulkMoveDialog({
     confirmStep();
   };
 
-  // Mesma trava do diálogo de um card só: pular exige fechar a origem.
-  // O aceite reseta a cada OP do lote — confirmar uma não confirma as outras.
-  const stepSkipBlocked = !!current && skipBlockedByPartial(current.plan, effectiveQty);
-
   const totalOk = results.filter(r => r.status === 'ok').length;
   const totalPares = results.reduce((s, r) => s + r.quantity, 0);
   const totalPuladas = results.filter(r => r.status === 'pulada').length;
@@ -265,8 +268,8 @@ export function BulkMoveDialog({
   if (steps.length === 0) {
     return (
       <Dialog open onOpenChange={v => { if (!v) backToBoard(); }}>
-        <DialogContent className="min-w-0 grid-cols-[minmax(0,1fr)] sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="min-w-0 grid-cols-[minmax(0,1fr)] sm:max-w-lg">
+          <DialogHeader className={APONTAR_DIALOG_HEADER}>
             <DialogTitle className="text-base">Distribuir OPs para {target}</DialogTitle>
             <DialogDescription>Nenhum lançamento será gravado com esta combinação.</DialogDescription>
           </DialogHeader>
@@ -293,15 +296,15 @@ export function BulkMoveDialog({
   return (
     <>
       <Dialog open onOpenChange={v => { if (!v) { if (finished) closeWithSummary(); else requestClose(); } }}>
-        <DialogContent className="min-w-0 grid-cols-[minmax(0,1fr)] sm:max-w-md">
+        <DialogContent className={`${APONTAR_DIALOG_SHELL} min-w-0`}>
           {!started ? (
             /* ── Revisão antes de qualquer gravação ── */
             <>
-              <DialogHeader>
+              <DialogHeader className={APONTAR_DIALOG_HEADER}>
                 <DialogTitle className="text-base">Revisar distribuição</DialogTitle>
                 <DialogDescription>Confira o destino e as OPs aptas antes de iniciar os lançamentos.</DialogDescription>
               </DialogHeader>
-              <div className="min-w-0 space-y-3">
+              <div className={`${APONTAR_DIALOG_BODY} space-y-3`}>
                 <div className="border-2 border-foreground bg-card p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Destino do lote</p>
                   <p className="mt-1 flex min-w-0 items-center gap-2 text-sm font-semibold">
@@ -347,26 +350,26 @@ export function BulkMoveDialog({
                   A distribuição será confirmada uma OP por vez. Você ainda poderá ajustar a quantidade ou pular uma OP sem gravar.
                 </p>
 
-                <div className="flex flex-col-reverse gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+              </div>
+              <div className={APONTAR_DIALOG_FOOTER}>
                   <Button variant="outline" className="h-11 md:h-10" onClick={requestClose}>
                     Voltar ao quadro
                   </Button>
-                  <Button className="h-11 gap-2 md:h-10" onClick={() => setStarted(true)}>
+                  <Button className="h-11 gap-2 md:h-10" data-dialog-primary="true" onClick={() => setStarted(true)}>
                     Iniciar distribuição <span className="font-mono opacity-80">({steps.length})</span>
                   </Button>
-                </div>
               </div>
             </>
           ) : finished ? (
             /* ── Resumo do lote ── */
             <>
-              <DialogHeader>
+              <DialogHeader className={APONTAR_DIALOG_HEADER}>
                 <DialogTitle className="text-base flex items-center gap-2">
                   <CheckCircle className="h-5 w-5 text-success" weight="fill" /> Lote concluído
                 </DialogTitle>
                 <DialogDescription>Resumo dos lançamentos feitos nesta distribuição.</DialogDescription>
               </DialogHeader>
-              <div className="min-w-0 space-y-3">
+              <div className={`${APONTAR_DIALOG_BODY} space-y-3`}>
                 <div className="rounded-md border border-border bg-muted/30 p-3 font-mono text-sm space-y-1">
                   <p><strong className="text-base">{totalOk}</strong> OP{totalOk === 1 ? '' : 's'} processada{totalOk === 1 ? '' : 's'}</p>
                   {totalForward > 0 && (
@@ -386,21 +389,21 @@ export function BulkMoveDialog({
                     {blocked.length > 6 && <p>+{blocked.length - 6} outras.</p>}
                   </div>
                 )}
-                <div className="flex justify-end pt-2 border-t">
-                  <Button className="h-11 md:h-10" onClick={closeWithSummary}>Concluir</Button>
-                </div>
+              </div>
+              <div className={APONTAR_DIALOG_FOOTER}>
+                  <Button className="h-11 md:h-10" data-dialog-primary="true" onClick={closeWithSummary}>Concluir</Button>
               </div>
             </>
           ) : current && (
             /* ── Passo N: uma OP por vez ── */
             <>
-              <DialogHeader>
+              <DialogHeader className={APONTAR_DIALOG_HEADER}>
                 <DialogTitle className="text-base">
                   Mover em lote — {idx + 1} de {steps.length}
                 </DialogTitle>
                 <DialogDescription>Revise a quantidade desta OP antes de confirmar e seguir.</DialogDescription>
               </DialogHeader>
-              <div className="min-w-0 space-y-3">
+              <div className={`${APONTAR_DIALOG_BODY} space-y-3`}>
                 {/* Progresso do lote */}
                 <div
                   className="h-1.5 overflow-hidden rounded-full bg-muted"
@@ -424,27 +427,27 @@ export function BulkMoveDialog({
                   </p>
                 </div>
 
-                {current.plan.skipped.length > 0 && !stepSkipBlocked && (
-                  <div className="rounded-md border border-warning/40 bg-warning/10 p-2.5 text-xs text-warning">
+                {current.plan.skipped.length > 0 && (
+                  <div className={APONTAR_DIALOG_WARNING}>
                     <strong>Pulando setor{current.plan.skipped.length > 1 ? 'es' : ''}:</strong> {current.plan.skipped.join(', ')}.
                     Eles serão marcados como concluídos <strong>sem produção apontada</strong> — fica
                     registrado no histórico com o seu usuário.
+                    {!current.plan.isBackward && effectiveQty > 0 && current.plan.pointedStage
+                      && current.plan.pointedStage.quantity_processed + effectiveQty < current.plan.pointedStage.quantity_total && (
+                      <p className="mt-1.5">
+                        Os {effectiveQty} pares apontados chegam em <strong>{target}</strong> como <strong>PARCIAL</strong>.
+                        Os <strong>{current.plan.stageRemaining - effectiveQty} restantes</strong> ficam pendentes em{' '}
+                        <strong>{current.plan.pointedStage.stage_name}</strong> para apontar depois.
+                      </p>
+                    )}
                     <label className="mt-2 flex items-start gap-2 font-medium cursor-pointer">
                       <Checkbox
                         checked={skipOk}
                         onCheckedChange={v => setSkipOk(v === true)}
                         className="mt-0.5 shrink-0"
                       />
-                      <span>Confirmo que {current.plan.skipped.length > 1 ? 'esses setores não vão' : 'esse setor não vai'} produzir este lote.</span>
+                      <span className="min-w-0 whitespace-normal break-words">Confirmo que {current.plan.skipped.length > 1 ? 'esses setores não vão' : 'esse setor não vai'} produzir este lote.</span>
                     </label>
-                  </div>
-                )}
-                {stepSkipBlocked && (
-                  <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2.5 text-xs text-destructive">
-                    <strong>Pra pular setor, {current.plan.pointedStage?.stage_name} tem que fechar.</strong>{' '}
-                    Com {effectiveQty} de {current.plan.stageRemaining} pares, os{' '}
-                    <strong>{current.plan.stageRemaining - effectiveQty} restantes</strong> ficariam sem passar por{' '}
-                    {current.plan.skipped.join(', ')}. Aponte o saldo cheio ou pule esta OP do lote.
                   </div>
                 )}
                 {current.plan.isBackward && (
@@ -505,7 +508,8 @@ export function BulkMoveDialog({
                   <strong className="text-foreground">{profile?.full_name || profile?.email || 'usuário logado'}</strong>
                 </p>
 
-                <div className="flex flex-col gap-2 border-t pt-2 sm:flex-row sm:items-center sm:justify-between">
+              </div>
+              <div className={`${APONTAR_DIALOG_FOOTER} justify-between`}>
                   <Button
                     variant="ghost"
                     className="h-11 gap-1.5 sm:w-auto md:h-10"
@@ -514,15 +518,14 @@ export function BulkMoveDialog({
                   >
                     <SkipForward className="h-4 w-4" /> Pular
                   </Button>
-                  <div className="grid grid-cols-1 gap-2 sm:flex">
+                  <div className="flex flex-wrap justify-end gap-2">
                     <Button variant="outline" className="h-11 md:h-10" onClick={requestClose} disabled={apontar.isPending}>
                       {totalOk > 0 ? 'Encerrar lote' : 'Cancelar lote'}
                     </Button>
-                    <Button className="h-11 md:h-10" onClick={requestConfirmStep} disabled={apontar.isPending || sizePending || stepSkipBlocked || (current.plan.skipped.length > 0 && !skipOk)}>
+                    <Button className="h-11 md:h-10" data-dialog-primary="true" onClick={requestConfirmStep} disabled={apontar.isPending || sizePending || (current.plan.skipped.length > 0 && !skipOk)}>
                       {idx + 1 === steps.length ? 'Confirmar e finalizar' : 'Confirmar e seguir'}
                     </Button>
                   </div>
-                </div>
               </div>
             </>
           )}
