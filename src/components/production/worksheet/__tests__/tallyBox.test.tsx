@@ -83,4 +83,11 @@ describe('TallyBox — paginação por linha', () => {
     // 200 quadrados não cabem numa única linha (prova que pagina por linha)
     expect(rows.length).toBeGreaterThan(5);
   });
+
+  it('startNumber desloca a numeração (bloco 2 = 21–40)', () => {
+    const { container } = render(<TallyBox count={20} startNumber={21} size="sm" />);
+    const nums = boxNumbers(container);
+    expect(nums).toEqual(Array.from({ length: 20 }, (_, i) => i + 21));
+    expect(container.textContent).toMatch(/← 40/);
+  });
 });

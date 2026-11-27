@@ -496,7 +496,7 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
                   <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
                 </div>
                 ) : (
-                <FichaBlocks blocks={fichaBlocks} sizes={groupSizes} pairsPerFicha={tallyPerCard} />
+                <FichaBlocks blocks={fichaBlocks} sizes={groupSizes} pairsPerFicha={tallyPerCard} showForracao={false} showFibra={true} />
                 )}
               </div>
             );

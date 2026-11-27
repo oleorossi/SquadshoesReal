@@ -21,6 +21,9 @@ interface Props {
   /** Tamanho do quadrado (+25% em 2026-06-17, pedido user): sm = 20px (layout
    *  compacto), md = 25px (default), lg = 35px. */
   size?: 'sm' | 'md' | 'lg';
+  /** Primeiro número da grade (default 1). Nos blocos de 20 fichas a numeração
+   *  é contínua: bloco 2 começa em 21, bloco 3 em 41, e o "completar" segue. */
+  startNumber?: number;
 }
 
 /**
@@ -33,9 +36,11 @@ interface Props {
  *   - quadrados 1.5px border-black, número em font-mono, fundo branco
  *   - sem fundo colorido, sem header preenchido
  */
-export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares', title, size = 'md' }: Props) => {
+export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares', title, size = 'md', startNumber = 1 }: Props) => {
   if (count <= 0) return null;
   const footerTotal = totalUnits ?? count * pairsPerCard;
+  const firstNumber = Math.max(1, Math.trunc(Number(startNumber) || 1));
+  const lastNumber = firstNumber + count - 1;
 
   // 22/05: w-7→w-6. 2026-06-11 (pedido do user, gastar menos A4): w-6→w-5
   // (20px). 213 caixinhas em ~30 linhas: 20px×30 = 600px (159mm) vs 720px
@@ -111,7 +116,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // refluir cols (refluir AUMENTA altura — medido).
   const decadeCount = Math.max(1, Math.ceil(cols / 10));
   const accumFontPx = size === 'sm' ? 8 : 9;
-  const accumTextPx = (String(count).length + 2) * 0.62 * accumFontPx;
+  const accumTextPx = (String(lastNumber).length + 2) * 0.62 * accumFontPx;
   const rigidWidthPx = Math.ceil(
     (cols * boxPx
     + (cols - decadeCount) * gapPx
@@ -122,7 +127,7 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   const rows: number[][] = [];
   for (let i = 0; i < count; i += cols) {
     rows.push(
-      Array.from({ length: Math.min(cols, count - i) }, (_, j) => i + j + 1),
+      Array.from({ length: Math.min(cols, count - i) }, (_, j) => firstNumber + i + j),
     );
   }
 

@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import React from 'react';
 import { PalmilhaUnifiedWorkSheet } from '../PalmilhaUnifiedWorkSheet';
+import type { PalmilhaPrintMode } from '@/lib/palmilhaUnifiedCard';
+import type { PalmilhaCardKind } from '@/lib/palmilhaUnifiedCard';
 
 beforeAll(() => {
   const g = globalThis as unknown as { ResizeObserver?: unknown; matchMedia?: unknown };
@@ -38,16 +40,28 @@ function gradeTimes(fichas: number): Record<string, number> {
   return Object.fromEntries(Object.entries(BASE).map(([k, v]) => [k, v * fichas]));
 }
 
-function renderSheet(fichas: number, mixed = false) {
+function boxNumbers(el: Element): number[] {
+  return Array.from(el.querySelectorAll('[data-tally-box]')).map(
+    box => Number((box as HTMLElement).textContent),
+  );
+}
+
+function renderSheet(fichas: number, opts?: { mixed?: boolean; mode?: PalmilhaPrintMode }) {
+  const mode: PalmilhaPrintMode = opts?.mode ?? 'palmilha';
+  const kind: PalmilhaCardKind = mode === 'so_forracao'
+    ? 'so_forracao'
+    : mode === 'so_fibra'
+      ? 'so_fibra'
+      : 'completo';
   return render(
     <PalmilhaUnifiedWorkSheet
-      mode="so_forracao"
+      mode={mode}
       allSizes={ALL}
       groups={[{
         soleName: 'SOLADO 01',
         totalPairs: fichas * 12,
         cards: [{
-          kind: 'so_forracao',
+          kind,
           soleName: 'SOLADO 01',
           color: 'OFF WHITE',
           plateGroup: 'PLACA 1.0 EVA 3.0',
@@ -57,12 +71,12 @@ function renderSheet(fichas: number, mixed = false) {
           baseGrade: BASE,
           baseGradeSum: 12,
           fichas,
-          mixedGrades: mixed,
+          mixedGrades: opts?.mixed,
           refs: [{ code: 'SP143', name: 'SP143' }],
           opNumbers: ['OP-2026-06203'],
           pvNumbers: ['PV-00255'],
           clientNames: ['LNG 10 CONFECCOES LTDA'],
-          plateOps: [],
+          plateOps: kind === 'so_forracao' ? [] : [{ name: 'PLACA 1.0 EVA 3.0', qty: 33.3, unit: 'placa', areaDm2: 150 }],
           consumption: [],
         }],
       }]}
@@ -70,38 +84,67 @@ function renderSheet(fichas: number, mixed = false) {
   );
 }
 
-describe('Controle de Fichas por bloco (Corte Forração / placa de fibra)', () => {
-  it('100 fichas viram 5 blocos de 20 quadradinhos — sem repetir o total da OP', () => {
+describe('Controle de Fichas por bloco (Forração + Fibra)', () => {
+  it('100 fichas viram 5 blocos, cada um com Forração e Fibra 1–20…81–100 — sem repetir o total da OP', () => {
     const { container } = renderSheet(100);
     expect(container.querySelectorAll('[data-ficha-block]')).toHaveLength(5);
-    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(100);
+    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(200);
     expect(
       Array.from(container.querySelectorAll('[data-ficha-block]'))
-        .map(el => Number(el.getAttribute('data-ficha-block-count'))),
-    ).toEqual([20, 20, 20, 20, 20]);
-    expect(container.textContent).toMatch(/100 fichas · 5 blocos · 1200 pares/);
-    expect(container.textContent).toContain('Controle · bloco 1');
-    expect(container.textContent).toContain('Controle · bloco 5');
-    // Todos os quadrados vivem dentro dos blocos — sem um tally avulso com as 100 fichas.
-    expect(container.querySelectorAll('[data-ficha-blocks] [data-tally-box]')).toHaveLength(100);
+        .map(el => Number(el.getAttribute('data-ficha-block-start'))),
+    ).toEqual([1, 21, 41, 61, 81]);
+    expect(container.textContent).toMatch(/100 fichas · 5 blocos · 1200 pares · forração \+ fibra/);
+    expect(container.querySelectorAll('[data-palmilha-layer-band="forracao"]')).toHaveLength(5);
+    expect(container.querySelectorAll('[data-palmilha-layer-band="fibra"]')).toHaveLength(5);
+
+    const block2 = container.querySelector('[data-ficha-block="2"]')!;
+    expect(boxNumbers(block2.querySelector('[data-palmilha-layer-band="forracao"]')!)).toEqual(
+      Array.from({ length: 20 }, (_, i) => i + 21),
+    );
+    expect(boxNumbers(block2.querySelector('[data-palmilha-layer-band="fibra"]')!)).toEqual(
+      Array.from({ length: 20 }, (_, i) => i + 21),
+    );
+    expect(container.querySelector('[data-ficha-block="5"]')?.textContent).toMatch(/← 100/);
   });
 
-  it('75 fichas fecham 20+20+20+completar 15, cada bloco com os próprios quadradinhos', () => {
+  it('75 fichas fecham 20+20+20+completar 15, com numeração contínua até 75 nas duas camadas', () => {
     const { container } = renderSheet(75);
     expect(
       Array.from(container.querySelectorAll('[data-ficha-block]'))
-        .map(el => Number(el.getAttribute('data-ficha-block-count'))),
-    ).toEqual([20, 20, 20, 15]);
-    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(75);
-    expect(container.textContent).toMatch(/Bloco 4 · completar/);
-    expect(container.textContent).toMatch(/Controle · completar \(15\)/);
-    expect(container.querySelector('[data-ficha-block="4"]')?.textContent).toMatch(/15 fichas · 180 pares/);
+        .map(el => Number(el.getAttribute('data-ficha-block-start'))),
+    ).toEqual([1, 21, 41, 61]);
+    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(150);
+    const last = container.querySelector('[data-ficha-block="4"]')!;
+    expect(last.textContent).toMatch(/Bloco 4 · completar/);
+    expect(boxNumbers(last.querySelector('[data-palmilha-layer-band="forracao"]')!)).toEqual(
+      Array.from({ length: 15 }, (_, i) => i + 61),
+    );
+    expect(boxNumbers(last.querySelector('[data-palmilha-layer-band="fibra"]')!)).toEqual(
+      Array.from({ length: 15 }, (_, i) => i + 61),
+    );
   });
 
-  it('grade mista não inventa blocos e mantém o tally único com o total', () => {
-    const { container } = renderSheet(50, true);
+  it('modo Só Forração mostra só a grade de Forração (100 caixinhas, 1–20…81–100)', () => {
+    const { container } = renderSheet(100, { mode: 'so_forracao' });
+    expect(container.querySelectorAll('[data-palmilha-layer-band="forracao"]')).toHaveLength(5);
+    expect(container.querySelectorAll('[data-palmilha-layer-band="fibra"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(100);
+    expect(boxNumbers(container.querySelector('[data-ficha-block="2"]')!)).toEqual(
+      Array.from({ length: 20 }, (_, i) => i + 21),
+    );
+  });
+
+  it('modo Só Fibra mostra só a grade de Fibra', () => {
+    const { container } = renderSheet(100, { mode: 'so_fibra' });
+    expect(container.querySelectorAll('[data-palmilha-layer-band="fibra"]')).toHaveLength(5);
+    expect(container.querySelectorAll('[data-palmilha-layer-band="forracao"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(100);
+  });
+
+  it('grade mista não inventa blocos e mantém duas grades independentes com o total', () => {
+    const { container } = renderSheet(50, { mixed: true });
     expect(container.querySelector('[data-ficha-blocks]')).toBeNull();
-    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(50);
-    expect(container.textContent).toMatch(/Controle de Fichas/);
+    expect(container.querySelectorAll('[data-palmilha-layer-band="forracao"] [data-tally-box]')).toHaveLength(50);
+    expect(container.querySelectorAll('[data-palmilha-layer-band="fibra"] [data-tally-box]')).toHaveLength(50);
   });
 });

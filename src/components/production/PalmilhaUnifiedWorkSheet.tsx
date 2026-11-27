@@ -3,6 +3,7 @@ import { Scissors } from '@phosphor-icons/react';
 import { gradeTableFont, floorSafeScale } from './worksheet/adaptiveFont';
 import { TallyBox } from './worksheet/TallyBox';
 import { FichaBlocks } from './worksheet/FichaBlocks';
+import { PalmilhaLayerTallies } from './worksheet/PalmilhaLayerTally';
 import { splitFichasIntoBlocks } from './worksheet/fichaBlocks';
 import {
   TALLY_SIZE,
@@ -545,19 +546,33 @@ export function PalmilhaUnifiedWorkSheet({
 
           {fichaBlocks.length === 0 ? (
             <div className="keep-together px-1.5 py-0.5">
-              <TallyBox
-                count={cardsCount}
-                pairsPerCard={tallyPerCard}
-                totalUnits={card.totalPairs}
-                size={TALLY_SIZE}
-                title={card.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : 'Controle de Fichas'}
-              />
+              {(showLining || showPlate) ? (
+                <PalmilhaLayerTallies
+                  count={cardsCount}
+                  pairsPerCard={tallyPerCard}
+                  totalUnits={card.totalPairs}
+                  size={TALLY_SIZE}
+                  showForracao={showLining}
+                  showFibra={showPlate}
+                  titleSuffix={card.corrugadosMistos ? 'corrugados mistos' : undefined}
+                />
+              ) : (
+                <TallyBox
+                  count={cardsCount}
+                  pairsPerCard={tallyPerCard}
+                  totalUnits={card.totalPairs}
+                  size={TALLY_SIZE}
+                  title={card.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : 'Controle de Fichas'}
+                />
+              )}
             </div>
           ) : (
             <FichaBlocks
               blocks={fichaBlocks}
               sizes={groupSizes}
               pairsPerFicha={tallyPerCard}
+              showForracao={showLining}
+              showFibra={showPlate}
             />
           )}
         </div>

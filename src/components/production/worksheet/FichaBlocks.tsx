@@ -1,4 +1,4 @@
-import { TallyBox } from './TallyBox';
+import { PalmilhaLayerTallies } from './PalmilhaLayerTally';
 import type { FichaBlock } from './fichaBlocks';
 
 interface Props {
@@ -6,21 +6,38 @@ interface Props {
   sizes: readonly string[];
   /** Pares de uma ficha (corrugado). O título do quadradinho usa esse número. */
   pairsPerFicha: number;
+  /** Camada de forração (napa). Default true na ficha unificada. */
+  showForracao?: boolean;
+  /** Camada de fibra (placa). Default true na ficha unificada. */
+  showFibra?: boolean;
 }
 
 /**
  * Seção de blocos de 20 fichas. A linha "Por Ficha" de 12 permanece onde já
  * está; isto só acrescenta a divisão pedida, com a curva já multiplicada.
  *
- * Cada bloco tem o próprio Controle de Fichas (quadradinhos = fichas daquele
- * bloco). Quando esta seção é renderizada, o tally único com o total da OP
- * NÃO deve aparecer — senão o operador vê o total duplicado no papel.
+ * Cada bloco tem o próprio Controle de Fichas, com duas grades independentes
+ * (Forração e Fibra) quando as duas camadas cabem na ficha. A numeração é
+ * contínua e igual nas duas grades: bloco 1 = 1–20, bloco 2 = 21–40, e o
+ * "completar" segue a sequência. Quando esta seção é renderizada, o tally
+ * único com o total da OP NÃO deve aparecer — senão o operador vê o total
+ * duplicado no papel.
  */
-export function FichaBlocks({ blocks, sizes, pairsPerFicha }: Props) {
+export function FichaBlocks({
+  blocks,
+  sizes,
+  pairsPerFicha,
+  showForracao = true,
+  showFibra = true,
+}: Props) {
   if (blocks.length === 0 || sizes.length === 0) return null;
   const totalFichas = blocks.reduce((sum, block) => sum + block.fichas, 0);
   const totalPairs = blocks.reduce((sum, block) => sum + block.pairs, 0);
   const blocoLabel = blocks.length === 1 ? '1 bloco' : `${blocks.length} blocos`;
+  const camadas = [
+    showForracao ? 'forração' : null,
+    showFibra ? 'fibra' : null,
+  ].filter(Boolean).join(' + ');
   return (
     <div data-ficha-blocks="" style={{ borderTop: '1.5px solid #000' }}>
       <div
@@ -31,11 +48,14 @@ export function FichaBlocks({ blocks, sizes, pairsPerFicha }: Props) {
           Controle de Fichas
         </span>
         <span style={{ fontFamily: "'Fira Code', monospace", fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-          {totalFichas} fichas · {blocoLabel} · {totalPairs} pares
+          {totalFichas} fichas · {blocoLabel} · {totalPairs} pares{camadas ? ` · ${camadas}` : ''}
         </span>
       </div>
-      {blocks.map(block => (
-        <div key={block.index} className="keep-together" data-ficha-block={block.index} data-ficha-block-count={block.fichas} style={{ borderBottom: '1px solid #000' }}>
+      {blocks.map((block, blockOffset) => {
+        const startNumber = 1 + blocks.slice(0, blockOffset).reduce((sum, b) => sum + b.fichas, 0);
+        const suffix = block.completar ? `completar (${block.fichas})` : `bloco ${block.index}`;
+        return (
+        <div key={block.index} className="keep-together" data-ficha-block={block.index} data-ficha-block-count={block.fichas} data-ficha-block-start={startNumber} style={{ borderBottom: '1px solid #000' }}>
           <div
             style={{
               display: 'flex',
@@ -81,16 +101,19 @@ export function FichaBlocks({ blocks, sizes, pairsPerFicha }: Props) {
             </tbody>
           </table>
           <div style={{ padding: '2px 6px 4px' }}>
-            <TallyBox
+            <PalmilhaLayerTallies
               count={block.fichas}
+              startNumber={startNumber}
               pairsPerCard={pairsPerFicha}
               totalUnits={block.pairs}
-              size="sm"
-              title={block.completar ? `Controle · completar (${block.fichas})` : `Controle · bloco ${block.index}`}
+              showForracao={showForracao}
+              showFibra={showFibra}
+              titleSuffix={suffix}
             />
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
