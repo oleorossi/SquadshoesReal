@@ -19,8 +19,8 @@ DECLARE
   v_already numeric;
 BEGIN
   -- Produto e grupo isolados (não são cadastros reais de solado).
-  INSERT INTO public.product_groups (name, description)
-  VALUES ('ENSAIO SOLAGEM ' || left(gen_random_uuid()::text, 8), 'rollback')
+  INSERT INTO public.product_groups (name, description, sector)
+  VALUES ('ENSAIO SOLAGEM ' || left(gen_random_uuid()::text, 8), 'rollback', 'Solado')
   RETURNING id INTO v_group_id;
 
   INSERT INTO public.products (
@@ -34,6 +34,8 @@ BEGIN
     true, v_group_id, 'tradicional'
   ) RETURNING id INTO v_product_id;
 
+  -- replica só no setup (guards de PV/ficha). A baixa usa role origin + GUC de comando.
+  SET LOCAL session_replication_role = replica;
   INSERT INTO public.technical_sheets (name, status, sole_group_id, primary_sole_id)
   VALUES ('ENSAIO FICHA SOLAGEM', 'ativo', v_group_id, v_product_id)
   RETURNING id INTO v_sheet_id;
@@ -64,6 +66,9 @@ BEGIN
       'shortage_grade', '{}'::jsonb
     )
   ) RETURNING id INTO v_res_id;
+
+  SET LOCAL session_replication_role = DEFAULT;
+  PERFORM set_config('app.order_stage_command_internal', '1', true);
 
   -- (a) passar pela Solagem (quantity_processed 0→50) baixa por numeração.
   UPDATE public.order_stages
