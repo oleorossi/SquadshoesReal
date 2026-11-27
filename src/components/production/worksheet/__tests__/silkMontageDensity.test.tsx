@@ -127,11 +127,16 @@ describe('Aviamento — densidade da Opção A', () => {
     expect(container.textContent).toContain('× 24 fichas');
   });
 
-  it('controle de fichas usa a caixinha compacta (20px)', () => {
+  it('controle de fichas usa a caixinha compacta (20px) em Frente e Traseiro', () => {
     const { container } = renderAviamento();
     const boxes = container.querySelectorAll('[data-tally-box]');
-    expect(boxes).toHaveLength(24);
+    // 24 fichas × 2 partes (Frente + Traseiro) = 48 caixinhas independentes.
+    expect(boxes).toHaveLength(48);
     expect((boxes[0] as HTMLElement).style.width).toBe('20px');
+    expect(container.querySelector('[data-cabedal-part-band="frente"]')).not.toBeNull();
+    expect(container.querySelector('[data-cabedal-part-band="traseiro"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-cabedal-part-band="frente"] [data-tally-box]')).toHaveLength(24);
+    expect(container.querySelectorAll('[data-cabedal-part-band="traseiro"] [data-tally-box]')).toHaveLength(24);
   });
 
   it('checkbox de Frente/Traseira encolheu mas continua marcável', () => {
@@ -267,6 +272,68 @@ describe('outros setores do mesmo card', () => {
         sectorLabel="Costura Palmilha"
       />,
     );
+    expect(container.textContent).toContain('Forração de palmilha');
+    expect(container.textContent).toContain('Costura de palmilha');
+    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(48);
+  });
+});
+
+describe('Cabedal — Frente e Traseiro independentes', () => {
+  it('Aviamento: etapas Frente/Traseira ficam visualmente distintas e com checkboxes próprios', () => {
+    const { container } = renderAviamento();
+    const frenteRow = container.querySelector('tr[data-cabedal-part="frente"]') as HTMLElement;
+    const traseiroRow = container.querySelector('tr[data-cabedal-part="traseiro"]') as HTMLElement;
+    expect(frenteRow).not.toBeNull();
+    expect(traseiroRow).not.toBeNull();
+    expect(frenteRow.textContent).toMatch(/Frente/i);
+    expect(traseiroRow.textContent).toMatch(/Traseira/i);
+    expect(frenteRow.querySelector('[data-cabedal-part-badge="frente"]')?.textContent).toBe('F');
+    expect(traseiroRow.querySelector('[data-cabedal-part-badge="traseiro"]')?.textContent).toBe('T');
+    // Barra esquerda sólida vs tracejada — contraste P&B sem depender de cor.
+    expect((frenteRow.querySelector('td') as HTMLElement).style.borderLeft).toContain('solid');
+    expect((traseiroRow.querySelector('td') as HTMLElement).style.borderLeft).toContain('dashed');
+  });
+
+  it('Corte Cabedal: Controle de Fichas vem em duas grades (Frente e Traseiro)', () => {
+    const { container } = render(
+      <SilkMontageWorkSheet groups={[ds20([])]} sector="Corte Cabedal" sectorLabel="Corte Cabedal" />,
+    );
+    const txt = container.textContent || '';
+    expect(txt).toContain('Controle de Fichas · Frente');
+    expect(txt).toContain('Controle de Fichas · Traseiro');
+    expect(container.querySelectorAll('[data-cabedal-part-band="frente"] [data-tally-box]')).toHaveLength(24);
+    expect(container.querySelectorAll('[data-cabedal-part-band="traseiro"] [data-tally-box]')).toHaveLength(24);
+  });
+
+  it('Costura Cabedal: também marca Frente e Traseiro à parte', () => {
+    const { container } = render(
+      <SilkMontageWorkSheet groups={[ds20([])]} sector="Costura Cabedal" sectorLabel="Costura Cabedal" />,
+    );
+    expect(container.textContent).toContain('Controle de Fichas · Frente');
+    expect(container.textContent).toContain('Controle de Fichas · Traseiro');
+    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(48);
+  });
+
+  it('Corte Forração (Palmilha) NÃO ganha o split Frente/Traseiro', () => {
+    const { container } = render(
+      <SilkMontageWorkSheet groups={[ds20([])]} sector="Corte Forração" sectorLabel="Corte Forração" />,
+    );
+    expect(container.querySelector('[data-cabedal-frente-traseiro-tally]')).toBeNull();
+    expect(container.textContent).not.toContain('Controle de Fichas · Frente');
+    expect(container.textContent).not.toContain('Controle de Fichas · Traseiro');
+    // Continua com uma única grade de 24 fichas.
+    expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(24);
+  });
+
+  it('Acabamento Palmilha mantém os dois tracks de palmilha, sem faixas F/T de cabedal', () => {
+    const { container } = render(
+      <SilkMontageWorkSheet
+        groups={[ds20([])]}
+        sector="Acabamento Palmilha"
+        sectorLabel="Acabamento Palmilha"
+      />,
+    );
+    expect(container.querySelector('[data-cabedal-frente-traseiro-tally]')).toBeNull();
     expect(container.textContent).toContain('Forração de palmilha');
     expect(container.textContent).toContain('Costura de palmilha');
     expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(48);
