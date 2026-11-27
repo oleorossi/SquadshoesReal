@@ -222,7 +222,7 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
       return;
     }
     if (kitPending && !kitAck) {
-      toast.error('Confirme a ressalva do kit pendente para enviar sem debitar o estoque que falta');
+      toast.error('Confirme a ressalva do kit pendente para lançar a entrada e a baixa do material que falta e enviar');
       return;
     }
     setBusy(true);
@@ -393,7 +393,7 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
             </p>
             <label className="flex items-start gap-2 text-xs text-foreground">
               <Checkbox checked={kitAck} onCheckedChange={(v) => setKitAck(v === true)} aria-label="Confirmar envio com kit pendente" />
-              <span>Confirmo o envio com ressalva. O estoque que falta não será debitado e a OS será criada normalmente.</span>
+              <span>Confirmo o envio com ressalva. A quantidade que falta será lançada no estoque e baixada na hora para este lote, e a OS será criada normalmente.</span>
             </label>
           </div>
         )}

@@ -23,6 +23,8 @@ describe('atelierKitShortage', () => {
     ];
     expect(kitShortageLabels(debits)).toEqual(['NAPA SOFT NATURAL: faltam 48 m (estoque 0 m)']);
     expect(kitShortageBlockMessage(debits)).toContain('enviar com ressalva');
+    expect(kitShortageBlockMessage(debits)).toContain('entrada automática');
+    expect(kitShortageBlockMessage(debits)).toContain('baixa o material');
     expect(kitShortageBlockMessage(debits)).toContain('NAPA SOFT NATURAL');
   });
 
