@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '../..');
 const SQL = readFileSync(
-  resolve(ROOT, 'supabase/migrations/20270101066100_atelie_ressalva_entrada_baixa_e_delete_where.sql'),
+  resolve(ROOT, 'supabase/migrations/20270101066200_atelie_ressalva_entrada_baixa_e_delete_where.sql'),
   'utf8',
 );
 
