@@ -12,7 +12,7 @@
  *   `Σ consumo − Estoque = Projetado`. A tela exibe essa conta; se um dia
  *   divergir, o problema está na fonte, não na soma.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface SoleStockMatrixRow {
@@ -45,6 +45,18 @@ export const soleStockMatrixKey = (productId: string | null) =>
   ['sole-stock-matrix', productId] as const;
 export const soleStockOrdersKey = (productId: string | null) =>
   ['sole-stock-orders', productId] as const;
+
+/** Queries da tela /solados que leem estoque físico (stock_grade / quantity). */
+export function invalidateSoleStockQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['sole-stock-matrix'] });
+  queryClient.invalidateQueries({ queryKey: ['sole-stock-orders'] });
+  queryClient.invalidateQueries({ queryKey: ['products'] });
+  queryClient.invalidateQueries({ queryKey: ['soles_hub_products'] });
+  queryClient.invalidateQueries({ queryKey: ['soles_history'] });
+  queryClient.invalidateQueries({ queryKey: ['sole_size_range_specific'] });
+  queryClient.invalidateQueries({ queryKey: ['stock-adjustment-products'] });
+  queryClient.invalidateQueries({ queryKey: ['stock_movements'] });
+}
 
 const num = (v: unknown) => Number(v) || 0;
 
