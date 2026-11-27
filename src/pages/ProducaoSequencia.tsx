@@ -29,11 +29,11 @@ const fmtDay = (iso: string | null) =>
 
 const SHORTCUTS = [
   { to: '/producao/corte-lookahead', label: 'Fila de Corte', icon: Scissors, hint: 'Liberar itens sem OP' },
-  { to: '/producao/planejamento', label: 'Planejamento', icon: ClipboardCheck, hint: 'Carga por dia' },
-  { to: '/producao/kanban', label: 'Modo Gestão', icon: Kanban, hint: 'Kanban / apontar' },
+  { to: '/motor?tab=plano&view=dia', label: 'Fila do dia', icon: ClipboardCheck, hint: 'Carga por dia' },
+  { to: '/producao/kanban', label: 'Central de Produção', icon: Kanban, hint: 'Kanban / apontar' },
   { to: '/producao/estouro', label: 'Estouro', icon: AlertTriangle, hint: 'Acima da capacidade' },
   { to: '/producao/apontamento', label: 'Apontamento', icon: ListChecks, hint: 'Chão por setor' },
-  { to: '/producao/setores', label: 'Setores', icon: Factory, hint: 'Capacidade pares/dia' },
+  { to: '/motor?tab=capacidade', label: 'Capacidade e equipe', icon: Factory, hint: 'Capacidade pares/dia' },
   { to: '/terceirizados?tab=modelos', label: 'Ateliê (cadastro)', icon: Sparkles, hint: 'Refs de cabedal complexo' },
 ] as const;
 

@@ -5,7 +5,7 @@ export default function ComprasHub() {
     <HubLanding
       hubPath="/compras"
       sectionLabel="Compras"
-      description="Cotações, pedidos de compra, entrada por NF, fornecedores e alçadas."
+      description="Planejamento de compras, cotações, pedidos, entrada por NF, fornecedores e alçadas."
       hints={{
         '/purchase-planning': 'MRP e plano semanal',
         '/quotations': 'RFQ e comparação de propostas',

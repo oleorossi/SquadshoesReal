@@ -113,7 +113,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
   // que dependem dele.
   const roleNames = React.useMemo(() => currentRoles.map((r) => r.role), [currentRoles]);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsedHubs, setCollapsedHubs] = useState<Set<string>>(() => new Set());
+  const [openedHubs, setOpenedHubs] = useState<Set<string>>(() => new Set());
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [showAllShortcuts, setShowAllShortcuts] = useState(false);
   // O drawer mobile é um aside artesanal (não usa o primitive Sheet): prender o
   // foco, fechar no Escape e DEVOLVER o foco ao gatilho são responsabilidade
   // nossa. Antes só o foco inicial e o Escape estavam feitos (achado F17): o Tab
@@ -237,6 +239,15 @@ export default function AppLayout({ children, printMode = false }: { children: R
     }
     return out;
   }, [filteredSystemShortcuts, filteredFavorites]);
+  const SHORTCUT_LIMIT = 5;
+  const visibleAtalhos = !shortcutsOpen
+    ? []
+    : (showAllShortcuts || atalhoPaths.length <= SHORTCUT_LIMIT)
+      ? atalhoPaths
+      : atalhoPaths.slice(0, SHORTCUT_LIMIT);
+  const hiddenShortcutCount = (!showAllShortcuts && atalhoPaths.length > SHORTCUT_LIMIT)
+    ? atalhoPaths.length - SHORTCUT_LIMIT
+    : 0;
 
   // DnD só entre hubs (modelo v2).
   const dragInfo = React.useRef<{ kind: 'hub'; label: string } | null>(null);
@@ -263,9 +274,9 @@ export default function AppLayout({ children, printMode = false }: { children: R
     if (location.pathname === hub.path) return true;
     return hub.children.some((item) => pathMatches(item.path));
   };
-  const hubExpanded = (hub: NavigationHub) => isHubActive(hub) || !collapsedHubs.has(hub.path);
+  const hubExpanded = (hub: NavigationHub) => isHubActive(hub) || openedHubs.has(hub.path);
   const toggleHub = (hubPath: string) => {
-    setCollapsedHubs((current) => {
+    setOpenedHubs((current) => {
       const next = new Set(current);
       if (next.has(hubPath)) next.delete(hubPath);
       else next.add(hubPath);
@@ -437,11 +448,27 @@ export default function AppLayout({ children, printMode = false }: { children: R
             </div>
           )}
 
-          {/* Atalhos — sistema + favoritos */}
+          {/* Atalhos — no topo, recolhidos por padrão, para não engolir as Áreas */}
           {isCollapsed ? (
             atalhoPaths.length > 0 && (
               <div className="px-2 pb-2 mb-1 border-b border-sidebar-border/40 space-y-1">
-                {atalhoPaths.map((item) => (
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-expanded={shortcutsOpen}
+                      aria-label={`Atalhos (${atalhoPaths.length})`}
+                      onClick={() => setShortcutsOpen((open) => !open)}
+                      className={cn(collapsedItemClass(false), 'w-full')}
+                    >
+                      <Star className={navIconClass(shortcutsOpen)} weight={shortcutsOpen ? 'fill' : 'regular'} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
+                    Atalhos ({atalhoPaths.length})
+                  </TooltipContent>
+                </Tooltip>
+                {visibleAtalhos.map((item) => (
                   <Tooltip key={item.path} delayDuration={0}>
                     <TooltipTrigger asChild>
                       <NavLink to={item.path} className={({ isActive }) => cn(collapsedItemClass(isActive), 'relative')}>
@@ -460,48 +487,93 @@ export default function AppLayout({ children, printMode = false }: { children: R
                     </TooltipContent>
                   </Tooltip>
                 ))}
+                {shortcutsOpen && hiddenShortcutCount > 0 && (
+                  <Tooltip delayDuration={0}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setShowAllShortcuts(true)}
+                        className={cn(collapsedItemClass(false), 'w-full text-[10px] font-medium')}
+                        aria-label="Ver todos os atalhos"
+                      >
+                        +{hiddenShortcutCount}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
+                      Ver todos
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </div>
             )
           ) : (
             atalhoPaths.length > 0 && (
               <div className="px-2 pb-2 mb-1 border-b border-sidebar-border/40">
-                <p className={sectionLabelClass}>Atalhos</p>
-                <div className="mt-0.5 space-y-0.5">
-                  {atalhoPaths.map((item) => (
-                    <div key={item.path} className="relative">
-                      <NavLink
-                        to={item.path}
-                        draggable={!mobile && item.favorited}
-                        onDragStart={!mobile && item.favorited ? handleFavDragStart(item.path) : undefined}
-                        onDragOver={!mobile && item.favorited ? handleFavDragOver(item.path) : undefined}
-                        onDrop={!mobile && item.favorited ? handleFavDrop(item.path) : undefined}
-                        onDragEnd={!mobile ? clearFavDrag : undefined}
-                        onClick={mobile ? () => setMobileOpen(false) : undefined}
-                        onMouseEnter={() => prefetch(item.path)}
-                        onMouseLeave={cancelPrefetch}
-                        onFocus={() => prefetch(item.path)}
-                        style={item.favorited ? favDropStyle(item.path) : undefined}
-                        className={({ isActive }) => cn(navItemClass(isActive, item.favorited), !mobile && item.favorited && 'cursor-grab active:cursor-grabbing select-none')}
-                      >
-                        {({ isActive }) => (
-                          <div className="flex items-center gap-3 min-w-0">
-                            <item.icon className={navIconClass(isActive)} weight={isActive ? 'bold' : 'regular'} />
-                            <span className="truncate">{item.name}</span>
-                          </div>
-                        )}
-                      </NavLink>
-                      {item.favorited && (
-                        <button
-                          onClick={(e) => toggleFavorite(e, item.name, item.path)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm text-sidebar-muted hover:text-primary transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          aria-label={`Remover ${item.name} dos favoritos`}
+                <button
+                  type="button"
+                  aria-expanded={shortcutsOpen}
+                  onClick={() => setShortcutsOpen((open) => !open)}
+                  className="flex w-full items-center justify-between rounded-md px-1 py-1 text-left hover:bg-sidebar-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <p className={cn(sectionLabelClass, 'mb-0')}>Atalhos ({atalhoPaths.length})</p>
+                  <CaretDown className={cn('h-3.5 w-3.5 text-sidebar-muted transition-transform', !shortcutsOpen && '-rotate-90')} />
+                </button>
+                {shortcutsOpen && (
+                  <div className="mt-0.5 space-y-0.5">
+                    {visibleAtalhos.map((item) => (
+                      <div key={item.path} className="relative">
+                        <NavLink
+                          to={item.path}
+                          draggable={!mobile && item.favorited}
+                          onDragStart={!mobile && item.favorited ? handleFavDragStart(item.path) : undefined}
+                          onDragOver={!mobile && item.favorited ? handleFavDragOver(item.path) : undefined}
+                          onDrop={!mobile && item.favorited ? handleFavDrop(item.path) : undefined}
+                          onDragEnd={!mobile ? clearFavDrag : undefined}
+                          onClick={mobile ? () => setMobileOpen(false) : undefined}
+                          onMouseEnter={() => prefetch(item.path)}
+                          onMouseLeave={cancelPrefetch}
+                          onFocus={() => prefetch(item.path)}
+                          style={item.favorited ? favDropStyle(item.path) : undefined}
+                          className={({ isActive }) => cn(navItemClass(isActive, item.favorited), !mobile && item.favorited && 'cursor-grab active:cursor-grabbing select-none')}
                         >
-                          <Star className="h-3 w-3 fill-current" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                          {({ isActive }) => (
+                            <div className="flex items-center gap-3 min-w-0">
+                              <item.icon className={navIconClass(isActive)} weight={isActive ? 'bold' : 'regular'} />
+                              <span className="truncate">{item.name}</span>
+                            </div>
+                          )}
+                        </NavLink>
+                        {item.favorited && (
+                          <button
+                            onClick={(e) => toggleFavorite(e, item.name, item.path)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-sm text-sidebar-muted hover:text-primary transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            aria-label={`Remover ${item.name} dos favoritos`}
+                          >
+                            <Star className="h-3 w-3 fill-current" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {hiddenShortcutCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllShortcuts(true)}
+                        className="w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                      >
+                        Ver todos ({atalhoPaths.length})
+                      </button>
+                    )}
+                    {showAllShortcuts && atalhoPaths.length > SHORTCUT_LIMIT && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllShortcuts(false)}
+                        className="w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                      >
+                        Mostrar menos
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )
           )}

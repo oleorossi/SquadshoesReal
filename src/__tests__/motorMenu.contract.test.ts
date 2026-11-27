@@ -32,7 +32,7 @@ describe('menu Motor de produção', () => {
   it('reúne as telas existentes sem duplicar lógica', () => {
     const page = read('src/pages/MotorProducao.tsx');
     for (const piece of ['<MotorPrazosPanel />', '<ProducaoSequencia />', '<ProducaoSetoresConfig />', 'AtelierSectorAdmin',
-      '<MotorPlanoPanel />', '<MotorComprasPanel />', '<MotorAtelierPanel />', '<MotorConfigPanel />']) {
+      '<MotorPlanoPanel />', '<ProducaoPlanejamento embedded />', '<MotorComprasPanel />', '<MotorAtelierPanel />', '<MotorConfigPanel />']) {
       expect(page).toContain(piece);
     }
   });

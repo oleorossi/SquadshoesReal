@@ -40,11 +40,13 @@ describe('production sequence frozen (contract)', () => {
     const access = readFileSync(resolve(__dirname, '../hooks/useAccessControl.ts'), 'utf8');
     const hub = readFileSync(resolve(__dirname, '../pages/ProducaoHub.tsx'), 'utf8');
     const page = readFileSync(resolve(__dirname, '../pages/ProducaoSequencia.tsx'), 'utf8');
-    expect(nav).toContain("'/producao/sequencia'");
-    expect(nav).toContain("home: '/producao/sequencia'");
+    expect(nav).toContain("home: '/motor'");
+    expect(nav).toContain('/producao/sequencia');
     expect(app).toContain('producao/sequencia');
+    expect(app).toContain('/motor?tab=sequencia');
     expect(access).toContain("'/producao/sequencia': 'producao'");
-    expect(hub).toContain("'/producao/sequencia'");
+    expect(hub).not.toContain("'/producao/sequencia'");
+    expect(hub).toContain("'/motor'");
     expect(page).toContain('/terceirizados?tab=modelos');
     expect(page).toContain('useAtelierCatalog');
   });

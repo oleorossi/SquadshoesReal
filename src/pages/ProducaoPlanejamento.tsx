@@ -55,12 +55,14 @@ const toISO = (d: Date) => format(d, 'yyyy-MM-dd');
  *    e popover "como cheguei nisso" (R2.8).
  *  • Fila: ordem real de produção (pin > prazo > criação) com drag = pin (R2.5).
  */
-export default function ProducaoPlanejamento() {
+export default function ProducaoPlanejamento({ embedded = false }: { embedded?: boolean } = {}) {
   // A aba mora na URL (contrato do lote L6a): antes era <Tabs defaultValue>, então
   // F5 e o botão Voltar devolviam o usuário à primeira aba.
+  // Dentro do Motor usa `subtab` para não brigar com `?tab=plano`.
   const { value: abaAtiva, setValue: setAbaAtiva } = useUrlTabState({
     values: ['grade', 'fila', 'gestao'] as const,
     defaultValue: 'grade',
+    param: embedded ? 'subtab' : 'tab',
   });
   useEnsureFreshSchedule();
   // Apontamento em outro terminal → realtime invalida as views do motor
@@ -74,7 +76,9 @@ export default function ProducaoPlanejamento() {
   const { data: lastRun } = useLastEngineRun();
   const pin = usePinOrder();
   const pinAt = usePinOrderAt();
-  const canEdit = useCan('/producao/planejamento').canEdit;
+  const canEditPlanejamento = useCan('/producao/planejamento').canEdit;
+  const canEditMotor = useCan('/motor').canEdit;
+  const canEdit = canEditPlanejamento || canEditMotor;
   const today = toISO(new Date());
   const { data: dailyManagement = [], isLoading: dailyManagementLoading } = useSectorDailyManagement(today);
 
@@ -132,11 +136,18 @@ export default function ProducaoPlanejamento() {
 
   return (
     <div className="space-y-5 page-enter">
-      <EditorialPageHeader
-        sectionLabel="PRODUÇÃO · PLANEJAMENTO"
-        title="Planejamento"
-        description="Fila diária do motor dinâmico: saldo não produzido rola pro dia seguinte com prioridade; produção acima do plano puxa OPs futuras."
-      />
+      {!embedded && (
+        <EditorialPageHeader
+          sectionLabel="PRODUÇÃO · PLANEJAMENTO"
+          title="Planejamento"
+          description="Fila diária do motor dinâmico: saldo não produzido rola pro dia seguinte com prioridade; produção acima do plano puxa OPs futuras."
+        />
+      )}
+      {embedded && (
+        <p className="text-sm text-muted-foreground">
+          Fila do dia: carga por setor e ordem real de produção. O saldo não produzido rola para o dia seguinte.
+        </p>
+      )}
 
       {(gridError || queueError) && (
         <EmptyState

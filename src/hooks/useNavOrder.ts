@@ -30,6 +30,11 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
+/** Hub "PCP" foi renomeado para "Engenharia"; preserva a ordem salva do usuário. */
+function canonicalizeGroupLabel(label: string): string {
+  return label === 'PCP' ? 'Engenharia' : label;
+}
+
 // ── Lógica pura (testável) ───────────────────────────────────────────────
 
 /** Move `fromKey` pra posição de `toKey` (antes/depois). Retorna nova lista. */
@@ -124,10 +129,15 @@ export function orderNav<G extends { label: string; items: { path: string }[] }>
 }
 
 export function useNavOrder() {
-  const [groupOrder, setGroupOrderState] = useState<string[]>(() => load<string[]>(GROUP_KEY, []));
-  const [itemOrder, setItemOrderState] = useState<Record<string, string[]>>(() =>
-    load<Record<string, string[]>>(ITEM_KEY, {})
-  );
+  const [groupOrder, setGroupOrderState] = useState<string[]>(() => load<string[]>(GROUP_KEY, []).map(canonicalizeGroupLabel));
+  const [itemOrder, setItemOrderState] = useState<Record<string, string[]>>(() => {
+    const raw = load<Record<string, string[]>>(ITEM_KEY, {});
+    if (raw.PCP && !raw.Engenharia) {
+      raw.Engenharia = raw.PCP;
+      delete raw.PCP;
+    }
+    return raw;
+  });
   const [itemGroup, setItemGroupState] = useState<Record<string, string>>(() =>
     load<Record<string, string>>(ITEM_GROUP_KEY, {})
   );

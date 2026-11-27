@@ -4,7 +4,8 @@
  * Só reúne telas que já existiam; a lógica continua nos mesmos componentes.
  *
  * Abas (?tab=):
- *   plano       → plano/agenda (v_production_motor_plan)      · alias: agenda
+ *   plano       → plano/agenda + Fila do dia (planejamento)   · alias: agenda
+ *                 subaba: ?view=dia (e ?subtab=grade|fila|gestao)
  *   sequencia   → Sequência / liberação (ProducaoSequencia)    · alias: fila
  *   compras     → OCs rascunho priorizadas (comprar até)       · alias: ocs, oc
  *   atelie      → prestador (envio/volta) + reservas do kit    · alias: reservas, prestador
@@ -32,17 +33,35 @@ import {
 import { resolveMotorTab, type MotorTab } from '@/lib/motorTabs';
 import ProducaoSequencia from './ProducaoSequencia';
 import ProducaoSetoresConfig from './ProducaoSetoresConfig';
+import ProducaoPlanejamento from './ProducaoPlanejamento';
 
 const TRIGGER = 'h-11 shrink-0 snap-start rounded-md px-3 text-[11px] sm:text-xs';
 
 export default function MotorProducao() {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get('tab');
+  const rawView = searchParams.get('view');
   const [tab, setTab] = useState<MotorTab>(resolveMotorTab(raw));
+  const planoView = rawView && ['dia', 'fila', 'grade', 'gestao', 'planejamento'].includes(rawView)
+    ? 'dia'
+    : 'agenda';
 
   useEffect(() => {
     setTab(resolveMotorTab(raw));
   }, [raw]);
+
+  useEffect(() => {
+    if (resolveMotorTab(raw) !== 'plano') return;
+    if (!rawView || !['fila', 'grade', 'gestao'].includes(rawView)) return;
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set('tab', 'plano');
+      params.set('view', 'dia');
+      if (rawView !== 'grade') params.set('subtab', rawView);
+      else params.delete('subtab');
+      return params;
+    }, { replace: true });
+  }, [raw, rawView, setSearchParams]);
 
   const onTabChange = (value: string) => {
     const next = resolveMotorTab(value);
@@ -50,6 +69,23 @@ export default function MotorProducao() {
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev);
       params.set('tab', next);
+      if (next !== 'plano') {
+        params.delete('view');
+        params.delete('subtab');
+      }
+      return params;
+    }, { replace: true });
+  };
+
+  const onPlanoViewChange = (value: string) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set('tab', 'plano');
+      if (value === 'dia') params.set('view', 'dia');
+      else {
+        params.delete('view');
+        params.delete('subtab');
+      }
       return params;
     }, { replace: true });
   };
@@ -59,7 +95,7 @@ export default function MotorProducao() {
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · MOTOR"
         title="Motor de produção"
-        description="Tudo do motor num lugar só: plano, sequência, compras, Ateliê, prazos, capacidade e equipe. O motor automático só liga quando o Leonardo decidir."
+        description="Tudo do motor num lugar só: plano e fila do dia, sequência, compras, Ateliê, prazos, capacidade e equipe. O motor automático só liga quando o Leonardo decidir."
       />
       <MotorUltimoRecalculo />
       <Tabs value={tab} onValueChange={onTabChange}>
@@ -77,7 +113,20 @@ export default function MotorProducao() {
           <TabsTrigger value="config" className={TRIGGER}><SlidersHorizontal className="h-3.5 w-3.5" /> Configurações</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="plano" className="mt-4"><MotorPlanoPanel /></TabsContent>
+        <TabsContent value="plano" className="mt-4 space-y-4">
+          <Tabs value={planoView} onValueChange={onPlanoViewChange}>
+            <TabsList
+              indicator="none"
+              aria-label="Plano e agenda"
+              className="h-auto gap-1 rounded-lg border border-border/60 bg-muted/40 p-0.5"
+            >
+              <TabsTrigger value="agenda" className={TRIGGER}>Agenda</TabsTrigger>
+              <TabsTrigger value="dia" className={TRIGGER}>Fila do dia</TabsTrigger>
+            </TabsList>
+            <TabsContent value="agenda" className="mt-4"><MotorPlanoPanel /></TabsContent>
+            <TabsContent value="dia" className="mt-4"><ProducaoPlanejamento embedded /></TabsContent>
+          </Tabs>
+        </TabsContent>
         <TabsContent value="sequencia" className="mt-4"><ProducaoSequencia /></TabsContent>
         <TabsContent value="compras" className="mt-4"><MotorComprasPanel /></TabsContent>
         <TabsContent value="atelie" className="mt-4"><MotorAtelierPanel /></TabsContent>

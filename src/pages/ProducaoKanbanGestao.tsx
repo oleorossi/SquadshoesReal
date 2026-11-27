@@ -1038,7 +1038,7 @@ export default function ProducaoKanbanGestao({ embedded = false }: { embedded?: 
           className="shrink-0 px-2 md:px-3 pt-1.5 pb-0"
           actions={
             <Button asChild variant="outline" size="sm" className="h-11 w-11 p-0 lg:h-9 lg:w-auto lg:gap-1.5 lg:px-3" title="Voltar para o Planejamento de Produção">
-              <Link to="/producao/planejamento" aria-label="Voltar para o Planejamento de Produção">
+              <Link to="/motor?tab=plano&view=dia" aria-label="Voltar para o Planejamento de Produção">
                 <ArrowLeft className="h-4 w-4" />
                 <span className="hidden lg:inline">Planejamento</span>
               </Link>

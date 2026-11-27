@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UsersThree, Briefcase, Ruler, Compass, ShieldCheck, Lightning as Zap, ShoppingBag, Basket, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, CalendarBlank, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock, Storefront, CheckCircle, Notebook, FileArrowUp } from '@phosphor-icons/react';
+import { Package, ShoppingCart, Gear as Settings, Truck, Factory, Kanban, SquaresFour as LayoutDashboard, Wallet, FileText, Users, UsersThree, Briefcase, Ruler, Compass, ShieldCheck, Lightning as Zap, ShoppingBag, Basket, ChartBar as BarChart3, Receipt, Footprints, Sparkle as Sparkles, ClipboardText as ClipboardCheck, CurrencyDollar as DollarSign, Calendar, Cube as Box, ListChecks, Stack as Boxes, HandHeart as HeartHandshake, FileXls as FileSpreadsheet, Scales as Scale, Warning as AlertTriangle, Path as RouteIcon, Pulse as Activity, Printer, Tag, Barcode, ChatText as MessageSquare, TrendUp as TrendingUp, Calculator, Lock, Monitor, Cpu, Buildings, Gavel, Gauge, FolderOpen, Scissors, Clock, Storefront, CheckCircle, Notebook, FileArrowUp } from '@phosphor-icons/react';
 
 /**
  * Superfícies de descoberta.
@@ -82,20 +82,18 @@ export const navigationCatalog: NavigationResource[] = [
   // capacidade, equipe e chaves). As abas entram na busca como ações rápidas
   // (GlobalSearch) com a permissão de /motor — sem destino concedível extra.
   { path: '/motor', label: 'Motor de produção', group: 'Produção', icon: Cpu, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/MotorProducao') },
-  { path: '/producao/sequencia', label: 'Sequência', group: 'Produção', icon: RouteIcon, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoSequencia') },
-  { path: '/producao/planejamento', label: 'Planejamento', group: 'Produção', icon: CalendarBlank, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoPlanejamento') },
+  // /producao/sequencia, /producao/planejamento e /producao/setores saíram do
+  // catálogo: são só redirect pra /motor?tab=… (não podem aparecer no menu).
   { path: '/producao/corte-lookahead', label: 'Corte', group: 'Produção', icon: Scissors, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoCorteLookahead') },
   // Mantém o path concedível histórico para não invalidar permissões por item;
   // a rota redireciona imediatamente para a Central em Modo Gestão.
-  { path: '/producao/kanban', label: 'Gestão', group: 'Produção', icon: Kanban, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoKanban') },
+  { path: '/producao/kanban', label: 'Central de Produção', group: 'Produção', icon: Kanban, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoKanban') },
   { path: '/producao/estouro', label: 'Estouro', group: 'Produção', icon: AlertTriangle, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoEstouro') },
-  { path: '/producao/setores', label: 'Setores', group: 'Produção', icon: Factory, surfaces: ['command'] /* configuração global do motor, não entrada diária */, preload: () => import('@/pages/ProducaoSetoresConfig') },
   { path: '/producao/apontamento', label: 'Apontamento', group: 'Produção', icon: ListChecks, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Setores') },
   { path: '/producao/calculadora-grade', label: 'Grade', group: 'Produção', icon: Calculator, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/CalculadoraGrade') },
   { path: '/imprimir-fichas', label: 'Fichas de OP', group: 'Produção', icon: Printer, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PrintWorkSheets') },
   { path: '/producao/analises', label: 'Análises', group: 'Produção', icon: BarChart3, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoAnalises') },
   { path: '/producao/produtividade', label: 'Produtividade por Modelo', group: 'Produção', icon: Gauge, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/ProdutividadeModelos') },
-  { path: '/terceirizados?tab=gestao', label: 'OS prestadores', group: 'Produção', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/TerceirizadosHub') },
   // Ordens não ocupa a sidebar por decisão do dono, mas é aberta pela FAB e
   // por cards; o mesmo recurso governa ação rápida, busca e permissão granular.
   { path: '/orders', label: 'Ordens de Produção', group: 'Produção', icon: ClipboardCheck, surfaces: ['command', 'quick-action'], preload: () => import('@/pages/Orders') },
@@ -104,7 +102,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/materiais', label: 'Materiais', group: 'Materiais', icon: Box, surfaces: ['hub', 'command'], preload: () => import('@/pages/MateriaisHub') },
   { path: '/estoque', label: 'Estoque', group: 'Materiais', icon: Package, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Index') },
   { path: '/grupos', label: 'Grupos', group: 'Materiais', icon: FolderOpen, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Groups') },
-  { path: '/ajuste-estoque', label: 'Ajustes', group: 'Materiais', icon: Boxes, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/StockAdjustmentPage') },
+  { path: '/ajuste-estoque', label: 'Ajuste de estoque', group: 'Materiais', icon: Boxes, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/StockAdjustmentPage') },
   { path: '/estoque/qualidade', label: 'Qualidade', group: 'Materiais', icon: ShieldCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/EstoqueQualidade') },
   { path: '/estoque/inventario', label: 'Inventário ABC', group: 'Materiais', icon: BarChart3, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/InventarioABC') },
   { path: '/reservas-estoque', label: 'Reservas e Em Produção', group: 'Materiais', icon: Package, surfaces: ['command'], preload: () => import('@/pages/StockReservations') },
@@ -112,10 +110,10 @@ export const navigationCatalog: NavigationResource[] = [
 
   // Compras
   { path: '/compras', label: 'Compras', group: 'Compras', icon: Basket, surfaces: ['hub', 'command'], preload: () => import('@/pages/ComprasHub') },
-  { path: '/purchase-planning', label: 'Planejamento', group: 'Compras', icon: Calendar, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchasePlanning') },
+  { path: '/purchase-planning', label: 'Planejamento de compras', group: 'Compras', icon: Calendar, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchasePlanning') },
   { path: '/quotations', label: 'Cotações (RFQ)', group: 'Compras', icon: FileSpreadsheet, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Quotations') },
   { path: '/purchase-orders', label: 'Pedidos de compra', group: 'Compras', icon: ShoppingBag, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchaseOrders') },
-  { path: '/purchase-orders/per-pv', label: 'Por pedido', group: 'Compras', icon: ShoppingCart, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchaseOrdersPerPv') },
+  { path: '/purchase-orders/per-pv', label: 'OCs por pedido', group: 'Compras', icon: ShoppingCart, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PurchaseOrdersPerPv') },
   { path: '/compras/entrada-nf', label: 'Entrada por NF', group: 'Compras', icon: FileArrowUp, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/EntradaNfPage') },
   { path: '/compras/pendencias-material', label: 'Pendências', group: 'Compras', icon: AlertTriangle, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/RelatorioPendenciaMaterial') },
   { path: '/compras/inspecao', label: 'Inspeção', group: 'Compras', icon: ClipboardCheck, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/InspecaoRecebimento') },
@@ -135,7 +133,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/picking-sessions', label: 'Separação · Bipagem (EAN)', group: 'Expedição', icon: ClipboardCheck, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/Picking') },
   { path: '/delivery-tracking', label: 'Rastreamento', group: 'Expedição', icon: Activity, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/DeliveryTracking') },
   { path: '/label-system', label: 'Etiquetas', group: 'Expedição', icon: Tag, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/LabelSystem') },
-  { path: '/etiquetagem-cliente', label: 'ETIQUETAGEM CLIENTE', group: 'Expedição', icon: Barcode, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ClientLabeling') },
+  { path: '/etiquetagem-cliente', label: 'Etiquetas do cliente', group: 'Expedição', icon: Barcode, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ClientLabeling') },
 
   // Financeiro
   { path: '/financeiro', label: 'Financeiro', group: 'Financeiro', icon: Wallet, surfaces: ['hub', 'command'], preload: () => import('@/pages/Finance') },
@@ -225,8 +223,25 @@ const hubsDeclarados: NavigationHub[] = [
     ],
   },
   {
+    path: '/producao',
+    label: 'Produção',
+    icon: Factory,
+    groups: ['Produção'],
+    children: [
+      resource('/motor'),
+      resource('/producao/kanban'),
+      resource('/producao/apontamento'),
+      resource('/terceirizados'),
+      resource('/producao/corte-lookahead'),
+      resource('/imprimir-fichas'),
+      resource('/producao/calculadora-grade'),
+      resource('/producao/analises'),
+      resource('/producao/estouro'),
+    ],
+  },
+  {
     path: '/engenharia',
-    label: 'PCP',
+    label: 'Engenharia',
     icon: Compass,
     groups: ['Engenharia'],
     children: [
@@ -237,27 +252,6 @@ const hubsDeclarados: NavigationHub[] = [
       resource('/solados'),
       resource('/silks'),
       resource('/tiras-artesanais'),
-      resource('/producao/planejamento'),
-      resource('/producao/sequencia'),
-      resource('/producao/calculadora-grade'),
-      resource('/purchase-planning'),
-    ],
-  },
-  {
-    path: '/compras',
-    label: 'Compras',
-    icon: Basket,
-    groups: ['Compras'],
-    children: [
-      resource('/quotations'),
-      resource('/purchase-orders'),
-      resource('/purchase-orders/per-pv'),
-      resource('/compras/entrada-nf'),
-      resource('/compras/pendencias-material'),
-      resource('/compras/inspecao'),
-      resource('/suppliers'),
-      resource('/custos-insumos'),
-      resource('/compras/alcadas'),
     ],
   },
   {
@@ -274,19 +268,21 @@ const hubsDeclarados: NavigationHub[] = [
     ],
   },
   {
-    path: '/producao',
-    label: 'Produção',
-    icon: Factory,
-    groups: ['Produção'],
+    path: '/compras',
+    label: 'Compras',
+    icon: Basket,
+    groups: ['Compras'],
     children: [
-      resource('/motor'),
-      resource('/producao/corte-lookahead'),
-      resource('/terceirizados'),
-      resource('/producao/kanban'),
-      resource('/producao/apontamento'),
-      resource('/imprimir-fichas'),
-      resource('/producao/analises'),
-      resource('/producao/estouro'),
+      resource('/purchase-planning'),
+      resource('/quotations'),
+      resource('/purchase-orders'),
+      resource('/purchase-orders/per-pv'),
+      resource('/compras/entrada-nf'),
+      resource('/compras/pendencias-material'),
+      resource('/compras/inspecao'),
+      resource('/suppliers'),
+      resource('/custos-insumos'),
+      resource('/compras/alcadas'),
     ],
   },
   {
@@ -432,7 +428,7 @@ export interface RoleMenuPresentation {
 }
 
 const ORDEM_COMPLETA = [
-  'Comercial', 'PCP', 'Compras', 'Estoque', 'Produção',
+  'Comercial', 'Produção', 'Engenharia', 'Estoque', 'Compras',
   'Expedição', 'Faturamento', 'Financeiro', 'Pessoas',
 ];
 
@@ -442,7 +438,7 @@ export const ROLE_MENU_PRESENTATION: Record<string, RoleMenuPresentation> = {
   consulta:{ home: '/dashboard', groupOrder: ORDEM_COMPLETA },
 
   // Quem aponta produção começa na sequência oficial; apontamento fica no hub.
-  producao:     { home: '/producao/sequencia', groupOrder: ['Produção', 'PCP', 'Estoque', 'Expedição', 'Pessoas'] },
+  producao:     { home: '/motor', groupOrder: ['Produção', 'Engenharia', 'Estoque', 'Expedição', 'Pessoas'] },
   comercial:    { home: '/comercial',            groupOrder: ['Comercial'] },
   nfe_operator: { home: '/fiscal',               groupOrder: ['Faturamento', 'Comercial'] },
   almoxarifado: { home: '/materiais',            groupOrder: ['Estoque'] },

@@ -321,7 +321,7 @@ export default function ProducaoAntecipacao() {
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" className="h-9 gap-2" asChild>
-              <Link to="/producao/setores">
+              <Link to="/motor?tab=capacidade">
                 <SlidersIcon className="h-4 w-4" />
                 Setores
               </Link>
