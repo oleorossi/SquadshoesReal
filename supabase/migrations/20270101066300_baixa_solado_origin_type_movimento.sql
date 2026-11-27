@@ -1,3 +1,6 @@
+-- Versão 20270101066300. Não reutilizar 20270101066100: esse timestamp
+-- já está aplicado em produção como atelie_ressalva_entrada_baixa_e_delete_where
+-- (#749). A correção do origin_type nunca chegou a entrar sob 66100.
 -- Corrige origin_type da baixa de solado na Solagem.
 -- debit_sole_grade_for_solagem_pointing gravava origin_type = 'production_pointing',
 -- rejeitado por stock_movements_strap_origin_type_ck (só NULL,
