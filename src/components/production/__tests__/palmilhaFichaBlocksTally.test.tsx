@@ -134,6 +134,20 @@ describe('Controle de Fichas por bloco (Forração + Fibra)', () => {
     );
   });
 
+  it('o cabeçalho e o selo da Fibra usam azul-escuro com print-color-adjust exact', () => {
+    const { container } = renderSheet(20, { mode: 'so_fibra' });
+    const badge = container.querySelector('[data-palmilha-layer-badge="fibra"]') as HTMLElement;
+    const header = container.querySelector('[data-palmilha-layer-band="fibra"] > div') as HTMLElement;
+    expect(badge).toBeTruthy();
+    expect(header).toBeTruthy();
+    expect(badge.style.background).toBe('rgb(30, 58, 138)');
+    expect(badge.style.color).toBe('rgb(255, 255, 255)');
+    expect(header.style.background).toBe('rgb(30, 58, 138)');
+    expect(header.style.color).toBe('rgb(255, 255, 255)');
+    expect(header.style.printColorAdjust).toBe('exact');
+    expect(badge.style.printColorAdjust).toBe('exact');
+  });
+
   it('modo Só Fibra mostra só a grade de Fibra', () => {
     const { container } = renderSheet(100, { mode: 'so_fibra' });
     expect(container.querySelectorAll('[data-palmilha-layer-band="fibra"]')).toHaveLength(5);

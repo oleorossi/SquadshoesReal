@@ -3,6 +3,9 @@ import { TallyBox } from './TallyBox';
 
 export type PalmilhaCutLayer = 'forracao' | 'fibra';
 
+/** Azul-escuro da Fibra — contraste com a Forração (P&B tracejada) e sai na impressão. */
+export const FIBRA_HEADER_COLOR = '#1e3a8a';
+
 const LAYER_META: Record<PalmilhaCutLayer, { label: string; badge: string; solid: boolean }> = {
   forracao: { label: 'Forração', badge: 'FO', solid: false },
   fibra: { label: 'Fibra', badge: 'FI', solid: true },
@@ -14,10 +17,10 @@ interface BadgeProps {
 }
 
 /**
- * Distinção visual Forração vs Fibra que sobrevive à impressão P&B
- * (mesmo espírito Frente/Traseiro do Cabedal):
- *   Fibra    — quadrado sólido preto com "FI" branco
+ * Distinção visual Forração vs Fibra (mesmo espírito Frente/Traseiro do Cabedal):
+ *   Fibra    — quadrado sólido azul-escuro (#1e3a8a) com "FI" branco
  *   Forração — quadrado vazado (borda 2px) com "FO" preto
+ * A cor da Fibra usa print-color-adjust: exact para não sumir na impressão.
  */
 export function PalmilhaLayerBadge({ layer, size = 'sm' }: BadgeProps) {
   const meta = LAYER_META[layer];
@@ -35,8 +38,8 @@ export function PalmilhaLayerBadge({ layer, size = 'sm' }: BadgeProps) {
     fontWeight: 700,
     letterSpacing: 0,
     lineHeight: 1,
-    border: meta.solid ? '1.5px solid #000' : '2px solid #000',
-    background: meta.solid ? '#000' : '#fff',
+    border: meta.solid ? `1.5px solid ${FIBRA_HEADER_COLOR}` : '2px solid #000',
+    background: meta.solid ? FIBRA_HEADER_COLOR : '#fff',
     color: meta.solid ? '#fff' : '#000',
     WebkitPrintColorAdjust: 'exact',
     printColorAdjust: 'exact',
@@ -61,12 +64,17 @@ interface BandProps {
 /**
  * Faixa de uma camada. Forração (primeiro no fluxo do cortador): fundo claro
  * + borda tracejada, no espírito da faixa "Forração" da ficha. Fibra: cabeçalho
- * sólido preto, como "Cortar placas".
+ * sólido azul-escuro (#1e3a8a), para diferenciar da Forração na impressão.
  */
 export function PalmilhaLayerBand({ layer, children }: BandProps) {
   const solid = LAYER_META[layer].solid;
   const wrap: CSSProperties = solid
-    ? { border: '1.5px solid #000', marginTop: 4 }
+    ? {
+        border: `1.5px solid ${FIBRA_HEADER_COLOR}`,
+        marginTop: 4,
+        WebkitPrintColorAdjust: 'exact',
+        printColorAdjust: 'exact',
+      }
     : {
         border: '2px dashed #000',
         marginTop: 6,
@@ -74,7 +82,7 @@ export function PalmilhaLayerBand({ layer, children }: BandProps) {
       };
   const header: CSSProperties = solid
     ? {
-        background: '#000',
+        background: FIBRA_HEADER_COLOR,
         color: '#fff',
         WebkitPrintColorAdjust: 'exact',
         printColorAdjust: 'exact',
@@ -115,7 +123,7 @@ export function PalmilhaLayerBand({ layer, children }: BandProps) {
             marginLeft: 'auto',
             fontSize: '8px',
             letterSpacing: '0.08em',
-            color: solid ? '#d9d6d0' : '#333',
+            color: solid ? '#c7d2fe' : '#333',
             fontWeight: 700,
           }}
         >
