@@ -478,7 +478,7 @@ export function AtelierLancamento() {
                     {!color.canSend && (
                       <p className="text-sm text-red-700 dark:text-red-400">
                         {color.blockReason || 'O envio espera o corte e o kit.'}
-                        {' '}Na aba Corte você vê exatamente o que falta e pode enviar com ressalva, sem debitar estoque inexistente. Depois disso, use Recebimento parcial ou Confirmar retorno total.
+                        {' '}Na aba Corte você vê exatamente o que falta e pode enviar com ressalva: o sistema lança a entrada do material que chegou e já faz a baixa para o lote. Depois disso, use Recebimento parcial ou Confirmar retorno total.
                       </p>
                     )}
                     {(

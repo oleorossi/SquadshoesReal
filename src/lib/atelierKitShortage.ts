@@ -47,7 +47,7 @@ export function kitShortageBlockMessage(debits: readonly AtelierDebitLike[] | nu
   if (labels.length === 0) {
     return 'O kit ainda não fechou. O envio espera o corte sem falta e os componentes prontos.';
   }
-  return `O kit ainda não fechou: ${labels.join('; ')}. Você pode enviar com ressalva: o estoque que falta não será debitado.`;
+  return `O kit ainda não fechou: ${labels.join('; ')}. Você pode enviar com ressalva: o sistema dá entrada automática na quantidade que falta e, na mesma operação, baixa o material necessário para o lote. A OS é criada normalmente.`;
 }
 
 /** Job já saiu do corte (foi para o prestador ou para a fábrica). */

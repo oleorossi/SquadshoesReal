@@ -1104,7 +1104,7 @@ export function AtelierOperacao({
                         .map(({ lot }) => [lot.id, lot])).values()];
                       if (pendingLots.length > 0) {
                         const detail = pendingLots.map((lot) => `${lot.lot_number}: ${kitShortageBlockMessage(lot.debits)}`).join('\n');
-                        if (!window.confirm(`${detail}\n\nConfirma o envio com ressalva? O estoque que falta não será debitado.`)) return;
+                        if (!window.confirm(`${detail}\n\nConfirma o envio com ressalva? A quantidade que falta será lançada no estoque e baixada na hora para este lote.`)) return;
                       }
                       setBatching(true);
                       setFailures([]);
