@@ -143,6 +143,60 @@ export function clampSizeQuantity(typed: number, pending: number): number {
   return Math.min(value, cap);
 }
 
+/**
+ * Pré-preenchimento proporcional da grade (pedido 27/11/2026).
+ *
+ * Ao editar o tamanho âncora, os demais (não fixados manualmente) recebem
+ * `round(gradeTotal[outro] * valor / gradeTotal[âncora])`, limitado ao saldo.
+ * Valor vazio, 0 ou não-numérico vira 0 — nunca NaN.
+ */
+export function applyProportionalSizeFill(params: {
+  sizes: string[];
+  current: SizeMap;
+  editedSize: string;
+  editedValue: number;
+  gradeTotal: SizeMap;
+  caps: SizeMap;
+  pinned: ReadonlySet<string>;
+  enabled: boolean;
+  anchor: string | null;
+}): { next: SizeMap; pinned: Set<string>; anchor: string | null } {
+  const rawEdited = Number(params.editedValue);
+  const safeInput = Number.isFinite(rawEdited) ? rawEdited : 0;
+  const edited = clampSizeQuantity(safeInput, params.caps[params.editedSize] || 0);
+  if (!params.enabled || params.sizes.length <= 1) {
+    return {
+      next: { ...params.current, [params.editedSize]: edited },
+      pinned: new Set(params.pinned),
+      anchor: params.anchor,
+    };
+  }
+
+  const isAnchor = !params.anchor || params.anchor === params.editedSize;
+  if (!isAnchor) {
+    const pinned = new Set(params.pinned);
+    pinned.add(params.editedSize);
+    return {
+      next: { ...params.current, [params.editedSize]: edited },
+      pinned,
+      anchor: params.anchor,
+    };
+  }
+
+  const base = params.gradeTotal[params.editedSize] || 0;
+  const factor = base > 0 ? safeInput / base : 0;
+  const safeFactor = Number.isFinite(factor) ? Math.max(0, factor) : 0;
+  const next: SizeMap = { ...params.current, [params.editedSize]: edited };
+  for (const size of params.sizes) {
+    if (size === params.editedSize) continue;
+    if (params.pinned.has(size)) continue;
+    const target = params.gradeTotal[size] || 0;
+    const raw = Math.round(target * safeFactor);
+    next[size] = clampSizeQuantity(Number.isFinite(raw) ? raw : 0, params.caps[size] || 0);
+  }
+  return { next, pinned: new Set(params.pinned), anchor: params.editedSize };
+}
+
 /** Grade deste lançamento, só números > 0. No estorno os valores continuam positivos aqui. */
 export function sizeBreakdownFromEntries(entries: SizeMap, caps: SizeMap): SizeMap {
   const out: SizeMap = {};

@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query';
 import { CircleNotch as Loader2 } from '@phosphor-icons/react';
 import { NumberInput } from '@/components/ui/number-input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrderPointings } from '@/hooks/useOrderPointings';
 import { useSectorSettings } from '@/hooks/useProductionEngine';
 import { sameStage } from '@/lib/production/stageFlow';
 import {
+  applyProportionalSizeFill,
   clampSizeQuantity,
   KNIFE_RANGE_MISSING,
   knifeOverMessage,
@@ -42,6 +44,9 @@ interface FieldsProps {
   kind?: 'size' | 'knife';
   hints?: Record<string, string>;
   onChange: (size: string, quantity: number, blocked: boolean) => void;
+  /** Pré-preenche a grade na proporção da ficha ao editar um tamanho âncora. */
+  proportionalEnabled?: boolean;
+  onProportionalEnabledChange?: (enabled: boolean) => void;
 }
 
 /**
@@ -50,6 +55,7 @@ interface FieldsProps {
  */
 export function SizePointingFields({
   balance, backward, value, readOnly = false, kind = 'size', hints, onChange,
+  proportionalEnabled, onProportionalEnabledChange,
 }: FieldsProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState<{ label: string; attempted: number } | null>(null);
@@ -71,15 +77,28 @@ export function SizePointingFields({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="text-xs font-medium text-foreground">
           {backward
             ? (kind === 'knife' ? 'Estorno por faixa' : 'Estorno por numeração')
             : (kind === 'knife' ? 'Lançamento por faixa' : 'Lançamento por numeração')}
         </p>
-        <p className="font-mono text-xs text-muted-foreground">
-          {totalTyped}/{Math.max(0, totalCap - totalTyped)} neste lançamento
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {onProportionalEnabledChange && sizes.length > 1 && !backward && (
+            <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Checkbox
+                checked={proportionalEnabled === true}
+                disabled={readOnly}
+                onCheckedChange={v => onProportionalEnabledChange(v === true)}
+                aria-label="Preencher grade proporcional"
+              />
+              Preencher grade proporcional
+            </label>
+          )}
+          <p className="font-mono text-xs text-muted-foreground">
+            {totalTyped}/{Math.max(0, totalCap - totalTyped)} neste lançamento
+          </p>
+        </div>
       </div>
       <div
         ref={scrollerRef}
@@ -269,11 +288,17 @@ export function SizePointingLaunch({
     [balance, backward],
   );
   const [entries, setEntries] = useState<SizeMap>({});
+  const [proportionalEnabled, setProportionalEnabled] = useState(true);
+  const [proportionalAnchor, setProportionalAnchor] = useState<string | null>(null);
+  const [proportionalPinned, setProportionalPinned] = useState<string[]>([]);
   const dirty = useRef(false);
   const signature = `${orderId}:${stageName}:${backward}:${JSON.stringify(caps)}`;
 
   useEffect(() => {
     dirty.current = false;
+    setProportionalAnchor(null);
+    setProportionalPinned([]);
+    setProportionalEnabled(true);
   }, [orderId, stageName, backward]);
 
   useEffect(() => {
@@ -359,10 +384,30 @@ export function SizePointingLaunch({
       kind={detailMode === 'knife_range' ? 'knife' : 'size'}
       hints={detailMode === 'knife_range' ? hints : undefined}
       value={entries}
+      proportionalEnabled={proportionalEnabled}
+      onProportionalEnabledChange={enabled => {
+        setProportionalEnabled(enabled);
+        if (!enabled) {
+          setProportionalAnchor(null);
+          setProportionalPinned([]);
+        }
+      }}
       onChange={(size, next) => {
         dirty.current = true;
-        const cap = caps[size] || 0;
-        setEntries(prev => ({ ...prev, [size]: clampSizeQuantity(next, cap) }));
+        const result = applyProportionalSizeFill({
+          sizes: balance.sizes,
+          current: entries,
+          editedSize: size,
+          editedValue: next,
+          gradeTotal: balance.target,
+          caps,
+          pinned: new Set(proportionalPinned),
+          enabled: proportionalEnabled && !backward,
+          anchor: proportionalAnchor,
+        });
+        setProportionalAnchor(result.anchor);
+        setProportionalPinned([...result.pinned]);
+        setEntries(result.next);
       }}
     />
   );

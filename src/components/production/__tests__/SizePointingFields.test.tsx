@@ -94,4 +94,26 @@ describe('contador ao vivo da numeração', () => {
     expect(grid.className).toMatch(/xl:grid-cols-12/);
     expect(grid.className).not.toMatch(/overflow-x-auto/);
   });
+
+  it('mostra o toggle de grade proporcional quando há mais de um tamanho', () => {
+    function ProportionalHarness() {
+      const [value, setValue] = useState<SizeMap>({ '34': 75, '35': 12 });
+      const [enabled, setEnabled] = useState(true);
+      return (
+        <SizePointingFields
+          balance={balance}
+          backward={false}
+          value={value}
+          proportionalEnabled={enabled}
+          onProportionalEnabledChange={setEnabled}
+          onChange={(size, next) => {
+            const cap = balance.pending[size] || 0;
+            setValue(prev => ({ ...prev, [size]: clampSizeQuantity(next, cap) }));
+          }}
+        />
+      );
+    }
+    render(<ProportionalHarness />);
+    expect(screen.getByLabelText('Preencher grade proporcional')).toBeChecked();
+  });
 });
