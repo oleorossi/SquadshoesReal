@@ -74,7 +74,7 @@ import {
 } from '@/lib/atelier';
 import { normalizeFilaText } from '@/lib/atelierFilaFilters';
 import { atelierJobCanSplit, atelierSplitConfirmMessage } from '@/lib/atelierSplit';
-import { kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
+import { atelierJobWasSent, kitShortageBlockMessage, kitShortageLabels, lotHasKitShortage } from '@/lib/atelierKitShortage';
 import { deadlineChipLabel, deadlineTone } from '@/lib/reportOrderGrouping';
 import { daysUntilDeadline } from '@/lib/production/productionSequence';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
@@ -94,6 +94,7 @@ import {
   useMarkAtelierRealized,
   useSendAtelierShipment,
   useSplitAtelierJobToOwnLot,
+  confirmAtelierOpenKitSend,
   sendAtelierShipment,
   setAtelierJobExecutionMode,
   useAtelierContractorSectors,
@@ -214,7 +215,7 @@ function JobActions({
   job: AtelierLotJob;
   lot: AtelierLotRow;
   contractors: { id: string; name: string }[];
-  onReceipt?: () => void;
+  onReceipt?: (intent?: 'partial' | 'total') => void;
   onManage?: () => void;
 }) {
   const mode = atelierEffectiveMode(job.execution_mode);
@@ -357,12 +358,12 @@ function JobActions({
       )}
 
       {action === 'sent' && !kitClosed && (
-        <p className="text-[10px] text-amber-700 dark:text-amber-400">
-          O kit ainda não fechou. O envio espera o corte sem falta e os componentes prontos.
+        <p className="text-xs font-medium text-red-700 dark:text-red-400">
+          {kitShortageBlockMessage(lot.debits)}
         </p>
       )}
 
-      {action === 'sent' && kitClosed && (
+      {action === 'sent' && (
         <div className="space-y-1">
           <div className="flex gap-1">
             <Select value={contractorId || undefined} onValueChange={setContractorId}>
@@ -482,10 +483,14 @@ function JobActions({
       )}
 
       {atelierCanRecordReceipt(job) && job.execution_mode !== 'internal' && (
-        <div className="flex justify-end">
-          <Button size="sm" variant="outline" className="h-8 px-3 text-xs" disabled={busy} onClick={onReceipt}>
+        <div className="flex flex-wrap justify-end gap-1">
+          <Button size="sm" variant="outline" className="h-8 px-3 text-xs" disabled={busy} onClick={() => onReceipt?.('partial')}>
             <Warehouse className="h-3 w-3" />
-            Conferir recebimento
+            Recebimento parcial
+          </Button>
+          <Button size="sm" className="h-8 px-3 text-xs" disabled={busy} onClick={() => onReceipt?.('total')}>
+            <CheckCircle className="h-3 w-3" />
+            Confirmar retorno total
           </Button>
         </div>
       )}
@@ -500,10 +505,13 @@ function JobActions({
       )}
 
       {atelierCanRecordReceipt(job) && job.execution_mode === 'internal' && (
-        <div className="flex justify-end">
-          <Button size="sm" className="h-8 px-3 text-xs" disabled={busy} onClick={onReceipt}>
+        <div className="flex flex-wrap justify-end gap-1">
+          <Button size="sm" variant="outline" className="h-8 px-3 text-xs" disabled={busy} onClick={() => onReceipt?.('partial')}>
+            Recebimento parcial
+          </Button>
+          <Button size="sm" className="h-8 px-3 text-xs" disabled={busy} onClick={() => onReceipt?.('total')}>
             <CheckCircle className="h-3 w-3" />
-            Lançar concluído
+            Confirmar retorno total
           </Button>
         </div>
       )}
@@ -551,7 +559,7 @@ function JobCard({
   contractors: { id: string; name: string }[];
   selected?: boolean;
   onToggle?: () => void;
-  onReceipt?: () => void;
+  onReceipt?: (intent?: 'partial' | 'total') => void;
   onManage?: () => void;
 }) {
   const blocks = atelierJobBlocksProduction(job.execution_mode, job.pipeline_status, job.received_pairs);
@@ -597,11 +605,20 @@ function JobCard({
           </span>
         )}
       </div>
-      <AtelierReceiptMeter
-        received={Number(job.received_pairs) || 0}
-        pairs={Number(job.pairs) || 0}
-        label="recebidos"
-      />
+      {atelierJobWasSent(job) ? (
+        <AtelierReceiptMeter
+          received={Number(job.received_pairs) || 0}
+          pairs={Number(job.pairs) || 0}
+          label="recebidos"
+        />
+      ) : (
+        <p className="text-xs text-muted-foreground">Ainda não enviado</p>
+      )}
+      {lotHasKitShortage(lot.debits) && (
+        <p className="text-xs font-medium text-red-700 dark:text-red-400">
+          Falta no kit: {kitShortageLabels(lot.debits).join('; ')}.
+        </p>
+      )}
       {blocks && (
         <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
           Trava Em Produção de {job.order_number}
@@ -676,6 +693,9 @@ function CutBand({
                 )}
                 {waitingKit && (
                   <span className="text-amber-700 dark:text-amber-400">{atelierKitGateLabel(lot.kit_gate)}</span>
+                )}
+                {lot.status === 'cut' && lot.kit_closed !== true && !waitingKit && shortage && (
+                  <span className="text-red-700 dark:text-red-400">Kit pendente · napa sem estoque</span>
                 )}
               </div>
               <GradeStrip grade={lot.grade} />
@@ -819,7 +839,7 @@ export function AtelierOperacao({
   const [batching, setBatching] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [assignContractorId, setAssignContractorId] = useState('');
-  const [receiptJob, setReceiptJob] = useState<AtelierLotJob | null>(null);
+  const [receiptJob, setReceiptJob] = useState<{ job: AtelierLotJob; intent: 'partial' | 'total' } | null>(null);
   const [remessaLot, setRemessaLot] = useState<AtelierLotRow | null>(null);
 
   const filters = useMemo<AtelierBoardFilters>(() => ({
@@ -1069,9 +1089,8 @@ export function AtelierOperacao({
                   ))}
                 </SelectContent>
               </Select>
-              {selectedRows.every(({ job, lot }) => (
+              {selectedRows.every(({ job }) => (
                 job.pipeline_status === 'cut'
-                && lot.kit_closed === true
                 && atelierEffectiveMode(job.execution_mode) !== 'internal'
               )) && (
                 <Button
@@ -1080,9 +1099,19 @@ export function AtelierOperacao({
                   disabled={batching || ratesLoading || selectedRows.some(({ job }) => atelierOpenRatePrice(openRates, assignContractorId, job.sector, atelierTodayISO()) == null) || !optionsFor(assignSector).some((c) => c.id === assignContractorId)}
                   onClick={() => {
                     void (async () => {
+                      const pendingLots = [...new Map(selectedRows
+                        .filter(({ lot }) => lot.kit_closed !== true)
+                        .map(({ lot }) => [lot.id, lot])).values()];
+                      if (pendingLots.length > 0) {
+                        const detail = pendingLots.map((lot) => `${lot.lot_number}: ${kitShortageBlockMessage(lot.debits)}`).join('\n');
+                        if (!window.confirm(`${detail}\n\nConfirma o envio com ressalva? O estoque que falta não será debitado.`)) return;
+                      }
                       setBatching(true);
                       setFailures([]);
                       try {
+                        for (const lot of pendingLots) {
+                          await confirmAtelierOpenKitSend(lot.id);
+                        }
                         const data = await sendAtelierShipment({
                           jobIds: selectedRows.map(({ job }) => job.id),
                           contractorId: assignContractorId,
@@ -1221,7 +1250,7 @@ export function AtelierOperacao({
                                     else next.add(job.id);
                                     setSelected(next);
                                   } : undefined}
-                                  onReceipt={() => setReceiptJob(job)}
+                                  onReceipt={(intent) => setReceiptJob({ job, intent: intent ?? 'partial' })}
                                   onManage={() => setRemessaLot(lot)}
                                 />
                               ))}
@@ -1242,13 +1271,13 @@ export function AtelierOperacao({
               setSelected={setSelected}
               batching={batching}
               onBatch={runBatch}
-              onReceipt={setReceiptJob}
+              onReceipt={(job, intent) => setReceiptJob({ job, intent: intent ?? 'partial' })}
               onManage={setRemessaLot}
             />
           )}
         </>
       )}
-      <AtelierReceiptDialog job={receiptJob} onClose={() => setReceiptJob(null)} />
+      <AtelierReceiptDialog job={receiptJob?.job ?? null} intent={receiptJob?.intent} onClose={() => setReceiptJob(null)} />
       <AtelierRemessaPanel
         lot={remessaLot}
         contractors={contractorRecords.map((item) => ({ id: item.id, name: item.name }))}
@@ -1303,7 +1332,7 @@ function PedidoJob({
   selected: boolean;
   contractors: { id: string; name: string }[];
   onToggle: () => void;
-  onReceipt: () => void;
+  onReceipt: (intent?: 'partial' | 'total') => void;
   onManage: () => void;
 }) {
   const steps = atelierTimeline(job.execution_mode);
@@ -1354,11 +1383,20 @@ function PedidoJob({
           Trava Em Produção de {orderNumber}
         </p>
       )}
-      <AtelierReceiptMeter
-        received={Number(job.received_pairs) || 0}
-        pairs={Number(job.pairs) || 0}
-        label="recebidos"
-      />
+      {atelierJobWasSent(job) ? (
+        <AtelierReceiptMeter
+          received={Number(job.received_pairs) || 0}
+          pairs={Number(job.pairs) || 0}
+          label="recebidos"
+        />
+      ) : (
+        <p className="text-xs text-muted-foreground">Ainda não enviado</p>
+      )}
+      {lotHasKitShortage(lot.debits) && (
+        <p className="text-xs font-medium text-red-700 dark:text-red-400">
+          Falta no kit: {kitShortageLabels(lot.debits).join('; ')}.
+        </p>
+      )}
       <JobActions job={job} lot={lot} contractors={contractors} onReceipt={onReceipt} onManage={onManage} />
     </li>
   );
@@ -1388,7 +1426,7 @@ function PedidoView({
   setSelected: (next: Set<string>) => void;
   batching: boolean;
   onBatch: (items: { label: string; run: () => Promise<unknown> }[]) => Promise<void>;
-  onReceipt: (job: AtelierLotJob) => void;
+  onReceipt: (job: AtelierLotJob, intent?: 'partial' | 'total') => void;
   onManage: (lot: AtelierLotRow) => void;
 }) {
   if (groups.length === 0) {
@@ -1478,7 +1516,7 @@ function PedidoView({
                       else next.add(job.id);
                       setSelected(next);
                     }}
-                    onReceipt={() => onReceipt(job)}
+                    onReceipt={(intent) => onReceipt(job, intent)}
                     onManage={() => onManage(lot)}
                   />
                 ))}

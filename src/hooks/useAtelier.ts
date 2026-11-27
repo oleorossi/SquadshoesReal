@@ -241,6 +241,8 @@ export interface AtelierLotRow {
     atelier_execution_mode?: AtelierExecutionMode | null;
   }[];
   jobs: AtelierLotJob[];
+  /** Preenchido quando o operador autorizou envio com kit pendente. */
+  open_kit_send_at?: string | null;
   debits: {
     product_id: string;
     product_name: string;
@@ -249,6 +251,8 @@ export interface AtelierLotRow {
     required_qty: number;
     quantity: number;
     pending_qty: number;
+    color?: string | null;
+    available_qty?: number | null;
   }[];
 }
 
@@ -514,6 +518,22 @@ export async function markAtelierJobSent(input: { jobId: string; contractorId?: 
     kit_lines?: AtelierSentKitLine[];
     service_order_id?: string;
     order_number?: string;
+  } | null;
+}
+
+export async function confirmAtelierOpenKitSend(lotId: string) {
+  const { data, error } = await supabase.rpc(
+    'atelier_confirm_open_kit_send' as never,
+    { p_lot_id: lotId } as never,
+  );
+  if (error) throw error;
+  return data as {
+    ok?: boolean;
+    already_closed?: boolean;
+    lot_number?: string;
+    kit_closed?: boolean;
+    note?: string;
+    confirmed_at?: string;
   } | null;
 }
 

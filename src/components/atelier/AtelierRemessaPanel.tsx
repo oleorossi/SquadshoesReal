@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Printer, Truck } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -16,10 +17,12 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   atelierKeys,
   closeAtelierShipments,
+  confirmAtelierOpenKitSend,
   sendAtelierRemessa,
   useAtelierOpenRates,
   type AtelierLotRow,
 } from '@/hooks/useAtelier';
+import { kitShortageBlockMessage } from '@/lib/atelierKitShortage';
 import { atelierIdentityLabel, atelierLotIdentityLines } from '@/lib/atelierIdentity';
 import { atelierOpenRatePrice, atelierRateLabel, atelierTodayISO } from '@/lib/atelierAdmin';
 import { printAtelierShipment } from '@/lib/printAtelierShipment';
@@ -89,6 +92,8 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
   const [price, setPrice] = useState('');
   const [priceTouched, setPriceTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [kitAck, setKitAck] = useState(false);
+  const kitPending = !!lot && lot.kit_closed !== true;
 
   const jobs = (lot?.jobs ?? []).filter((job) => job.pipeline_status !== 'cancelled');
   const sectors = [...new Set(jobs.map((job) => job.sector))];
@@ -102,6 +107,7 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
     setSizes({});
     setPrice('');
     setPriceTouched(false);
+    setKitAck(false);
   }, [open, lot]);
 
   const balanceQuery = useQuery({
@@ -215,8 +221,13 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
       toast.error('Informe o R$/par');
       return;
     }
+    if (kitPending && !kitAck) {
+      toast.error('Confirme a ressalva do kit pendente para enviar sem debitar o estoque que falta');
+      return;
+    }
     setBusy(true);
     try {
+      if (kitPending && lot) await confirmAtelierOpenKitSend(lot.id);
       const data = await sendAtelierRemessa({
         lotId: lot.id,
         sector,
@@ -375,8 +386,19 @@ export function AtelierRemessaPanel({ lot, contractors, onClose }: Props) {
             </div>
           </div>
         )}
+        {kitPending && (
+          <div className="space-y-2 rounded-md border border-red-500/40 bg-red-500/10 p-3">
+            <p className="text-sm font-medium text-red-700 dark:text-red-400">
+              {kitShortageBlockMessage(lot?.debits)}
+            </p>
+            <label className="flex items-start gap-2 text-xs text-foreground">
+              <Checkbox checked={kitAck} onCheckedChange={(v) => setKitAck(v === true)} aria-label="Confirmar envio com kit pendente" />
+              <span>Confirmo o envio com ressalva. O estoque que falta não será debitado e a OS será criada normalmente.</span>
+            </label>
+          </div>
+        )}
         <DialogFooter>
-          <Button type="button" disabled={busy || !contractorId || !!gradeError} onClick={() => { void send(); }}>
+          <Button type="button" disabled={busy || !contractorId || !!gradeError || (kitPending && !kitAck)} onClick={() => { void send(); }}>
             <Truck className="h-4 w-4" />
             Enviar remessa
           </Button>

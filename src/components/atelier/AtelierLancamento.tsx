@@ -476,8 +476,9 @@ export function AtelierLancamento() {
                       </ul>
                     )}
                     {!color.canSend && (
-                      <p className="text-sm text-muted-foreground">
-                        {color.blockReason || 'O envio espera o corte e o kit.'} A divisão entre prestadores pode ser reservada agora. A OS só sai depois do corte, com o kit fechado.
+                      <p className="text-sm text-red-700 dark:text-red-400">
+                        {color.blockReason || 'O envio espera o corte e o kit.'}
+                        {' '}Na aba Corte você vê exatamente o que falta e pode enviar com ressalva, sem debitar estoque inexistente. Depois disso, use Recebimento parcial ou Confirmar retorno total.
                       </p>
                     )}
                     {(
