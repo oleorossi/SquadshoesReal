@@ -11,7 +11,7 @@ describe('busca de telas', () => {
       const hit = top(query);
       expect(hit?.path, query).toBe('/fichas-tecnicas');
       expect(hit?.label).toBe('Fichas');
-      expect(hit?.sector).toBe('PCP');
+      expect(hit?.sector).toBe('Engenharia');
     }
   });
 
@@ -39,7 +39,8 @@ describe('busca de telas', () => {
     expect(top('fila de corte')?.path).toBe('/producao/corte-lookahead');
     expect(top('modo gestão')?.path).toBe('/producao/kanban');
     expect(top('engenharia')?.path).toBe('/engenharia');
-    expect(top('engenharia')?.label).toBe('PCP');
+    expect(top('engenharia')?.label).toBe('Engenharia');
+    expect(top('PCP')?.path).toBe('/engenharia');
     expect(top('almoxarifado')?.path).toBe('/materiais');
     expect(top('almoxarifado')?.label).toBe('Estoque');
   });

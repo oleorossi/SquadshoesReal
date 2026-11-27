@@ -178,10 +178,10 @@ export default function ProducaoEstouro() {
                         <SendToThird className="h-3.5 w-3.5" /> Enviar pra terceiro
                       </Button>
                       <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" asChild>
-                        <Link to="/producao/planejamento"><SlidersIcon className="h-3.5 w-3.5" /> Repriorizar</Link>
+                        <Link to="/motor?tab=plano&view=dia"><SlidersIcon className="h-3.5 w-3.5" /> Repriorizar</Link>
                       </Button>
                       <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" asChild>
-                        <Link to="/producao/setores"><SlidersIcon className="h-3.5 w-3.5" /> Capacidade</Link>
+                        <Link to="/motor?tab=capacidade"><SlidersIcon className="h-3.5 w-3.5" /> Capacidade</Link>
                       </Button>
                       <Button
                         size="sm" variant="ghost" className="h-8 gap-1.5 text-xs text-muted-foreground"
@@ -255,7 +255,7 @@ export default function ProducaoEstouro() {
                   {canEdit && (
                     <div className="flex flex-wrap gap-1.5">
                       <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" asChild>
-                        <Link to="/producao/setores"><SlidersIcon className="h-3.5 w-3.5" /> Rever fluxo</Link>
+                        <Link to="/motor?tab=capacidade"><SlidersIcon className="h-3.5 w-3.5" /> Rever fluxo</Link>
                       </Button>
                       <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setAcceptRow(o)}>
                         <CheckCircle className="h-3.5 w-3.5 mr-1" /> Ciente

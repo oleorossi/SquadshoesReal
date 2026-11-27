@@ -54,12 +54,19 @@ const LEGACY_PATH_CANON: Record<string, string> = {
   '/terceiros':            '/terceirizados',
   '/terceiros-na-rua':     '/terceirizados',
   '/terceiros/relatorios': '/terceirizados',
+  // Reorg de menus (motor único): atalhos antigos apontam para a aba correspondente.
+  '/producao/sequencia':     '/motor?tab=sequencia',
+  '/producao/setores':       '/motor?tab=capacidade',
+  '/producao/planejamento':  '/motor?tab=plano',
 };
 
 // nome canônico por path (pra renomear o favorito reescrito → o nome do item de menu).
-const CANON_NAME: Record<string, string> = Object.fromEntries(
-  getAllMenuItems().map((it) => [it.path, it.label]),
-);
+const CANON_NAME: Record<string, string> = {
+  ...Object.fromEntries(getAllMenuItems().map((it) => [it.path, it.label])),
+  '/motor?tab=sequencia': 'Sequência',
+  '/motor?tab=capacidade': 'Capacidade e equipe',
+  '/motor?tab=plano': 'Plano e agenda',
+};
 
 /**
  * Reescreve rotas legadas (que viraram redirect) pro destino canônico e DEDUPLICA

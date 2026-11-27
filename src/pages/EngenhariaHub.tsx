@@ -4,13 +4,12 @@ export default function EngenhariaHub() {
   return (
     <HubLanding
       hubPath="/engenharia"
-      sectionLabel="PCP"
-      description="Fichas, grade, planejamento e MRP — o que a fábrica vai fazer."
+      sectionLabel="Engenharia"
+      description="Fichas, materiais base, solados, silks e tiras — o cadastro do que a fábrica produz."
       hints={{
         '/fichas-tecnicas': 'Catálogo publicado — modelo, BOM e rota',
         '/engenharia/fichas-rascunho': 'Referências em elaboração (ainda não publicadas)',
         '/engenharia/materiais-base': 'Kits e preços base por categoria',
-        '/atelie': 'Cabedal complexo pra rua — cadastro e fila',
         '/escalonamento': 'Grade e conversões de numeração',
         '/tiras-artesanais': 'Receitas, rendimento e estoque de tiras',
         '/solados': 'Specs e consumo por numeração',

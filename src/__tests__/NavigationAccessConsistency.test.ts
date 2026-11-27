@@ -54,7 +54,7 @@ describe('Navigation ↔ Access Control consistency', () => {
 
   it('expõe a etiquetagem do cliente como destino próprio no hub Expedição', () => {
     expect(navigationCatalog.find((item) => item.path === '/etiquetagem-cliente')).toMatchObject({
-      label: 'ETIQUETAGEM CLIENTE',
+      label: 'Etiquetas do cliente',
       group: 'Expedição',
       surfaces: expect.arrayContaining(['hub-child', 'command']),
     });

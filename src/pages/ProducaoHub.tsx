@@ -5,13 +5,11 @@ export default function ProducaoHub() {
     <HubLanding
       hubPath="/producao"
       sectionLabel="Produção"
-      description="Corte, ateliê, prestadores, gestão e apontamento do chão."
+      description="Motor, central de produção, apontamento, ateliê e ferramentas do chão."
       hints={{
-        '/motor': 'Prazos, plano, compras, capacidade e equipe do motor',
-        '/producao/sequencia': 'Ordem oficial — fechar PV, cor e referência',
-        '/producao/planejamento': 'Carga diária por setor',
+        '/motor': 'Ponto único: plano, sequência, compras, prazos, capacidade e equipe',
         '/producao/corte-lookahead': 'Liberar Corte e fechar PV',
-        '/producao/kanban': 'Quadro de gestão',
+        '/producao/kanban': 'Quadro da Central de Produção',
         '/producao/estouro': 'OPs acima da capacidade',
         '/producao/apontamento': 'Lançar produção por setor',
         '/producao/calculadora-grade': 'Montar grade de pares',

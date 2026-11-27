@@ -20,7 +20,7 @@ const PRIMARY_ITEMS = [
   { icon: Home,         label: 'Painel',   path: '/dashboard' },
   { icon: ShoppingCart, label: 'Vendas',   path: '/sales' },
   // Primários fixos nesta onda — path de trabalho, não o hub.
-  { icon: Factory,      label: 'Produção', path: '/producao/planejamento' },
+  { icon: Factory,      label: 'Produção', path: '/motor' },
   { icon: Package,      label: 'Estoque',  path: '/estoque' },
 ];
 

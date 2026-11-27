@@ -119,13 +119,10 @@ const PricingCalculator = lazy(() => import("./pages/PricingCalculator"));
 const PCPHub = lazy(() => import("./pages/PCPHub"));
 // Remodelagem Produção 2026-07-12 (specs/remodelagem-producao.md): rotas
 // diretas no lugar do hub de 14 abas. PCPHub virou só o redirect legado.
-const ProducaoPlanejamento = lazy(() => import("./pages/ProducaoPlanejamento"));
-const ProducaoSequencia = lazy(() => import("./pages/ProducaoSequencia"));
 const ProducaoCorteLookahead = lazy(() => import("./pages/ProducaoCorteLookahead"));
 const ProducaoKanban = lazy(() => import("./pages/ProducaoKanban"));
 const ProducaoKanbanGestao = lazy(() => import("./pages/ProducaoKanbanGestao"));
 const ProducaoEstouro = lazy(() => import("./pages/ProducaoEstouro"));
-const ProducaoSetoresConfig = lazy(() => import("./pages/ProducaoSetoresConfig"));
 const MotorProducao = lazy(() => import("./pages/MotorProducao"));
 const ProducaoApontamento = lazy(() => import("./pages/Setores"));
 const CalculadoraGrade = lazy(() => import("./pages/CalculadoraGrade"));
@@ -570,6 +567,25 @@ function LegacyRouteRedirect({ to }: { to: string }) {
   return <Navigate to={`${pathname}${search ? `?${search}` : ''}${location.hash}`} replace />;
 }
 
+/**
+ * /producao/planejamento → /motor?tab=plano.
+ * Se o bookmark pedia uma aba interna (grade/fila/gestao), ela vira
+ * view=dia&subtab=… dentro de Plano e agenda, para a fila diária continuar acessível.
+ */
+function PlanejamentoToMotorRedirect() {
+  const location = useLocation();
+  const incoming = new URLSearchParams(location.search);
+  const innerTab = incoming.get('tab');
+  incoming.delete('tab');
+  incoming.set('tab', 'plano');
+  if (innerTab && ['grade', 'fila', 'gestao'].includes(innerTab)) {
+    incoming.set('view', 'dia');
+    if (innerTab !== 'grade') incoming.set('subtab', innerTab);
+  }
+  const search = incoming.toString();
+  return <Navigate to={`/motor?${search}${location.hash}`} replace />;
+}
+
 function PedidosRedirect() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
@@ -875,8 +891,9 @@ const router = createBrowserRouter([
       },
       // ── Produção remodelada (2026-07-12): rotas diretas ────────────────────
       {
+        // Fila diária passou a viver em Motor › Plano e agenda › Fila do dia.
         path: "producao/planejamento",
-        element: <ProducaoPlanejamento />,
+        element: <PlanejamentoToMotorRedirect />,
       },
       {
         // Antecipação unificada no Ateliê (agenda + fila Costura/Aviamento).
@@ -885,7 +902,7 @@ const router = createBrowserRouter([
       },
       {
         path: "producao/sequencia",
-        element: <ProducaoSequencia />,
+        element: <LegacyRouteRedirect to="/motor?tab=sequencia" />,
       },
       {
         path: "producao/corte-lookahead",
@@ -901,7 +918,7 @@ const router = createBrowserRouter([
       },
       {
         path: "producao/setores",
-        element: <ProducaoSetoresConfig />,
+        element: <LegacyRouteRedirect to="/motor?tab=capacidade" />,
       },
       {
         // Motor de produção: menu único (prazos, plano, sequência, compras,
