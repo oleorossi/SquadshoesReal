@@ -186,6 +186,9 @@ export function PalmilhaUnifiedWorkSheet({
       const grpNf = card.fichas ?? 0;
       const tallyPerCard = grpBgs > 0 ? grpBgs : pairsPerCard;
       const cardsCount = grpNf > 0 ? grpNf : Math.max(1, Math.ceil(card.totalPairs / tallyPerCard));
+      const fichaBlocks = !card.mixedGrades && card.baseGrade && grpNf > 0
+        ? splitFichasIntoBlocks({ fichas: grpNf, curve: card.baseGrade, sizes: groupSizes })
+        : [];
       const plates = (card.plateOps ?? []).reduce((a, p) => a + (p.qty || 0), 0);
       const plateNames = Array.from(new Set((card.plateOps ?? []).map(p => p.name).filter(Boolean)));
       const plateArea = (card.plateOps ?? []).reduce((mx, p) => Math.max(mx, p.areaDm2 || 0), 0);
@@ -540,18 +543,19 @@ export function PalmilhaUnifiedWorkSheet({
             </div>
           )}
 
-          <div className="keep-together px-1.5 py-0.5">
-            <TallyBox
-              count={cardsCount}
-              pairsPerCard={tallyPerCard}
-              totalUnits={card.totalPairs}
-              size={TALLY_SIZE}
-              title={card.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : 'Controle de Fichas'}
-            />
-          </div>
-          {!card.mixedGrades && card.baseGrade && grpNf > 0 && (
+          {fichaBlocks.length === 0 ? (
+            <div className="keep-together px-1.5 py-0.5">
+              <TallyBox
+                count={cardsCount}
+                pairsPerCard={tallyPerCard}
+                totalUnits={card.totalPairs}
+                size={TALLY_SIZE}
+                title={card.corrugadosMistos ? 'Controle de Fichas · corrugados mistos' : 'Controle de Fichas'}
+              />
+            </div>
+          ) : (
             <FichaBlocks
-              blocks={splitFichasIntoBlocks({ fichas: grpNf, curve: card.baseGrade, sizes: groupSizes })}
+              blocks={fichaBlocks}
               sizes={groupSizes}
               pairsPerFicha={tallyPerCard}
             />

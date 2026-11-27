@@ -11,13 +11,31 @@ interface Props {
 /**
  * Seção de blocos de 20 fichas. A linha "Por Ficha" de 12 permanece onde já
  * está; isto só acrescenta a divisão pedida, com a curva já multiplicada.
+ *
+ * Cada bloco tem o próprio Controle de Fichas (quadradinhos = fichas daquele
+ * bloco). Quando esta seção é renderizada, o tally único com o total da OP
+ * NÃO deve aparecer — senão o operador vê o total duplicado no papel.
  */
 export function FichaBlocks({ blocks, sizes, pairsPerFicha }: Props) {
   if (blocks.length === 0 || sizes.length === 0) return null;
+  const totalFichas = blocks.reduce((sum, block) => sum + block.fichas, 0);
+  const totalPairs = blocks.reduce((sum, block) => sum + block.pairs, 0);
+  const blocoLabel = blocks.length === 1 ? '1 bloco' : `${blocks.length} blocos`;
   return (
-    <div style={{ borderTop: '1.5px solid #000' }}>
+    <div data-ficha-blocks="" style={{ borderTop: '1.5px solid #000' }}>
+      <div
+        className="keep-together flex items-baseline justify-between gap-2"
+        style={{ padding: '4px 8px' }}
+      >
+        <span className="section-label" style={{ color: '#000', fontFamily: "'Fira Sans', sans-serif" }}>
+          Controle de Fichas
+        </span>
+        <span style={{ fontFamily: "'Fira Code', monospace", fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          {totalFichas} fichas · {blocoLabel} · {totalPairs} pares
+        </span>
+      </div>
       {blocks.map(block => (
-        <div key={block.index} className="keep-together" style={{ borderBottom: '1px solid #000' }}>
+        <div key={block.index} className="keep-together" data-ficha-block={block.index} data-ficha-block-count={block.fichas} style={{ borderBottom: '1px solid #000' }}>
           <div
             style={{
               display: 'flex',

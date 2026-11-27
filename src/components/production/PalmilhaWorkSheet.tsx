@@ -491,10 +491,13 @@ export const PalmilhaWorkSheet = ({ groups, allSizes, pairsPerCard = 12, sizeBan
             const fechamento = (
               <div key={`f-${idx}`} className="bg-white" style={{ border: '1.5px solid #000', borderTop: 0 }}>
                 <SectorMaterials rows={group.consumption} sector="Corte Fibra" excludeComponents={['Palmilha']} />
+                {fichaBlocks.length === 0 ? (
                 <div className="px-2 pb-1 pt-1 border-t border-black">
                   <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={group.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
                 </div>
+                ) : (
                 <FichaBlocks blocks={fichaBlocks} sizes={groupSizes} pairsPerFicha={tallyPerCard} />
+                )}
               </div>
             );
             return [
