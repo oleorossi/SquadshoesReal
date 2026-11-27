@@ -45,3 +45,17 @@ describe('migration 65000 — baixa solado ao passar pela Solagem', () => {
     expect(MIG).toContain('p_target_pairs - v_already');
   });
 });
+
+const FIX = readFileSync(
+  join(ROOT, 'supabase/migrations/20270101066100_baixa_solado_origin_type_movimento.sql'),
+  'utf8',
+);
+
+describe('migration 66100 — origin_type do movimento da baixa na Solagem', () => {
+  it('troca production_pointing por NULL, permitido pelo check de stock_movements', () => {
+    expect(FIX).toContain('production_pointing');
+    expect(FIX).toContain("'NULL'");
+    expect(FIX).toContain('stock_movements_strap_origin_type_ck');
+    expect(FIX).toMatch(/SEM backfill|Sem backfill/i);
+  });
+});
