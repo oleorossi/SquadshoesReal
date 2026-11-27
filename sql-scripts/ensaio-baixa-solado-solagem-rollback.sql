@@ -154,6 +154,81 @@ BEGIN
     RAISE EXCEPTION 'ENSAIO (c) deveria criar pending_reconciliation na falta';
   END IF;
 
-  RAISE EXCEPTION 'ROLLBACK_ENSAIO_OK: a=baixa por numeração, b=faturamento idempotente, c=LEAST+pending';
+  -- (d) caminho canônico PARCIAL: estado 0→30 e depois pointing qty=30
+  -- não pode baixar 60. Reserva de 100 permanece reserved na fatia.
+  DECLARE
+    v_order2 uuid;
+    v_product2 uuid;
+    v_stage2 uuid;
+    v_sale2 uuid;
+    v_sheet2 uuid;
+    v_res2 uuid;
+    v_qty2 numeric;
+    v_mov2 integer;
+  BEGIN
+    INSERT INTO public.products (
+      name, sku, category, unit, quantity, current_stock, reserved_stock,
+      stock_grade, active, group_id, sole_classification
+    ) VALUES (
+      'ENSAIO SOLADO PARCIAL',
+      'ENSAIO-SOLAGEM-P-' || left(gen_random_uuid()::text, 8),
+      'Solado', 'par', 100, 100, 0,
+      '{"34": 40, "35": 30, "36": 30, "_size_from": 34, "_size_to": 36}'::jsonb,
+      true, v_group_id, 'tradicional'
+    ) RETURNING id INTO v_product2;
+
+    SET LOCAL session_replication_role = replica;
+    INSERT INTO public.technical_sheets (name, status, sole_group_id, primary_sole_id)
+    VALUES ('ENSAIO FICHA SOLAGEM P', 'ativo', v_group_id, v_product2)
+    RETURNING id INTO v_sheet2;
+
+    INSERT INTO public.sale_orders (order_number, client_name, status)
+    VALUES ('PV-ENSAIO-SOLAGEM-P', 'Ensaio rollback parcial', 'Em Produção')
+    RETURNING id INTO v_sale2;
+
+    INSERT INTO public.orders (order_number, reference_id, quantity, status, sale_order_id, color, grade)
+    VALUES (
+      'OP-ENSAIO-SOLAGEM-P', v_sheet2, 100, 'Em Produção', v_sale2, 'PRETO',
+      '{"34": 40, "35": 30, "36": 30}'::jsonb
+    ) RETURNING id INTO v_order2;
+
+    INSERT INTO public.order_stages (order_id, stage_name, stage_order, status, quantity_total, quantity_processed)
+    VALUES (v_order2, 'Solagem', 9, 'pendente', 100, 0)
+    RETURNING id INTO v_stage2;
+
+    INSERT INTO public.material_reservations (
+      order_id, product_id, sale_order_id, quantity_reserved, quantity_consumed,
+      status, reservation_type, source, metadata
+    ) VALUES (
+      v_order2, v_product2, v_sale2, 100, 0, 'reserved', 'soft', 'onhand',
+      jsonb_build_object(
+        'kind', 'sole_grade',
+        'effective_grade', jsonb_build_object('34', 40, '35', 30, '36', 30),
+        'covered_grade', jsonb_build_object('34', 40, '35', 30, '36', 30),
+        'shortage_grade', '{}'::jsonb
+      )
+    ) RETURNING id INTO v_res2;
+    SET LOCAL session_replication_role = DEFAULT;
+
+    UPDATE public.order_stages
+       SET quantity_processed = 30, status = 'em_andamento', updated_at = now()
+     WHERE id = v_stage2;
+
+    INSERT INTO public.production_pointings (order_id, order_stage_id, stage_name, quantity)
+    VALUES (v_order2, v_stage2, 'Solagem', 30);
+
+    SELECT quantity INTO v_qty2 FROM public.products WHERE id = v_product2;
+    IF v_qty2 IS DISTINCT FROM 70 THEN
+      RAISE EXCEPTION 'ENSAIO (d) canônico parcial rebaixou: quantity=% (esperado 70)', v_qty2;
+    END IF;
+    SELECT count(*) INTO v_mov2
+      FROM public.stock_movements
+     WHERE product_id = v_product2 AND order_id = v_order2 AND movement_type = 'out';
+    IF v_mov2 IS DISTINCT FROM 1 THEN
+      RAISE EXCEPTION 'ENSAIO (d) movimentos out=% (esperado 1)', v_mov2;
+    END IF;
+  END;
+
+  RAISE EXCEPTION 'ROLLBACK_ENSAIO_OK: a=baixa por numeração, b=faturamento idempotente, c=LEAST+pending, d=parcial 30+30=30';
 END;
 $ensaio$;
