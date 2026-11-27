@@ -4,6 +4,9 @@ import { adaptiveLabelFontSize } from '@/lib/adaptiveFontSize';
 import { gradeTableFont, floorSafeScale, gradeMinWidthPx, A4_CONTENT_WIDTH_PX, type AdaptiveTableFont } from './worksheet/adaptiveFont';
 import { fitBesideGrade, thumbRowWidthPx, SIDE_BY_SIDE_GAP_PX } from './worksheet/sideBySide';
 import { TallyBox } from './worksheet/TallyBox';
+import { CabedalFrenteTraseiroTally } from './worksheet/CabedalFrenteTraseiroTally';
+import { CabedalPartBadge } from './worksheet/CabedalPartBadge';
+import { classifyCabedalPart, isCabedalFrenteTraseiroSector } from '@/lib/cabedalFrenteTraseiro';
 import { WorksheetHeader } from './worksheet/WorksheetHeader';
 import { HeaderIdentification } from './worksheet/HeaderIdentification';
 import { GroupSubHeader } from './worksheet/GroupSubHeader';
@@ -737,7 +740,15 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     }}
                   >
                     <span className="block tracking-wider" style={{ fontSize: '9px', lineHeight: 1.05 }}>
-                      {identityLine}
+                      {(() => {
+                        const part = classifyCabedalPart(technicalLabel) || classifyCabedalPart(identityLine);
+                        return (
+                          <span className="inline-flex items-center" style={{ gap: 4 }}>
+                            {part && <CabedalPartBadge part={part} size="sm" />}
+                            <span>{identityLine}</span>
+                          </span>
+                        );
+                      })()}
                     </span>
                     <span
                       className="flex items-baseline flex-wrap"
@@ -809,13 +820,36 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             const steps = (cg.aviamentoSteps && cg.aviamentoSteps.length > 0)
               ? cg.aviamentoSteps
               : ['Frente', 'Traseira'];
-            return steps.map((step, sIdx) => (
-              <tr key={`avi-${step}`} style={{ borderBottom: sIdx < steps.length - 1 ? '1px solid #000' : 'none' }}>
+            return steps.map((step, sIdx) => {
+              const part = classifyCabedalPart(step);
+              const isLast = sIdx >= steps.length - 1;
+              return (
+              <tr
+                key={`avi-${step}`}
+                data-cabedal-part={part || 'other'}
+                style={{
+                  borderBottom: isLast
+                    ? 'none'
+                    : part === 'traseiro'
+                      ? '2px dashed #000'
+                      : '1px solid #000',
+                }}
+              >
                 <td
                   className="text-[10px] font-mono font-bold text-black uppercase tracking-wider"
-                  style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 4px` }}
+                  style={{
+                    borderRight: '1px solid #000',
+                    padding: `${STEP_ROW_PAD_Y}px 4px`,
+                    borderLeft: part === 'frente' ? '5px solid #000' : part === 'traseiro' ? '5px dashed #000' : undefined,
+                    background: part === 'traseiro' ? '#f0f0f0' : '#fff',
+                    WebkitPrintColorAdjust: 'exact',
+                    printColorAdjust: 'exact',
+                  }}
                 >
-                  {step}
+                  <span className="inline-flex items-center" style={{ gap: 4 }}>
+                    {part && <CabedalPartBadge part={part} size="sm" />}
+                    <span>{step}</span>
+                  </span>
                 </td>
                 {activeSizes.map(s => (
                   <td key={s} style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 1px` }}>
@@ -826,7 +860,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
                 </td>
               </tr>
-            ));
+              );
+            });
           })()}
         </tbody>
       </table>
@@ -1963,11 +1998,50 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               <SectorMaterials rows={cg.consumption} sector={sector}
                 excludeComponents={sector === 'Aviamento' ? ['Tiras'] : CONSUMO_COMPONENTS_BY_SECTOR[sector] || []} />
               {(() => {
-                // Corte Cabedal com >1 ref na cor: um TallyBox por referência
+                // Corte Cabedal com >1 ref na cor: um controle por referência
                 // (pedido dono 22/09/2026 — quadradinhos separados por modelo).
+                // Setores de Cabedal (Corte/Costura Cabedal e Aviamento) ganham
+                // duas grades independentes — Frente e Traseiro — pra o operador
+                // marcar o traseiro pronto mesmo com a frente pendente.
                 const perRef = sector === 'Corte Cabedal'
                   ? collectCompactThumbs(cg).filter(t => (t.fichas || 0) > 0 || (t.pairs || 0) > 0)
                   : [];
+                const splitCabedal = isCabedalFrenteTraseiroSector(sector);
+                const renderTally = (
+                  key: string,
+                  tallyCount: number,
+                  total: number,
+                  titleSuffix?: string,
+                ) => {
+                  if (tallyCount <= 0) return null;
+                  if (splitCabedal) {
+                    return (
+                      <CabedalFrenteTraseiroTally
+                        key={key}
+                        count={tallyCount}
+                        pairsPerCard={tallyPerCard}
+                        totalUnits={total}
+                        size={TALLY_SIZE}
+                        titleSuffix={titleSuffix}
+                      />
+                    );
+                  }
+                  const title = titleSuffix
+                    ? (titleSuffix.startsWith('Controle de Fichas')
+                      ? titleSuffix
+                      : `Controle de Fichas · ${titleSuffix}`)
+                    : tallyTitle;
+                  return (
+                    <TallyBox
+                      key={key}
+                      count={tallyCount}
+                      pairsPerCard={tallyPerCard}
+                      totalUnits={total}
+                      title={title}
+                      size={TALLY_SIZE}
+                    />
+                  );
+                };
                 if (perRef.length > 1) {
                   return perRef.map((t, ti) => {
                     const refPairs = Number(t.pairs) || 0;
@@ -1976,23 +2050,22 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                       : 0);
                     if (refFichas <= 0) return null;
                     const refLabel = t.refNames.join(' · ') || t.refCode || t.refName || `Ref ${ti + 1}`;
-                    const refTitle = cg.corrugadosMistos
-                      ? `Controle de Fichas · ${refLabel} · corrugados mistos`
-                      : `Controle de Fichas · ${refLabel}`;
-                    return (
-                      <TallyBox
-                        key={t.sheetId || refLabel || ti}
-                        count={refFichas}
-                        pairsPerCard={tallyPerCard}
-                        totalUnits={refPairs > 0 ? refPairs : refFichas * tallyPerCard}
-                        title={refTitle}
-                        size={TALLY_SIZE}
-                      />
+                    const suffix = cg.corrugadosMistos
+                      ? `${refLabel} · corrugados mistos`
+                      : refLabel;
+                    return renderTally(
+                      String(t.sheetId || refLabel || ti),
+                      refFichas,
+                      refPairs > 0 ? refPairs : refFichas * tallyPerCard,
+                      suffix,
                     );
                   });
                 }
-                return (
-                  <TallyBox count={cards} pairsPerCard={tallyPerCard} totalUnits={cg.totalPairs} title={tallyTitle} size={TALLY_SIZE} />
+                return renderTally(
+                  'tally',
+                  cards,
+                  cg.totalPairs,
+                  splitCabedal && cg.corrugadosMistos ? 'corrugados mistos' : undefined,
                 );
               })()}
             </div>

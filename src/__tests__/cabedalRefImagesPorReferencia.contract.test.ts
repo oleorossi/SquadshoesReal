@@ -35,6 +35,9 @@ describe('Corte Cabedal · agrupamento por referência', () => {
     expect(silkSheet).toMatch(
       /'Corte Cabedal':\s*\{[^}]*showCompactImages:\s*true/s,
     );
-    expect(silkSheet).toContain('Controle de Fichas · ${refLabel}');
+    expect(silkSheet).toContain('CabedalFrenteTraseiroTally');
+    expect(silkSheet).toContain('perRef.length > 1');
+    expect(silkSheet).toContain('titleSuffix={titleSuffix}');
+    expect(silkSheet).toContain('const suffix =');
   });
 });

@@ -216,9 +216,12 @@ describe('SilkMontageWorkSheet · Corte Forração sem foto + refs em destaque',
     expect(imgs).toHaveLength(2);
     expect(container.textContent).toContain('LA01');
     expect(container.textContent).toContain('SP201');
-    // Dois controles de fichas — um por referência (não 1 bloco de 24).
-    expect(container.textContent).toMatch(/Controle de Fichas · LA01/);
-    expect(container.textContent).toMatch(/Controle de Fichas · SP201/);
+    // Dois controles por referência (LA01 e SP201), cada um com Frente e Traseiro.
+    expect(container.textContent).toMatch(/Controle de Fichas · Frente · LA01/);
+    expect(container.textContent).toMatch(/Controle de Fichas · Traseiro · LA01/);
+    expect(container.textContent).toMatch(/Controle de Fichas · Frente · SP201/);
+    expect(container.textContent).toMatch(/Controle de Fichas · Traseiro · SP201/);
+    expect(container.querySelectorAll('[data-cabedal-frente-traseiro-tally]')).toHaveLength(2);
   });
 
   it('Silk: mostra foto da referência (showCompactImages)', () => {
