@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPointingPlan, moveOptions, skipBlockedByPartial, applyPointing } from '../pointingPlan';
+import { buildPointingPlan, moveOptions, applyPointing } from '../pointingPlan';
 import { deriveCard, deriveCards, type KanbanCardData } from '../kanbanDerive';
 import type { OrderStage } from '@/hooks/useOrderStages';
 
@@ -438,66 +438,63 @@ describe('moveOptions', () => {
 });
 
 /**
- * Trava do PULO PARCIAL (auditoria 2026-08-06). Pular setor deixando saldo
- * aberto na origem punha a OP em dois lugares ao mesmo tempo — o card ia
- * embora e a origem ficava com pares pendurados, invisíveis no quadro — e,
- * de quebra, desarmava as travas de quantidade do servidor pelo resto da rota
- * (setor fechado com 0 vira "entregou tudo" pra elas).
+ * Pulo com lançamento PARCIAL (pedido 27/11/2026). O saldo restante fica
+ * pendente e visível na origem (`deriveCards` emite card próprio); os pares
+ * apontados chegam no destino como parcial. O aceite humano do pulo continua
+ * obrigatório — só saiu a trava que exigia fechar a origem.
  */
-describe('skipBlockedByPartial', () => {
+describe('applyPointing — pulo com lançamento parcial', () => {
   const stages = [
     stage('Corte Palmilha', 1), stage('Corte Forração', 2),
     stage('Costura', 3), stage('Aviamento', 4),
   ];
   const card = makeCard({ stages, column: 'Corte Palmilha' });
+  const fakeApontar = () => {
+    const calls: unknown[] = [];
+    return {
+      calls,
+      mutateAsync: async (p: unknown) => { calls.push(p); return { success: true }; },
+    } as never;
+  };
 
-  it('barra o pulo quando a origem não fecha', () => {
+  it('grava o parcial, não finaliza a origem e fecha só os setores pulados', async () => {
+    const apontar = fakeApontar();
     const plan = buildPointingPlan(card, 'Aviamento', FLOW);
     expect(plan.skipped.length).toBeGreaterThan(0);
-    expect(skipBlockedByPartial(plan, 60)).toBe(true);   // 60 de 100
+    expect(plan.stageRemaining).toBe(100);
+
+    const res = await applyPointing({
+      card, plan, target: 'Aviamento', qty: 60, apontar, skipAcknowledged: true,
+    });
+
+    expect(res).toEqual({ status: 'ok', quantity: 60 });
+    const calls = (apontar as unknown as { calls: Array<Record<string, unknown>> }).calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      stageName: 'Corte Palmilha',
+      quantity: 60,
+      finalize: false,
+      skipStageNames: ['Palmilha · Forração', 'Costura'],
+    });
   });
 
-  it('libera o pulo com o lote cheio', () => {
+  it('ainda recusa o pulo parcial SEM aceite, SEM gravar nada', async () => {
+    const apontar = fakeApontar();
     const plan = buildPointingPlan(card, 'Aviamento', FLOW);
-    expect(skipBlockedByPartial(plan, 100)).toBe(false);
+    const res = await applyPointing({ card, plan, target: 'Aviamento', qty: 60, apontar });
+    expect(res.status).toBe('blocked');
+    expect((apontar as unknown as { calls: unknown[] }).calls).toHaveLength(0);
   });
 
-  it('não interfere em movimento sem pulo — parcial pro próximo setor é normal', () => {
+  it('movimento sem pulo continua aceitando parcial pro próximo setor', async () => {
+    const apontar = fakeApontar();
     const plan = buildPointingPlan(card, 'Corte Forração', FLOW);
     expect(plan.skipped).toEqual([]);
-    expect(skipBlockedByPartial(plan, 60)).toBe(false);
-  });
-
-  it('não interfere em estorno', () => {
-    const comProgresso = [
-      stage('Corte Palmilha', 1, { status: 'concluido', quantity_processed: 100 }),
-      stage('Corte Forração', 2),
-    ];
-    const c = makeCard({
-      stages: comProgresso, column: 'Corte Forração', front: comProgresso[0],
-    });
-    const plan = buildPointingPlan(c, 'Corte Palmilha', FLOW);
-    expect(plan.isBackward).toBe(true);
-    expect(skipBlockedByPartial(plan, 10)).toBe(false);
-  });
-
-  it('não confunde disponibilidade a montante com saldo necessário para fechar um pulo', () => {
-    const limitedFlow = new Map<string, number>([
-      ['Corte Fibra', 1], ['Corte Palmilha', 1], ['Acabamento Palmilha', 2], ['Silk', 3], ['Montagem', 4],
-    ]);
-    const limitedStages = [
-      stage('Corte Palmilha', 1, { status: 'em_andamento', quantity_processed: 50 }),
-      stage('Acabamento Palmilha', 2),
-      stage('Silk', 3),
-      stage('Montagem', 4),
-    ];
-    const limitedCard = makeCard({ stages: limitedStages, column: 'Acabamento Palmilha' });
-    const plan = buildPointingPlan(limitedCard, 'Montagem', limitedFlow);
-
-    expect(plan.remaining).toBe(50);      // pode apontar 50 agora
-    expect(plan.stageRemaining).toBe(100); // mas só 100 fecha a origem
-    expect(plan.skipped).toEqual(['Silk']);
-    expect(skipBlockedByPartial(plan, 50)).toBe(true);
+    const res = await applyPointing({ card, plan, target: 'Corte Forração', qty: 60, apontar });
+    expect(res).toEqual({ status: 'ok', quantity: 60 });
+    const calls = (apontar as unknown as { calls: Array<Record<string, unknown>> }).calls;
+    expect(calls[0]).toMatchObject({ quantity: 60, finalize: false });
+    expect(calls[0].skipStageNames).toBeUndefined();
   });
 });
 

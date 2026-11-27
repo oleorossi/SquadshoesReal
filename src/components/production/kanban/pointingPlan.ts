@@ -54,7 +54,7 @@ export interface PointingPlan {
   skipped: string[];
   /** Quantidade que pode ser apontada agora, limitada pelo recebido a montante. */
   remaining: number;
-  /** Saldo total do estágio; pular só é seguro quando este valor fecha. */
+  /** Saldo total do estágio (ainda não apontado neste setor). */
   stageRemaining: number;
   available: boolean;
   unavailableReason?: string;
@@ -348,11 +348,6 @@ export function buildPointingPlan(
   };
 }
 
-export function skipBlockedByPartial(plan: PointingPlan, qty: number): boolean {
-  if (plan.isBackward || plan.skipped.length === 0 || !plan.pointedStage) return false;
-  return qty < plan.stageRemaining;
-}
-
 export type ApplyResult =
   | { status: 'ok'; quantity: number }
   | { status: 'needs_confirmation'; warnings: PointingWarning[] }
@@ -387,13 +382,9 @@ export async function applyPointing(params: {
   const quantity = isBackward ? -Math.abs(qty) : qty;
   if (quantity === 0) return { status: 'noop' };
 
-  if (skipBlockedByPartial(plan, qty)) {
-    return {
-      status: 'blocked',
-      reason: `Pra pular ${skipped.join(', ')} é preciso fechar ${norm(pointedStage.stage_name)} `
-        + `(${plan.stageRemaining} pares). Com ${qty}, sobrariam ${plan.stageRemaining - qty} pares sem passar por lá.`,
-    };
-  }
+  // Pulo com origem parcial é permitido: os pares apontados seguem ao destino
+  // como parcial e o saldo restante permanece pendente e visível na origem
+  // (`deriveCards` emite card próprio para a etapa aberta a montante).
 
   if (skipped.length > 0 && !skipAcknowledged) {
     return {

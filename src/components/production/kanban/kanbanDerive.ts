@@ -201,9 +201,13 @@ function buildCard(
   const hasProgress = (s: OrderStage) => s.quantity_processed > 0 || s.status === 'concluido';
   // O próprio setor sendo trabalhado é o seu "front" — é assim que o card do
   // setor corrente mostra o que ELE já produziu (180/288), e não 0.
+  // A montante, setor pulado (concluído com 0) não pode virar a entrega: o
+  // destino precisa anunciar os pares realmente apontados na origem
+  // (ex.: 276/900 parcial), não 0 por causa do pulo no meio do caminho.
+  const lastProducedUpstream = [...aMontante].reverse().find(s => s.quantity_processed > 0) ?? null;
   const front: OrderStage | null = hasProgress(column)
     ? column
-    : ([...aMontante].reverse().find(hasProgress) ?? null);
+    : (lastProducedUpstream ?? ([...aMontante].reverse().find(hasProgress) ?? null));
 
   /**
    * Pares ENTREGUES pro setor do card = o que o setor de trás de fato apontou.

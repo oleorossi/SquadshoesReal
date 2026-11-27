@@ -4,6 +4,13 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  APONTAR_DIALOG_BODY,
+  APONTAR_DIALOG_FOOTER,
+  APONTAR_DIALOG_HEADER,
+  APONTAR_DIALOG_SHELL,
+  APONTAR_DIALOG_WARNING,
+} from '@/components/production/kanban/apontarDialogShell';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Info, UserCircle, ClockCounterClockwise } from '@phosphor-icons/react';
@@ -25,7 +32,7 @@ import { toast } from 'sonner';
 import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { thumbUrl } from '@/lib/imageThumb';
 import { norm, fmtDate, KanbanCardData } from './kanbanDerive';
-import { buildPointingPlan, moveOptions, applyPointing, skipBlockedByPartial } from './pointingPlan';
+import { buildPointingPlan, moveOptions, applyPointing } from './pointingPlan';
 import { isStageSkipped } from '@/lib/production/stageFlow';
 import { ATELIER_DOWNSTREAM_STAGES } from '@/lib/atelierReceipt';
 
@@ -155,10 +162,6 @@ export function DropApontarDialog({
     ? Math.max(0, pointedStage.quantity_processed + effectiveQty - pointedStage.quantity_total)
     : 0;
 
-  // Pular setor com a origem ABERTA deixa saldo órfão atrás do card e desarma
-  // as travas de quantidade do resto da rota. Ver `skipBlockedByPartial`.
-  const skipBlocked = skipBlockedByPartial(plan, effectiveQty);
-
   const handleMoveChange = (v: string) => {
     const t = v === MOVE_ATUAL ? '' : v;
     setMoveTarget(t);
@@ -267,9 +270,9 @@ export function DropApontarDialog({
   return (
     <>
       <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
-        <DialogContent className={usingGrid ? 'sm:max-w-xl' : 'sm:max-w-md'}>
-          <DialogHeader>
-            <DialogTitle className="text-base">
+        <DialogContent className={APONTAR_DIALOG_SHELL}>
+          <DialogHeader className={APONTAR_DIALOG_HEADER}>
+            <DialogTitle className="text-base pr-6">
               {readOnly
                 ? `Detalhes da produção — ${q.order_number}`
                 : <>{isBackward ? 'Estornar produção' : `Apontar ${norm(pointedStage.stage_name)}`} — {q.order_number}</>}
@@ -280,11 +283,11 @@ export function DropApontarDialog({
                 : 'Confira o setor e a quantidade antes de registrar o lançamento.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className={`${APONTAR_DIALOG_BODY} space-y-3`}>
             {/* Identidade da referência: a foto GRANDE é o que confirma, num
                 relance, que a OP arrastada é mesmo a que se quer apontar —
                 antes só havia uma linha de texto. */}
-            <div className="flex gap-3.5 rounded-lg border border-border bg-muted/40 p-3">
+            <div className="flex min-w-0 flex-wrap items-start gap-3.5 rounded-lg border border-border bg-muted/40 p-3">
               {referencePhoto ? (
                 <ZoomableImage
                   src={referencePhoto}
@@ -292,15 +295,15 @@ export function DropApontarDialog({
                   alt={q.reference_name || 'Referência'}
                   fit="contain"
                   loading="lazy"
-                  buttonClassName="h-28 w-28 shrink-0 rounded-md border border-border bg-muted"
+                  buttonClassName="h-24 w-24 shrink-0 rounded-md border border-border bg-muted sm:h-28 sm:w-28"
                   className="rounded-md object-contain"
                 />
               ) : (
-                <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-[10px] text-muted-foreground">
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-[10px] text-muted-foreground sm:h-28 sm:w-28">
                   sem foto
                 </div>
               )}
-              <dl className="grid min-w-0 flex-1 grid-cols-[auto_1fr] content-start gap-x-3 gap-y-0.5 text-xs">
+              <dl className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] content-start gap-x-3 gap-y-0.5 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
                 <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Referência</dt>
                 <dd className="truncate font-semibold text-primary">
                   {q.reference_name || '—'}{q.color ? <span className="font-normal text-muted-foreground"> · {q.color}</span> : null}
@@ -320,7 +323,7 @@ export function DropApontarDialog({
             </div>
 
             {effTarget && !isBackward && plan.available && (
-              <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+              <p className="min-w-0 whitespace-normal break-words font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
                 De <strong className="text-foreground">{norm(column)}</strong>{' '}
                 <span className="text-primary">→</span>{' '}
                 para <strong className="text-foreground">{norm(effTarget)}</strong>
@@ -365,11 +368,19 @@ export function DropApontarDialog({
               </div>
             )}
 
-            {!readOnly && skipped.length > 0 && !skipBlocked && (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+            {!readOnly && skipped.length > 0 && (
+              <div className={APONTAR_DIALOG_WARNING}>
                 <strong>Pulando setor{skipped.length > 1 ? 'es' : ''}:</strong> {skipped.join(', ')}.
                 Eles serão marcados como concluídos <strong>sem produção apontada</strong> — fica registrado
                 no histórico com o seu usuário.
+                {willBePartial && (
+                  <p className="mt-1.5">
+                    Os {effectiveQty} pares apontados chegam em{' '}
+                    <strong>{norm(effTarget || pointedStage.stage_name)}</strong> como <strong>PARCIAL</strong>.
+                    Os <strong>{stageRemaining - effectiveQty} restantes</strong> ficam pendentes em{' '}
+                    <strong>{norm(pointedStage.stage_name)}</strong> para apontar depois.
+                  </p>
+                )}
                 {/* Aceite explícito: antes o código auto-confirmava os avisos do
                     servidor por baixo do pano. Fechar setor sem produção é
                     decisão de fábrica (decisão do dono 06/08/2026). */}
@@ -379,21 +390,11 @@ export function DropApontarDialog({
                     onCheckedChange={v => setSkipOk(v === true)}
                     className="mt-0.5 shrink-0"
                   />
-                  <span>
+                  <span className="min-w-0 whitespace-normal break-words">
                     Confirmo que {skipped.length > 1 ? 'esses setores não vão' : 'esse setor não vai'} produzir
                     {' '}est{skipped.length > 1 ? 'es' : 'e'} lote.
                   </span>
                 </label>
-              </div>
-            )}
-            {!readOnly && skipBlocked && (
-              <div className="rounded-md border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-700 dark:text-red-300">
-                <strong>Pra pular setor, {pointedStage.stage_name} tem que fechar.</strong>{' '}
-                Você está apontando {effectiveQty} de {stageRemaining} pares — os{' '}
-                <strong>{stageRemaining - effectiveQty} restantes</strong> ficariam sem passar por{' '}
-                {skipped.join(', ')}, e sem aparecer como pendência em lugar nenhum do quadro.
-                <br />
-                Aponte os {stageRemaining} pares pra pular, ou mande a OP pro próximo setor da rota.
               </div>
             )}
             {!readOnly && isBackward && (
@@ -489,6 +490,8 @@ export function DropApontarDialog({
               <strong className="text-foreground">{profile?.full_name || profile?.email || 'usuário logado'}</strong>
             </p>}
 
+          </div>
+          <div className={`${APONTAR_DIALOG_FOOTER} justify-between`}>
             {/* Progresso por setor (transparência do card único) + trilha real */}
             <div className="flex flex-wrap items-center gap-1">
               <Popover>
@@ -575,15 +578,17 @@ export function DropApontarDialog({
               </Popover>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t">
+
+            <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" className="h-11 md:h-10" onClick={onClose}>
                 {readOnly ? 'Fechar' : 'Cancelar'}
               </Button>
               {!readOnly && (
                 <Button
                   className="h-11 md:h-10"
+                  data-dialog-primary="true"
                   onClick={requestApontar}
-                  disabled={!plan.available || apontar.isPending || effectiveQty === 0 || sizePending || skipBlocked || (skipped.length > 0 && !skipOk)}
+                  disabled={!plan.available || apontar.isPending || effectiveQty === 0 || sizePending || (skipped.length > 0 && !skipOk)}
                 >
                   {isBackward ? 'Estornar' : 'Apontar'}
                 </Button>
