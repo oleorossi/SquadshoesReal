@@ -90,8 +90,8 @@ export const STEP_CHECKBOX_PX = 14;
  * caía sozinho na última folha (~62% em branco). A causa agora é a ALTURA do
  * rótulo da tira (4 linhas empilhadas com `mt-0.5` + padding 4px), não a foto.
  *
- * Esta passagem corta só o AR VERTICAL dessas linhas — fontes iguais (Anton 18
- * na cor, mono 9/10 no resto, checkbox 16px). Objetivo: card baixo o bastante
+ * A passagem A.2 cortou o AR VERTICAL. Em 2026-11-27 o quadro de tiras também
+ * compacta a tipografia (Anton 11 na cor, tudo numa linha). Objetivo: card baixo o bastante
  * pra 2 cores na mesma folha quando o restante do maço permitir, e o trailing
  * `keepWithPrev` do Total Geral voltar a grudar na última cor.
  */
@@ -103,6 +103,19 @@ export const STRAP_LABEL_PAD = '1px 4px';
 export const STRAP_STACK_GAP_PX = 0;
 /** Padding vertical das linhas Frente/Traseira (checkbox por numeração). */
 export const STEP_ROW_PAD_Y = 1;
+
+/**
+ * Tipografia compacta do quadro de tiras (pedido 2026-11-27, t143u).
+ * A cor em Anton 18 + rótulo empilhado em 2 linhas inflava cada TIRA e
+ * empurrava o card do Aviamento pra folha 2. Tudo vai numa linha só
+ * (ex.: "TIRA 4 · TRASEIRA · OFF WHITE · NAPA SOFT"), com a cor ainda em
+ * vermelho mas em corpo menor. Após auto-fit 0,80 a cor fica ≥ 8,8px.
+ */
+export const STRAP_COLOR_FONT_PX = 11;
+export const STRAP_IDENTITY_FONT_PX = 8;
+export const STRAP_MEASURE_FONT_PX = 8;
+/** 1ª coluna do grid quando o Aviamento tem tiras numa linha só. */
+export const AVIAMENTO_STRAP_LABEL_COL_PX = 220;
 
 /**
  * Densidade A.3 — multi-setor (2026-09-19).

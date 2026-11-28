@@ -1,6 +1,14 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { PAGE_CONTENT_WIDTH_PX } from './pageGeometry';
+import {
+  TALLY_DEFAULT_INSET_PX,
+  fitTallyBoxLayout,
+  tallyAvailableWidthPx,
+  tallyDesiredBoxPx,
+  tallyGapPx,
+  tallyRigidWidthPx,
+  type TallySize,
+} from './tallyLayout';
 
 interface Props {
   /** Quantas fichas a operadora vai produzir. Cada quadrado representa 1 ficha. */
@@ -24,6 +32,10 @@ interface Props {
   /** Primeiro número da grade (default 1). Nos blocos de 20 fichas a numeração
    *  é contínua: bloco 2 começa em 21, bloco 3 em 41, e o "completar" segue. */
   startNumber?: number;
+  /** Largura útil da linha (px @96dpi). Default = coluna A4 menos folga de
+   *  card. Nas faixas Frente/Traseiro passe a largura já descontando o chrome
+   *  da faixa, pra o auto-fit encolher as caixinhas em vez de vazarem. */
+  availableWidthPx?: number;
 }
 
 /**
@@ -36,7 +48,7 @@ interface Props {
  *   - quadrados 1.5px border-black, número em font-mono, fundo branco
  *   - sem fundo colorido, sem header preenchido
  */
-export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares', title, size = 'md', startNumber = 1 }: Props) => {
+export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares', title, size = 'md', startNumber = 1, availableWidthPx }: Props) => {
   if (count <= 0) return null;
   const footerTotal = totalUnits ?? count * pairsPerCard;
   const firstNumber = Math.max(1, Math.trunc(Number(startNumber) || 1));
@@ -49,7 +61,8 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // (Corte Forração / Acabamento Palmilha / Silk) — 2 cores por A4.
   // +25% (pedido user 2026-06-17): lg 28→35, sm 16→20, md 20→25px. Em px inline
   // (componente de print) pra cair fora dos passos de 4px do Tailwind.
-  const boxPx = size === 'lg' ? 35 : size === 'sm' ? 20 : 25;
+  const tallySize = (size || 'md') as TallySize;
+  const desiredBoxPx = tallyDesiredBoxPx(tallySize);
   const titleText = title || `Controle de Fichas · ${pairsPerCard} pares / ficha`;
 
   // Font-size dinâmico pra número caber na caixinha mesmo com 3+ dígitos
@@ -61,22 +74,26 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // box w-4 = 16×16px (size sm): 1-2 dígitos 8px · 3 díg. 6.5px · 4+ 5.5px
   // box w-7 = 28×28px (size lg, raro); mais espaço útil
   //   1-2 dígitos: 13px · 3 dígitos: 11px · 4+: 9px
-  const getFontSize = (n: number): string => {
+  const baseFontPx = (n: number): number => {
     const digits = String(n).length;
-    // Fontes ×1.25 junto com a caixa (+25%) pra manter a proporção do número.
-    if (size === 'lg') {
-      if (digits <= 2) return '16px';
-      if (digits === 3) return '14px';
-      return '11px';
+    if (tallySize === 'lg') {
+      if (digits <= 2) return 16;
+      if (digits === 3) return 14;
+      return 11;
     }
-    if (size === 'sm') {
-      if (digits <= 2) return '10px';
-      if (digits === 3) return '8px';
-      return '7px';
+    if (tallySize === 'sm') {
+      if (digits <= 2) return 10;
+      if (digits === 3) return 8;
+      return 7;
     }
-    if (digits <= 2) return '11px';
-    if (digits === 3) return '9.5px';
-    return '7.5px';
+    if (digits <= 2) return 11;
+    if (digits === 3) return 9.5;
+    return 7.5;
+  };
+  const getFontSize = (n: number): string => {
+    const scale = boxPx / desiredBoxPx;
+    const px = Math.max(6, Math.round(baseFontPx(n) * scale * 10) / 10);
+    return `${px}px`;
   };
 
   // Paginação por LINHA (2026-06-23). Histórico: o tally era fatiado em CHUNKS
@@ -89,41 +106,21 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
   // ENTRE LINHAS, empacotando cada folha até o fim. Nenhuma caixinha cruza a
   // quebra (a linha é atômica) e a folha final só tem o resto real, não um
   // chunk inteiro encalhado. Mesmo mecanismo já provado nos `.flow-card`.
-  const gapPx = size === 'sm' ? 2 : 4;
-  // Largura útil de UMA linha (px @96dpi). Usa a coluna A4 canônica menos
-  // folga de card (~12px) — antes era 710 fixo e o growCeiling parava em ~×1.04
-  // mesmo com meia folha vazia (decisão de densidade: matar espaço morto antes
-  // de reduzir fonte).
-  const ROW_WIDTH_PX = Math.floor(PAGE_CONTENT_WIDTH_PX - 12);
-  const rawCols = Math.max(1, Math.floor((ROW_WIDTH_PX + gapPx) / (boxPx + gapPx)));
-  // Arredonda PRA BAIXO ao múltiplo de 10 (mín 10) pra alinhar as DEZENAS —
-  // cada linha vira N dezenas completas, com divisória a cada 10 + acumulado
-  // no fim da linha (melhoria estética 2026-06-30, aprovada). Facilita marcar
-  // à caneta sem perder a conta no turno.
-  const cols = rawCols >= 10 ? Math.floor(rawCols / 10) * 10 : rawCols;
-  // ── Largura RÍGIDA da linha (2026-08-29; suavizada 2026-10) ──
-  // `cols` sai de ROW_WIDTH_PX, uma CONSTANTE: a linha não reflui com a largura
-  // que realmente tem. Sob o zoom do auto-fit ela é apenas desenhada maior e
-  // vaza da folha, sem nada denunciar. Declarando o que ela exige, o
-  // PaginatedSheet (growCeilingFor) para de crescer antes disso.
-  //
-  // Some, para uma linha CHEIA: as caixinhas, os respiros dentro de cada dezena,
-  // as divisórias entre dezenas (paddingRight 2× + marginRight 1× + borda 2px) e
-  // o acumulado "← N" no fim (paddingLeft 3× + o próprio texto).
-  //
-  // SOFT 0.92: a geometria teórica já embute folga (+4 e divisórias); declarar
-  // 100% travava o grow em ~×1.04. 8% a menos libera tipografia maior sem
-  // refluir cols (refluir AUMENTA altura — medido).
-  const decadeCount = Math.max(1, Math.ceil(cols / 10));
-  const accumFontPx = size === 'sm' ? 8 : 9;
-  const accumTextPx = (String(lastNumber).length + 2) * 0.62 * accumFontPx;
-  const rigidWidthPx = Math.ceil(
-    (cols * boxPx
-    + (cols - decadeCount) * gapPx
-    + (decadeCount - 1) * (gapPx * 3 + 2)
-    + gapPx * 3 + accumTextPx
-    + 4) * 0.92,
-  );
+  const gapPx = tallyGapPx(tallySize);
+  // Largura útil da linha: coluna A4 menos folga, ou a largura já descontando
+  // o chrome da faixa (Cabedal Frente/Traseiro). Auto-fit encolhe a caixa se a
+  // linha cheia (dezenas + "← N") não couber — evita vazar a borda direita.
+  const rowWidthPx = Math.floor(availableWidthPx ?? tallyAvailableWidthPx(TALLY_DEFAULT_INSET_PX));
+  const layout = fitTallyBoxLayout({
+    size: tallySize,
+    count,
+    lastNumber,
+    availableWidthPx: rowWidthPx,
+  });
+  const boxPx = layout.boxPx;
+  const cols = layout.cols;
+  const tight = availableWidthPx != null || boxPx < desiredBoxPx;
+  const rigidWidthPx = tallyRigidWidthPx(layout.occupiedPx, { tight });
   const rows: number[][] = [];
   for (let i = 0; i < count; i += cols) {
     rows.push(
@@ -172,8 +169,10 @@ export const TallyBox = ({ count, pairsPerCard = 12, totalUnits, unit = 'pares',
                     <div
                       key={n}
                       data-tally-box=""
+                      data-tally-box-px={boxPx}
                       className="flex items-center justify-center bg-white text-black font-mono font-bold leading-none"
                       style={{
+                        boxSizing: 'border-box',
                         width: boxPx,
                         height: boxPx,
                         border: '1.5px solid #000',

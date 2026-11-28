@@ -19,7 +19,10 @@ import {
   STEP_CHECKBOX_PX,
   STRAP_ROW_PAD_Y,
   STRAP_LABEL_PAD,
-  STRAP_STACK_GAP_PX,
+  STRAP_COLOR_FONT_PX,
+  STRAP_IDENTITY_FONT_PX,
+  STRAP_MEASURE_FONT_PX,
+  AVIAMENTO_STRAP_LABEL_COL_PX,
   STEP_ROW_PAD_Y,
   CONSUMO_TABLE_PAD_Y,
   CONSUMO_TABLE_PAD_X,
@@ -578,7 +581,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             {/* Coluna do rótulo: largura precisa caber "Total × N
                 fichas" (≈96px). Sob table-layout:fixed quem manda é
                 o width do TH — antes era 54 e cortava o texto. */}
-            <th className="section-label py-1" style={{ color: '#000', width: 96, borderRight: '1px solid #000' }}>Nº</th>
+            <th className="section-label py-1" style={{ color: '#000', width: (sector === 'Aviamento' && (cg.components || []).some(c => Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || '')) ? AVIAMENTO_STRAP_LABEL_COL_PX : 96), borderRight: '1px solid #000' }}>Nº</th>
             {activeSizes.map(s => (
               <th
                 key={s}
@@ -717,16 +720,20 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               const material = String(c.material || '').trim();
               const showTechnicalLabel = !!technicalLabel
                 && technicalLabel.toLocaleUpperCase('pt-BR') !== positionLabel;
-              // Identidade numa linha (TIRA n · rótulo técnico) + cor/material
-              // na seguinte: corta 1–2 linhas de ar morto sem reduzir fonte.
+              // Uma linha compacta: "TIRA 4 · TRASEIRA · OFF WHITE · NAPA SOFT".
+              // A cor continua vermelha (Anton) mas em corpo menor; o quadro
+              // inteiro baixa o bastante pra o card do Aviamento começar — e
+              // de preferência fechar — na folha 1 (pedido t143u).
               const identityLine = showTechnicalLabel
                 ? `${positionLabel} · ${technicalLabel}`
                 : positionLabel;
+              const part = classifyCabedalPart(technicalLabel) || classifyCabedalPart(identityLine);
               return (
                 <tr
                   key={c.technicalStrapLineId || `strap-row-${position}-${i}`}
                   data-strap-position={position}
                   data-technical-strap-line-id={c.technicalStrapLineId}
+                  data-strap-compact=""
                   style={{ borderBottom: '1px solid #000', borderTop: i === 0 ? '1.5px solid #000' : undefined }}
                 >
                   <td
@@ -735,52 +742,48 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                       borderRight: '1px solid #000',
                       padding: STRAP_LABEL_PAD,
                       color: '#000',
-                      lineHeight: 1.05,
+                      lineHeight: 1.15,
                       verticalAlign: 'middle',
                     }}
                   >
-                    <span className="block tracking-wider" style={{ fontSize: '9px', lineHeight: 1.05 }}>
-                      {(() => {
-                        const part = classifyCabedalPart(technicalLabel) || classifyCabedalPart(identityLine);
-                        return (
-                          <span className="inline-flex items-center" style={{ gap: 4 }}>
-                            {part && <CabedalPartBadge part={part} size="sm" />}
-                            <span>{identityLine}</span>
-                          </span>
-                        );
-                      })()}
-                    </span>
                     <span
-                      className="flex items-baseline flex-wrap"
-                      style={{ gap: 5, marginTop: STRAP_STACK_GAP_PX }}
+                      className="inline-flex items-center"
+                      style={{ gap: 3, fontSize: `${STRAP_IDENTITY_FONT_PX}px`, letterSpacing: '0.01em', lineHeight: 1.15, whiteSpace: 'nowrap' }}
                     >
+                      {part && <span className="inline-flex items-center self-center"><CabedalPartBadge part={part} size="sm" /></span>}
+                      <span>{identityLine}</span>
+                      <span aria-hidden="true"> · </span>
                       <span
                         data-strap-color
                         style={{
                           fontFamily: "'Anton', Impact, sans-serif",
-                          fontSize: '18px',
+                          fontSize: `${STRAP_COLOR_FONT_PX}px`,
                           letterSpacing: '-0.01em',
                           color: '#C00000',
                           lineHeight: 1,
+                          textTransform: 'uppercase',
                         }}
                       >
                         {c.color || '—'}
                       </span>
                       {material && (
-                        <span
-                          data-strap-material
-                          style={{
-                            fontFamily: "'Fira Sans', sans-serif",
-                            fontSize: '10px',
-                            fontWeight: 600,
-                            lineHeight: 1.1,
-                            whiteSpace: 'normal',
-                            overflowWrap: 'anywhere',
-                            textTransform: 'none',
-                          }}
-                        >
-                          {material}
-                        </span>
+                        <>
+                          <span aria-hidden="true"> · </span>
+                          <span
+                            data-strap-material
+                            style={{
+                              fontFamily: "'Fira Sans', sans-serif",
+                              fontSize: `${STRAP_IDENTITY_FONT_PX}px`,
+                              fontWeight: 600,
+                              lineHeight: 1.15,
+                              whiteSpace: 'normal',
+                              overflowWrap: 'anywhere',
+                              textTransform: 'none',
+                            }}
+                          >
+                            {material}
+                          </span>
+                        </>
                       )}
                     </span>
                   </td>
@@ -794,11 +797,11 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                         key={s}
                         className="font-mono font-bold"
                         style={{
-                          fontSize: `${ft.cellPx}px`,
+                          fontSize: `${STRAP_MEASURE_FONT_PX}px`,
                           borderRight: '1px solid #000',
                           padding: `${STRAP_ROW_PAD_Y}px 1px`,
                           color: '#C00000',
-                          lineHeight: 1.15,
+                          lineHeight: 1.1,
                           verticalAlign: 'middle',
                         }}
                       >
@@ -836,8 +839,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 }}
               >
                 <td
-                  className="text-[10px] font-mono font-bold text-black uppercase tracking-wider"
+                  className="font-mono font-bold text-black uppercase tracking-wider"
                   style={{
+                    fontSize: '8px',
                     borderRight: '1px solid #000',
                     padding: `${STEP_ROW_PAD_Y}px 4px`,
                     borderLeft: part === 'frente' ? '5px solid #000' : part === 'traseiro' ? '5px dashed #000' : undefined,
@@ -2073,7 +2077,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
 
           return [
             { node: trabalhoNode },
-            { node: fechamentoNode, keepWithPrev: true },
+            { node: fechamentoNode, keepWithPrev: sector !== 'Aviamento' },
           ];
   });
 

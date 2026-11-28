@@ -8,6 +8,9 @@ import {
   STEP_CHECKBOX_PX,
   STRAP_ROW_PAD_Y,
   STRAP_LABEL_PAD,
+  STRAP_COLOR_FONT_PX,
+  STRAP_IDENTITY_FONT_PX,
+  STRAP_MEASURE_FONT_PX,
   STRAP_STACK_GAP_PX,
   STEP_ROW_PAD_Y,
   CONSUMO_TABLE_PAD_Y,
@@ -92,6 +95,17 @@ describe('density — constantes da Opção A', () => {
     expect(STRAP_STACK_GAP_PX).toBe(0);
     // Label pad: "1px 4px" — vertical curto, horizontal legível.
     expect(STRAP_LABEL_PAD).toMatch(/^1px\s/);
+  });
+
+  it('quadro de tiras compacto: cor e medidas cabem numa linha e sobrevivem ao auto-fit 0,80', () => {
+    expect(STRAP_COLOR_FONT_PX).toBeLessThanOrEqual(12);
+    expect(STRAP_COLOR_FONT_PX).toBeGreaterThanOrEqual(10);
+    expect(STRAP_IDENTITY_FONT_PX).toBeLessThanOrEqual(9);
+    expect(STRAP_MEASURE_FONT_PX).toBeLessThanOrEqual(9);
+    // Piso de leitura após o auto-fit mínimo do PaginatedSheet (0,80).
+    expect(STRAP_COLOR_FONT_PX * 0.8).toBeGreaterThanOrEqual(8);
+    expect(STRAP_IDENTITY_FONT_PX * 0.8).toBeGreaterThanOrEqual(6);
+    expect(STRAP_MEASURE_FONT_PX * 0.8).toBeGreaterThanOrEqual(6);
   });
 
   it('A.3: tabela de consumo multi-linha aperta só o eixo vertical', () => {

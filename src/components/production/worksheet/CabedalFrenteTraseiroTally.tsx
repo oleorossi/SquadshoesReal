@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { CabedalPartBadge } from './CabedalPartBadge';
 import { TallyBox } from './TallyBox';
+import { CABEDAL_TALLY_INSET_PX, tallyAvailableWidthPx } from './tallyLayout';
 import type { CabedalPart } from '@/lib/cabedalFrenteTraseiro';
 import { cabedalPartLabel } from '@/lib/cabedalFrenteTraseiro';
 
@@ -101,6 +102,7 @@ export function CabedalFrenteTraseiroTally({
   titleSuffix,
 }: Props) {
   if (count <= 0) return null;
+  const tallyWidthPx = tallyAvailableWidthPx(CABEDAL_TALLY_INSET_PX);
   const suffix = titleSuffix ? ` · ${titleSuffix}` : '';
   const hint = 'Marque cada parte à parte — o traseiro pode ficar pronto com a frente pendente.';
   return (
@@ -117,6 +119,7 @@ export function CabedalFrenteTraseiroTally({
           pairsPerCard={pairsPerCard}
           totalUnits={totalUnits}
           size={size}
+          availableWidthPx={tallyWidthPx}
           title={`Controle de Fichas · Frente${suffix}`}
         />
       </PartBand>
@@ -126,6 +129,7 @@ export function CabedalFrenteTraseiroTally({
           pairsPerCard={pairsPerCard}
           totalUnits={totalUnits}
           size={size}
+          availableWidthPx={tallyWidthPx}
           title={`Controle de Fichas · Traseiro${suffix}`}
         />
       </PartBand>
