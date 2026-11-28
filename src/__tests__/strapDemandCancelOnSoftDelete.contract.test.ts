@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '../..');
 const MIG = readFileSync(
-  resolve(ROOT, 'supabase/migrations/20270101066100_strap_demand_cancel_on_soft_delete.sql'),
+  resolve(ROOT, 'supabase/migrations/20270101067100_strap_demand_cancel_on_soft_delete.sql'),
   'utf8',
 );
 const CLOSED_MIG = readFileSync(

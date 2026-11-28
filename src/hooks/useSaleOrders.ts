@@ -1416,7 +1416,7 @@ export function useDeleteSaleOrder() {
       // As OPs do PV também somem (cascata no soft_delete_sale_order) — refaz a
       // lista de OPs pra elas sumirem na hora, sem precisar dar refresh.
       qc.invalidateQueries({ queryKey: ['orders'] });
-      // Soft-delete cancela demanda de tira (66100) — Hub some na hora.
+      // Soft-delete cancela demanda de tira (67100) — Hub some na hora.
       qc.invalidateQueries({ queryKey: ['artisanal-strap-demands'] });
       qc.invalidateQueries({ queryKey: ['artisanal-strap-production'] });
     },
@@ -1462,7 +1462,7 @@ export function useRestoreSaleOrder() {
       qc.invalidateQueries({ queryKey: ['sale_orders_with_nfe'] });
       // Restaurar o PV reexibe as OPs escondidas pela cascata.
       qc.invalidateQueries({ queryKey: ['orders'] });
-      // Restore reabre demanda de tira se status ainda for operacional (66100).
+      // Restore reabre demanda de tira se status ainda for operacional (67100).
       qc.invalidateQueries({ queryKey: ['artisanal-strap-demands'] });
       qc.invalidateQueries({ queryKey: ['artisanal-strap-production'] });
       toast.success(`${data?.order_number || 'PV'} restaurado!`);
