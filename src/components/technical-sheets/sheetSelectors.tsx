@@ -105,6 +105,13 @@ interface GroupMaterialSelectProps {
   groupFilter?: (group: ProductGroup) => boolean;
   /** Classe extra no botão (validação visual). */
   triggerClassName?: string;
+  /**
+   * Grupo-folha sem SKU ativo também pode ser escolhido (com aviso), em vez de
+   * ficar só como atalho "cadastre antes de usar". Tira (spec
+   * tira-material-de-estoque R6/R7): o SKU é criado ao salvar o PV, então o
+   * grupo da bitola NÃO pode sumir da ficha só por ainda não ter SKU.
+   */
+  allowEmptyGroups?: boolean;
 }
 
 type GroupSelectSummary = {
@@ -143,6 +150,7 @@ export function GroupMaterialSelect({
   selectedGroupId = null,
   groupFilter,
   triggerClassName,
+  allowEmptyGroups = false,
 }: GroupMaterialSelectProps) {
   const { data: groups = [] } = useGroups();
   const { data: allProducts = [] } = useProducts();
@@ -187,8 +195,9 @@ export function GroupMaterialSelect({
   );
   const selectableGroups = useMemo<GroupSelectOption[]>(() => groups
     .filter(group => !parentIds.has(group.id))
+    .filter(group => !allowEmptyGroups || group.is_family !== true)
     .filter(passesFilters)
-    .filter(group => (groupIndex[group.id]?.count || 0) > 0)
+    .filter(group => allowEmptyGroups || (groupIndex[group.id]?.count || 0) > 0)
     .map(group => {
       const path = getGroupPath(groups, group.id);
       const familyPath = path.slice(0, -1).map(node => node.name).join(' › ');
@@ -198,7 +207,7 @@ export function GroupMaterialSelect({
         familyLabel: familyPath || null,
       };
     })
-    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex]);
+    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex, allowEmptyGroups]);
 
   // Grupo-folha SEM item ativo continua fora da seleção (sem SKU o PV não tem o
   // que debitar e o custo/par sai R$ 0), mas aparece com atalho para cadastrar.
@@ -207,7 +216,7 @@ export function GroupMaterialSelect({
   const emptyGroups = useMemo<GroupSelectOption[]>(() => groups
     .filter(group => !parentIds.has(group.id) && group.is_family !== true)
     .filter(passesFilters)
-    .filter(group => (groupIndex[group.id]?.count || 0) === 0)
+    .filter(group => !allowEmptyGroups && (groupIndex[group.id]?.count || 0) === 0)
     .map(group => {
       const path = getGroupPath(groups, group.id);
       return {
@@ -216,7 +225,7 @@ export function GroupMaterialSelect({
         familyLabel: null,
       };
     })
-    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex]);
+    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex, allowEmptyGroups]);
   const [groupToFill, setGroupToFill] = useState<ProductGroup | null>(null);
 
   const [open, setOpen] = useState(false);
@@ -271,7 +280,8 @@ export function GroupMaterialSelect({
     if (!browseFamilyId) return [] as GroupSelectOption[];
     const kids = childrenByParent.get(browseFamilyId) || [];
     return kids
-      .filter((group) => (groupIndex[group.id]?.count || 0) > 0)
+      .filter((group) => !allowEmptyGroups || group.is_family !== true)
+      .filter((group) => allowEmptyGroups || (groupIndex[group.id]?.count || 0) > 0)
       .filter(passesFilters)
       .map((group) => {
         const path = getGroupPath(groups, group.id);
@@ -282,14 +292,14 @@ export function GroupMaterialSelect({
         };
       })
       .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR'));
-  }, [browseFamilyId, childrenByParent, groupIndex, sector, groupFilter, groups, browseFamily]);
+  }, [browseFamilyId, childrenByParent, groupIndex, sector, groupFilter, groups, browseFamily, allowEmptyGroups]);
 
   const familyEmptyOptions = useMemo(() => {
     if (!browseFamilyId) return [] as GroupSelectOption[];
     const kids = childrenByParent.get(browseFamilyId) || [];
     return kids
       .filter((group) => group.is_family !== true)
-      .filter((group) => (groupIndex[group.id]?.count || 0) === 0)
+      .filter((group) => !allowEmptyGroups && (groupIndex[group.id]?.count || 0) === 0)
       .filter(passesFilters)
       .map((group) => {
         const path = getGroupPath(groups, group.id);
@@ -300,7 +310,7 @@ export function GroupMaterialSelect({
         };
       })
       .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR'));
-  }, [browseFamilyId, childrenByParent, groupIndex, sector, groupFilter, groups, browseFamily]);
+  }, [browseFamilyId, childrenByParent, groupIndex, sector, groupFilter, groups, browseFamily, allowEmptyGroups]);
 
   const filtered = useMemo(() => {
     // Com família aberta: só os filhos. Na raiz com busca: todas as folhas (atalho).
@@ -331,11 +341,13 @@ export function GroupMaterialSelect({
     [filtered],
   );
   const filteredEmpty = useMemo(() => {
-    const pool = browseFamilyId ? familyEmptyOptions : orphanEmpty;
+    // Com busca na raiz, também acha grupo-folha vazio que tem família (antes só
+    // os órfãos apareciam e "20mm" dava "Nenhum resultado").
+    const pool = browseFamilyId ? familyEmptyOptions : (search.trim() ? emptyGroups : orphanEmpty);
     return search.trim()
       ? pool.filter(({ group, pathLabel }) => searchMatchesAllTerms(search, pathLabel, group.description, browseFamily?.name))
       : pool;
-  }, [browseFamilyId, familyEmptyOptions, orphanEmpty, search, browseFamily]);
+  }, [browseFamilyId, familyEmptyOptions, orphanEmpty, emptyGroups, search, browseFamily]);
 
   const filteredFamilies = useMemo(() => {
     if (browseFamilyId || search.trim()) return [] as ProductGroup[];
@@ -534,7 +546,11 @@ export function GroupMaterialSelect({
                           ) : group.description ? (
                             <span className="block truncate text-xs text-muted-foreground">{group.description}</span>
                           ) : (
-                            <span className="block text-xs text-warning">Sem produtos ativos</span>
+                            <span className="block text-xs text-warning">
+                              {allowEmptyGroups
+                                ? 'Sem SKU ainda · o SKU é criado ao salvar o pedido'
+                                : 'Sem produtos ativos'}
+                            </span>
                           )}
                         </div>
                       </CommandItem>
@@ -590,7 +606,7 @@ export function GroupMaterialSelect({
           Escolha um grupo dentro da família {selectedGroup?.name}.
         </p>
       )}
-      {selectedGroup && !selectedIsContainer && !selectedHasActiveProduct && (
+      {selectedGroup && !selectedIsContainer && !selectedHasActiveProduct && !allowEmptyGroups && (
         <p className="mt-1 flex items-center gap-1 text-xs text-warning">
           <AlertTriangle className="h-3 w-3 shrink-0" weight="fill" />
           {selectedGroup.name} não possui item ativo. Cadastre ao menos um SKU/cor antes de usar este material.

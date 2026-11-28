@@ -4584,6 +4584,8 @@ function SheetDetail({ sheet, onSaveSuccess }: { sheet: any; onSaveSuccess: () =
                           value={strapStockGroupDisplayValue(strap)}
                           selectedGroupId={strapStockGroupSelectedId(strap)}
                           groupFilter={(group) => isStrapInventorySelectableGroup(group, new Set())}
+                          // Tira nova (ex.: 20 mm) ainda sem SKU: o PV cria o SKU ao salvar.
+                          allowEmptyGroups
                           triggerClassName={cn(
                             !hasTechnicalStrapLineIdentity(
                               strap,
