@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '../..');
 const PATCH = readFileSync(
-  resolve(ROOT, 'supabase/migrations/20270101067200_pg_safeupdate_delete_where_motor_e_resync.sql'),
+  resolve(ROOT, 'supabase/migrations/20270101067300_pg_safeupdate_delete_where_motor_e_resync.sql'),
   'utf8',
 );
 const MOTOR_AGENDA = readFileSync(
