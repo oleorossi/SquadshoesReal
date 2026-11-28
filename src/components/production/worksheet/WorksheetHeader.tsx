@@ -3,9 +3,9 @@ import { QrCode } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { cn } from '@/lib/utils';
 import { adaptiveFontSize } from '@/lib/adaptiveFontSize';
-import { SECTOR_FLOW } from '@/lib/sectors';
 import { SizeBandTags, type SizeBand } from './InfantilTag';
 import { showsFlowRail, showsQr, type FichaModel } from './fichaModel';
+import { FLOW_RAIL_STEPS, flowRailColor, flowRailStep } from './flowRail';
 
 interface Props {
   /** Nome do setor pra título principal. */
@@ -55,19 +55,8 @@ interface Props {
  *  Print-safe P&B: passos cumpridos = quadrado PREENCHIDO, atual = quadrado
  *  preenchido com nº (white-on-black) e contorno duplo, pendentes = contorno.
  *  (Sem cor — a fábrica imprime laser P&B; vermelho viraria cinza.) */
-const FLOW_RAIL_STEPS = ['C.PLM', 'C.FOR', 'CS.PLM', 'CS.CAB', 'AVIA', 'SILK', 'COLA', 'MONT', 'SOLA', 'ACAB', 'EXP'] as const;
-
-/** Cor-assinatura por setor (MESMA ordem do fluxo 1–10) — escolha do dono
- *  2026-06-30: cada setor tem uma cor pra reconhecer a ficha de longe e não
- *  confundir. Aplicada SÓ na faixa do topo + nome do setor (decisão "barata":
- *  se imprimir em P&B a faixa vira cinza e nada de conteúdo se perde). */
-const SECTOR_COLORS = [
-  '#2563eb', '#0d9488', '#4f46e5', '#7c3aed', '#d97706',
-  '#9333ea', '#0891b2', '#dc2626', '#16a34a', '#db2777', '#475569',
-] as const;
-
 const FlowRail = ({ current }: { current: number }) => (
-  <div className="flex items-stretch gap-[3px] mb-0.5" aria-label={`Setor ${current} de 11 no fluxo`}>
+  <div className="flex items-stretch gap-[3px] mb-0.5" aria-label={`Setor ${current} de ${FLOW_RAIL_STEPS.length} no fluxo`}>
     {FLOW_RAIL_STEPS.map((label, i) => {
       const step = i + 1;
       const done = step < current;
@@ -135,16 +124,17 @@ export const WorksheetHeader = ({
   // trilho C.PLM→EXP e a cor-assinatura (o nome do setor caía pra #000). O
   // default do componente ("01 / SILK") funcionaria, mas nenhum chamador usa.
   //
-  // Agora o passo vem do NOME do setor contra a ordem canônica (SECTOR_FLOW),
-  // que é a mesma dos FLOW_RAIL_STEPS. `flowSector` existe para as fichas cujo
-  // título não é o nome canônico (a Palmilha rotula "Corte de Placa de Fibra").
-  // O parseInt fica só como último fallback, pra não quebrar chamador legado.
+  // Passo vem do nome do setor (ou flowSector, quando o título não é a grafia
+  // canônica — a Palmilha rotula "Corte de Placa de Fibra") contra SECTOR_FLOW,
+  // com aliases (Corte Fibra, Mesa, Expedicao…). O parseInt do índice editorial
+  // fica só como último fallback, pra não quebrar chamador legado.
   const flowName = flowSector || sector;
-  const canonicalIdx = SECTOR_FLOW.indexOf(flowName);
-  const flowStep = canonicalIdx >= 0 ? canonicalIdx + 1 : parseInt(editorialIndex, 10);
-  const hasFlow = Number.isFinite(flowStep) && flowStep >= 1 && flowStep <= 11;
-  // Cor-assinatura do setor (faixa do topo + nome). Fora do fluxo 1–10 → preto.
-  const sectorColor = hasFlow ? SECTOR_COLORS[flowStep - 1] : '#000';
+  const fromFlow = flowRailStep(flowName);
+  const parsed = parseInt(editorialIndex, 10);
+  const flowStep = fromFlow ?? (Number.isFinite(parsed) ? parsed : NaN);
+  const hasFlow = Number.isFinite(flowStep) && flowStep >= 1 && flowStep <= FLOW_RAIL_STEPS.length;
+  // Cor-assinatura do setor (faixa do topo + nome). Fora do fluxo → preto.
+  const sectorColor = hasFlow ? flowRailColor(flowStep) : '#000';
   return (
     <div className="mb-1 text-black keep-together keep-with-next">
       {/* Faixa de cor do setor — reconhecimento à distância (escolha do dono
