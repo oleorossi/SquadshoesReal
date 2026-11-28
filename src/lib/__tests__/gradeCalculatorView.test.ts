@@ -5,7 +5,10 @@ import {
   buildGradeSummaryText,
   formatGradeQuantity,
   GRADE_PRINT_WINDOW_FEATURES,
+  gradePrintCoveredRows,
   gradePrintDeliveryOptions,
+  gradePrintVisibleRows,
+  isGradePrintPhoneLayout,
 } from '../gradeCalculatorView';
 
 const draft = {
@@ -50,8 +53,9 @@ describe('buildGradeSummaryText', () => {
   });
 });
 
-describe('buildGradePrintHtml', () => {
-  it('gera folha em paisagem com matriz horizontal e A produzir em destaque', () => {
+
+describe('buildGradePrintHtml — folha A4 (desktop)', () => {
+  it('gera folha em paisagem só com a linha A produzir e oculta o que já está coberto', () => {
     const html = buildGradePrintHtml(draft, calculation);
 
     expect(html).toContain('@page { size: landscape; margin: 10mm; }');
@@ -61,19 +65,22 @@ describe('buildGradePrintHtml', () => {
     expect(html).toContain('34–40');
     expect(html).toContain('Fichas');
     expect(html).toContain('>60<');
-    expect(html).toContain('Necessidade');
-    expect(html).toContain('Aproveitado');
-    expect(html).toContain('Sobra');
     expect(html).toContain('A produzir');
     expect(html).toContain('class="size">34<');
+    expect(html).toContain('class="size">36<');
     expect(html).toContain('class="size">40<');
     expect(html).toContain('class="total">Total<');
     expect(html).toContain('class="produce"');
     expect(html).toContain('710');
-    expect(html).toContain('Por ficha');
-    expect(html).toContain('Já pronta');
+    expect(html).toContain('110');
+    expect(html).not.toContain('Por ficha');
+    expect(html).not.toContain('Já pronta');
+    expect(html).not.toContain('Aproveitado');
+    expect(html).not.toContain('Sobra');
+    expect(html).not.toContain('Necessidade');
     expect(html).not.toContain('size: A4 portrait');
     expect(html).not.toContain('<th>Nº</th>');
+    expect(html).not.toContain('Numerações já cobertas');
   });
 
   it('escapa modelo e cor para não quebrar o HTML', () => {
@@ -95,7 +102,7 @@ describe('GRADE_PRINT_WINDOW_FEATURES', () => {
 });
 
 describe('gradePrintDeliveryOptions', () => {
-  it('entrega a impressão sempre em paisagem, com nome estável', () => {
+  it('entrega a folha do desktop em paisagem, com nome estável', () => {
     expect(gradePrintDeliveryOptions('ROSADO')).toEqual({
       filename: 'calculadora-grade-rosado',
       title: 'Calculadora Grade',
@@ -106,5 +113,139 @@ describe('gradePrintDeliveryOptions', () => {
       title: 'Calculadora Grade',
       landscape: true,
     });
+  });
+
+  it('entrega o arquivo do celular em retrato', () => {
+    expect(gradePrintDeliveryOptions('ROSADO', 'phone')).toEqual({
+      filename: 'calculadora-grade-rosado',
+      title: 'Calculadora Grade',
+      landscape: false,
+    });
+  });
+});
+
+describe('isGradePrintPhoneLayout', () => {
+  it('usa o recorte de 767px para escolher o arquivo de retrato', () => {
+    const original = globalThis.window;
+    // @ts-expect-error ambiente de teste
+    globalThis.window = {
+      matchMedia: (query: string) => ({ matches: query.includes('767px') }),
+    };
+    expect(isGradePrintPhoneLayout()).toBe(true);
+    // @ts-expect-error ambiente de teste
+    globalThis.window = {
+      matchMedia: () => ({ matches: false }),
+    };
+    expect(isGradePrintPhoneLayout()).toBe(false);
+    if (original) globalThis.window = original;
+    else delete (globalThis as { window?: unknown }).window;
+  });
+});
+
+describe('gradePrintVisibleRows', () => {
+  it('mantém numeração parcial e oculta a que já está toda coberta', () => {
+    const mixed = calculateGrade(
+      [33, 34, 35, 36, 37, 38, 39, 40],
+      20,
+      { '33': 1, '34': 2, '35': 3, '36': 4, '37': 4, '38': 3, '39': 2, '40': 1 },
+      { '33': 20, '34': 10, '36': 80, '37': 20, '39': 40, '40': 5 },
+    );
+    expect(gradePrintCoveredRows(mixed).map((row) => row.size)).toEqual([33, 36, 39]);
+    expect(gradePrintVisibleRows(mixed).map((row) => row.size)).toEqual([34, 35, 37, 38, 40]);
+    expect(gradePrintVisibleRows(mixed).find((row) => row.size === 34)?.final).toBe(30);
+    expect(gradePrintVisibleRows(mixed).find((row) => row.size === 40)?.final).toBe(15);
+  });
+});
+
+const mixedDraft = {
+  model: 'I90',
+  color: 'PRETO',
+  from: 33,
+  to: 40,
+  sheetCount: 20,
+};
+const mixedNeed = { '33': 1, '34': 2, '35': 3, '36': 4, '37': 4, '38': 3, '39': 2, '40': 1 };
+const mixedReady = { '33': 20, '34': 10, '36': 80, '37': 20, '39': 40, '40': 5 };
+const mixed = calculateGrade([33, 34, 35, 36, 37, 38, 39, 40], 20, mixedNeed, mixedReady);
+const fullGrade = calculateGrade([33, 34, 35, 36, 37, 38, 39, 40], 20, mixedNeed, {});
+
+describe('buildGradePrintHtml — só a quantidade a produzir', () => {
+  it('sem palmilha pronta, mostra a grade multiplicada nas 8 numerações', () => {
+    const html = buildGradePrintHtml(mixedDraft, fullGrade);
+    expect(html).toContain('class="size">33<');
+    expect(html).toContain('class="size">40<');
+    expect(html).toContain('>20<');
+    expect(html).toContain('>40<');
+    expect(html).toContain('>60<');
+    expect(html).toContain('>80<');
+    expect(html).toContain('produce-banner');
+    expect(html).toContain('400');
+    expect(html).not.toContain('Por ficha');
+    expect(html).not.toContain('Já pronta');
+    expect(html).not.toContain('Necessidade');
+    expect(html).not.toContain('Sobra');
+  });
+
+  it('com palmilha pronta, omite colunas zeradas e mostra só o que falta', () => {
+    const html = buildGradePrintHtml(mixedDraft, mixed);
+    expect(html).not.toContain('class="size">33<');
+    expect(html).not.toContain('class="size">36<');
+    expect(html).not.toContain('class="size">39<');
+    expect(html).toContain('class="size">34<');
+    expect(html).toContain('class="size">35<');
+    expect(html).toContain('class="size">37<');
+    expect(html).toContain('class="size">38<');
+    expect(html).toContain('class="size">40<');
+    expect(html).toContain('33–40');
+    expect(html).toContain('>30<');
+    expect(html).toContain('>15<');
+    expect(html).toContain('225');
+    expect(html).not.toContain('Numerações já cobertas');
+    expect(html).not.toContain('Por ficha');
+    expect(html).not.toContain('Já pronta');
+  });
+
+  it('avisa quando toda a grade já está coberta', () => {
+    const covered = calculateGrade(
+      [33, 34],
+      1,
+      { '33': 2, '34': 2 },
+      { '33': 2, '34': 5 },
+    );
+    const html = buildGradePrintHtml({ ...mixedDraft, to: 34, sheetCount: 1 }, covered);
+    expect(html).toContain('A palmilha já pronta cobre todas as numerações. Nada a produzir.');
+    expect(html).not.toContain('class="size">33<');
+    expect(html).not.toContain('class="size">34<');
+  });
+});
+
+describe('buildGradePrintHtml — arquivo do celular em retrato', () => {
+  it('lista na vertical só o que falta cortar, em retrato', () => {
+    const html = buildGradePrintHtml(mixedDraft, mixed, 'phone');
+    expect(html).toContain('@page { size: A4 portrait; margin: 12mm 10mm; }');
+    expect(html).toContain('A cortar');
+    expect(html).toContain('class="size">34<');
+    expect(html).toContain('class="size">40<');
+    expect(html).not.toContain('class="size">33<');
+    expect(html).not.toContain('class="size">36<');
+    expect(html).not.toContain('class="size">39<');
+    expect(html).toContain('>30<');
+    expect(html).toContain('>15<');
+    expect(html).toContain('225');
+    expect(html).toContain('I90');
+    expect(html).toContain('PRETO');
+    expect(html).not.toContain('size: landscape');
+    expect(html).not.toContain('Por ficha');
+    expect(html).not.toContain('Já pronta');
+    expect(html).not.toContain('Necessidade');
+    expect(html).not.toContain('Sobra');
+  });
+
+  it('sem palmilha pronta, lista a grade multiplicada em retrato', () => {
+    const html = buildGradePrintHtml(mixedDraft, fullGrade, 'phone');
+    expect(html).toContain('@page { size: A4 portrait');
+    expect(html).toContain('class="size">33<');
+    expect(html).toContain('class="size">40<');
+    expect(html).toContain('400');
   });
 });

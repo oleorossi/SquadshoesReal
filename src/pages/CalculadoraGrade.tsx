@@ -51,6 +51,7 @@ import {
   buildGradeSummaryText,
   formatGradeQuantity,
   gradePrintDeliveryOptions,
+  isGradePrintPhoneLayout,
 } from '@/lib/gradeCalculatorView';
 
 interface CalculatorDraft {
@@ -158,8 +159,9 @@ export default function CalculadoraGrade() {
   };
 
   const printSummary = async () => {
-    const html = buildGradePrintHtml(draft, calculation);
-    const ok = await deliverHtmlDocument(html, gradePrintDeliveryOptions(draft.model));
+    const layout = isGradePrintPhoneLayout() ? 'phone' : 'sheet';
+    const html = buildGradePrintHtml(draft, calculation, layout);
+    const ok = await deliverHtmlDocument(html, gradePrintDeliveryOptions(draft.model, layout));
     // No iOS o printHtmlAsPdf já avisa o erro. No restante, a aba pode ter sido bloqueada.
     if (!ok && !isIosBrowser()) {
       toast.error('Libere as janelas deste site para imprimir.');
@@ -180,7 +182,7 @@ export default function CalculadoraGrade() {
 
   const actionButtons = (
     <>
-      <div className="hidden sm:flex items-center gap-2">
+      <div className="hidden md:flex items-center gap-2">
         <Button variant="editorial-outline" onClick={copySummary}>
           <Copy aria-hidden="true" />
           Copiar
@@ -194,10 +196,18 @@ export default function CalculadoraGrade() {
           Limpar
         </Button>
       </div>
-      <div className="sm:hidden">
+      <div className="flex w-full min-w-0 items-center gap-2 md:hidden">
+        <Button
+          type="button"
+          className="h-11 min-h-11 flex-1"
+          onClick={printSummary}
+        >
+          <Printer aria-hidden="true" />
+          Imprimir
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" aria-label="Abrir ações da calculadora">
+            <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" aria-label="Abrir outras ações da calculadora">
               <DotsThreeVertical aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
@@ -219,11 +229,11 @@ export default function CalculadoraGrade() {
   );
 
   return (
-    <div className="space-y-4 page-enter">
+    <div className="space-y-4 page-enter overflow-x-hidden">
       <EditorialPageHeader
         sectionLabel="PRODUÇÃO · SOLADOS"
         title="Calculadora Grade"
-        description="Monte a grade na horizontal, por numeração, e leia com clareza o que falta produzir."
+        description="Monte a grade por numeração e leia com clareza o que falta produzir."
         actions={actionButtons}
       />
 
@@ -284,6 +294,7 @@ export default function CalculadoraGrade() {
                   type="button"
                   size="sm"
                   variant={activePreset === key ? 'default' : 'outline'}
+                  className="h-11 px-3 md:h-8"
                   onClick={() => setPreset(key)}
                   aria-pressed={activePreset === key}
                 >
@@ -305,7 +316,7 @@ export default function CalculadoraGrade() {
                     ...current,
                     from: nonNegativeInteger(event.target.value),
                   }))}
-                  className="h-9 w-20 text-center"
+                  className="h-11 w-20 text-center text-base"
                   aria-invalid={Boolean(rangeError)}
                 />
                 <span className="text-muted-foreground" aria-hidden="true">até</span>
@@ -322,7 +333,7 @@ export default function CalculadoraGrade() {
                     ...current,
                     to: nonNegativeInteger(event.target.value),
                   }))}
-                  className="h-9 w-20 text-center"
+                  className="h-11 w-20 text-center text-base"
                   aria-invalid={Boolean(rangeError)}
                   aria-describedby={rangeError ? 'grade-range-error' : undefined}
                 />
@@ -385,6 +396,15 @@ export default function CalculadoraGrade() {
           {resultMessage}
         </div>
       </section>
+
+      <Button
+        type="button"
+        className="h-12 w-full min-h-12 text-base md:hidden"
+        onClick={printSummary}
+      >
+        <Printer aria-hidden="true" />
+        Imprimir quantidade a cortar
+      </Button>
 
       <p className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
         <span className="h-2 w-2 rounded-full bg-foreground" aria-hidden="true" />
