@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Barcode, Camera, Keyboard, MagnifyingGlass, Warning, CircleNotch as Loader2, User, X } from '@phosphor-icons/react';
+import { Barcode, Camera, Keyboard, Warning, CircleNotch as Loader2, User, X } from '@phosphor-icons/react';
+import { SearchInput } from '@/components/ui/search-input';
+import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { formatFardoCounter, normalizeFichaCartaoCodigo } from '@/lib/etiquetaFardoElgin';
@@ -71,13 +73,11 @@ export function BiparFardoView({
   }, [scanning, picking, result]);
 
   const filtered = useMemo(() => {
-    const q = montadorQuery.trim().toLowerCase();
     const list = [...montadores].sort((a, b) => {
       if (Boolean(a.preferred) !== Boolean(b.preferred)) return a.preferred ? -1 : 1;
       return a.name.localeCompare(b.name, 'pt-BR');
     });
-    if (!q) return list;
-    return list.filter((m) => [m.name, m.role, m.department].some((v) => String(v || '').toLowerCase().includes(q)));
+    return list.filter((m) => searchMatchesAllTerms(montadorQuery, m.name, m.role, m.department));
   }, [montadores, montadorQuery]);
 
   return (
@@ -240,18 +240,16 @@ export function BiparFardoView({
             <h2 className="text-lg font-bold">Escolher montador</h2>
           </div>
           <div className="px-4 pt-3">
-            <label className="sr-only" htmlFor="busca-montador">Buscar montador</label>
-            <div className="relative">
-              <MagnifyingGlass className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-              <input
-                id="busca-montador"
-                value={montadorQuery}
-                onChange={(e) => onMontadorQuery(e.target.value)}
-                placeholder="Buscar pelo nome"
-                className="h-14 w-full rounded-xl border-2 border-border bg-background pl-11 pr-3 text-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                autoFocus
-              />
-            </div>
+            <SearchInput
+              id="busca-montador"
+              value={montadorQuery}
+              onChange={onMontadorQuery}
+              placeholder="Buscar por nome, função ou setor"
+              resultCount={filtered.length}
+              totalCount={montadores.length}
+              autoFocus
+              inputClassName="h-14 text-lg"
+            />
           </div>
           <ul className="flex-1 overflow-y-auto px-4 py-3">
             <li>
