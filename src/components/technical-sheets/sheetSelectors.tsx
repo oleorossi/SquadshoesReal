@@ -193,11 +193,10 @@ export function GroupMaterialSelect({
     (!sector || sectorOfGroup(group) === sector)
     && (!groupFilter || groupFilter(group))
   );
-  const selectableGroups = useMemo<GroupSelectOption[]>(() => groups
+  const itemSelectableGroups = useMemo<GroupSelectOption[]>(() => groups
     .filter(group => !parentIds.has(group.id))
-    .filter(group => !allowEmptyGroups || group.is_family !== true)
     .filter(passesFilters)
-    .filter(group => allowEmptyGroups || (groupIndex[group.id]?.count || 0) > 0)
+    .filter(group => (groupIndex[group.id]?.count || 0) > 0)
     .map(group => {
       const path = getGroupPath(groups, group.id);
       const familyPath = path.slice(0, -1).map(node => node.name).join(' › ');
@@ -207,16 +206,16 @@ export function GroupMaterialSelect({
         familyLabel: familyPath || null,
       };
     })
-    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex, allowEmptyGroups]);
+    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex]);
 
   // Grupo-folha SEM item ativo continua fora da seleção (sem SKU o PV não tem o
   // que debitar e o custo/par sai R$ 0), mas aparece com atalho para cadastrar.
   // Antes ficava invisível e o usuário concluía que o grupo não tinha sido
   // salvo (NAPA ROOTS, 11/10/2026 — spec grupo-cor-obrigatoria.md, D7).
-  const emptyGroups = useMemo<GroupSelectOption[]>(() => groups
+  const itemEmptyGroups = useMemo<GroupSelectOption[]>(() => groups
     .filter(group => !parentIds.has(group.id) && group.is_family !== true)
     .filter(passesFilters)
-    .filter(group => !allowEmptyGroups && (groupIndex[group.id]?.count || 0) === 0)
+    .filter(group => (groupIndex[group.id]?.count || 0) === 0)
     .map(group => {
       const path = getGroupPath(groups, group.id);
       return {
@@ -225,7 +224,21 @@ export function GroupMaterialSelect({
         familyLabel: null,
       };
     })
-    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex, allowEmptyGroups]);
+    .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR')), [groups, parentIds, sector, groupFilter, groupIndex]);
+  // Tira: grupo-folha sem SKU vira opção selecionável (o PV cria o SKU ao salvar).
+  const selectableGroups = useMemo<GroupSelectOption[]>(() => {
+    if (!allowEmptyGroups) return itemSelectableGroups;
+    const promoted = itemEmptyGroups.map(option => {
+      const familyPath = getGroupPath(groups, option.group.id).slice(0, -1).map(node => node.name).join(' › ');
+      return { ...option, familyLabel: familyPath || null };
+    });
+    return [...itemSelectableGroups, ...promoted]
+      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'pt-BR'));
+  }, [allowEmptyGroups, itemSelectableGroups, itemEmptyGroups, groups]);
+  const emptyGroups = useMemo<GroupSelectOption[]>(
+    () => (allowEmptyGroups ? [] : itemEmptyGroups),
+    [allowEmptyGroups, itemEmptyGroups],
+  );
   const [groupToFill, setGroupToFill] = useState<ProductGroup | null>(null);
 
   const [open, setOpen] = useState(false);
