@@ -1,7 +1,12 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { CabedalPartBadge } from './CabedalPartBadge';
 import { TallyBox } from './TallyBox';
-import { CABEDAL_TALLY_INSET_PX, tallyAvailableWidthPx } from './tallyLayout';
+import {
+  CABEDAL_TALLY_INSET_PX,
+  CABEDAL_TALLY_SIDE_GAP_PX,
+  fitCabedalTalliesSideBySide,
+  tallyAvailableWidthPx,
+} from './tallyLayout';
 import type { CabedalPart } from '@/lib/cabedalFrenteTraseiro';
 import { cabedalPartLabel } from '@/lib/cabedalFrenteTraseiro';
 
@@ -18,6 +23,8 @@ interface Props {
 interface BandProps {
   part: CabedalPart;
   children: ReactNode;
+  /** Sem margem superior — as duas faixas já se separam pelo gap do flex. */
+  flushTop?: boolean;
 }
 
 /**
@@ -25,14 +32,16 @@ interface BandProps {
  * da Palmilha). Traseiro: fundo claro + borda tracejada, no espírito da
  * faixa "Forração". Os dois contrastam em P&B sem depender de cor.
  */
-function PartBand({ part, children }: BandProps) {
+function PartBand({ part, children, flushTop }: BandProps) {
   const isFrente = part === 'frente';
   const wrap: CSSProperties = isFrente
-    ? { border: '1.5px solid #000', marginTop: 4 }
+    ? { border: '1.5px solid #000', marginTop: flushTop ? 0 : 4, flex: flushTop ? 1 : undefined, minWidth: 0 }
     : {
         border: '2px dashed #000',
-        marginTop: 6,
+        marginTop: flushTop ? 0 : 6,
         background: '#fff',
+        flex: flushTop ? 1 : undefined,
+        minWidth: 0,
       };
   const header: CSSProperties = isFrente
     ? {
@@ -102,18 +111,14 @@ export function CabedalFrenteTraseiroTally({
   titleSuffix,
 }: Props) {
   if (count <= 0) return null;
-  const tallyWidthPx = tallyAvailableWidthPx(CABEDAL_TALLY_INSET_PX);
+  const pair = fitCabedalTalliesSideBySide({ count, size, lastNumber: count });
+  const tallyWidthPx = pair.availableWidthPx;
+  const sideBySide = pair.sideBySide;
   const suffix = titleSuffix ? ` · ${titleSuffix}` : '';
   const hint = 'Marque cada parte à parte — o traseiro pode ficar pronto com a frente pendente.';
-  return (
-    <div data-cabedal-frente-traseiro-tally="">
-      <p
-        className="keep-with-next font-mono uppercase leading-tight"
-        style={{ fontSize: '8px', letterSpacing: '0.06em', fontWeight: 700, margin: '4px 0 0', color: '#000' }}
-      >
-        {hint}
-      </p>
-      <PartBand part="frente">
+  const bands = (
+    <>
+      <PartBand part="frente" flushTop={sideBySide}>
         <TallyBox
           count={count}
           pairsPerCard={pairsPerCard}
@@ -123,7 +128,7 @@ export function CabedalFrenteTraseiroTally({
           title={`Controle de Fichas · Frente${suffix}`}
         />
       </PartBand>
-      <PartBand part="traseiro">
+      <PartBand part="traseiro" flushTop={sideBySide}>
         <TallyBox
           count={count}
           pairsPerCard={pairsPerCard}
@@ -133,6 +138,30 @@ export function CabedalFrenteTraseiroTally({
           title={`Controle de Fichas · Traseiro${suffix}`}
         />
       </PartBand>
+    </>
+  );
+  return (
+    <div
+      data-cabedal-frente-traseiro-tally=""
+      data-cabedal-tally-layout={sideBySide ? 'side-by-side' : 'stack'}
+    >
+      <p
+        className="keep-with-next font-mono uppercase leading-tight"
+        style={{ fontSize: '8px', letterSpacing: '0.06em', fontWeight: 700, margin: '4px 0 0', color: '#000' }}
+      >
+        {hint}
+      </p>
+      {sideBySide ? (
+        <div
+          className="keep-together flex items-stretch"
+          style={{ gap: CABEDAL_TALLY_SIDE_GAP_PX, marginTop: 4 }}
+          data-rigid-width={tallyWidthPx * 2 + CABEDAL_TALLY_SIDE_GAP_PX}
+        >
+          {bands}
+        </div>
+      ) : (
+        bands
+      )}
     </div>
   );
 }

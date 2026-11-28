@@ -73,8 +73,17 @@ export const HEADER_THUMB_PX = 46;
 
 /** Foto grande opcional do Aviamento A4 (toggle por referência na barra de
  *  Imprimir Fichas). Mesmo tamanho default histórico do ProductImageBlock —
- *  bloco próprio sob o subtítulo da referência, sem legenda. */
+ *  bloco próprio sob o subtítulo da referência, sem legenda — só entra
+ *  empilhado quando a foto NÃO coube ao lado da grade. */
 export const AVIAMENTO_HERO_PHOTO_PX = 140;
+
+/**
+ * Foto do modelo AO LADO da grade (Corte/Costura Cabedal e Aviamento).
+ * Mesmo 140px do hero, mas não abre faixa própria de largura inteira —
+ * a altura é absorvida pela grade (e pelo quadro de tiras). Era a faixa
+ * de 140px que a Opção A tirou; lado a lado ela deixa de custar papel.
+ */
+export const CABEDAL_BESIDE_PHOTO_PX = AVIAMENTO_HERO_PHOTO_PX;
 
 /** Lado do checkbox por numeração (linhas Frente/Traseira do Aviamento).
  *  20 → 16 → 14px (A.2): ainda marcável à caneta; devolve ~4px por linha

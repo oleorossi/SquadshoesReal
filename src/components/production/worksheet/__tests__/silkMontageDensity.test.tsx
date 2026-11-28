@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { render } from '@testing-library/react';
 import { SilkMontageWorkSheet, type SoleSilkGroup } from '../../SilkMontageWorkSheet';
-import { HEADER_THUMB_PX, STEP_CHECKBOX_PX, STRAP_ROW_PAD_Y, STEP_ROW_PAD_Y } from '../density';
+import { HEADER_THUMB_PX, CABEDAL_BESIDE_PHOTO_PX, STEP_CHECKBOX_PX, STRAP_ROW_PAD_Y, STEP_ROW_PAD_Y } from '../density';
 import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
 
 /**
@@ -98,24 +98,27 @@ describe('Aviamento — densidade da Opção A', () => {
     expect(container.textContent).toContain('288');
   });
 
-  it('a foto do produto é a MINIATURA do cabeçalho — nenhuma faixa de 140px', () => {
+  it('a foto do produto senta AO LADO da grade — não numa faixa própria de 140px', () => {
     const { container } = renderAviamento();
     const imgs = productImages(container);
     expect(imgs).toHaveLength(1);
-    expect(imgs[0].getAttribute('width')).toBe(String(HEADER_THUMB_PX));
-    expect(imgs[0].getAttribute('height')).toBe(String(HEADER_THUMB_PX));
+    expect(imgs[0].getAttribute('width')).toBe(String(CABEDAL_BESIDE_PHOTO_PX));
+    expect(imgs[0].getAttribute('height')).toBe(String(CABEDAL_BESIDE_PHOTO_PX));
+    const row = container.querySelector('[data-cabedal-photo-beside]');
+    expect(row).not.toBeNull();
+    // A grade (Nº / Por Ficha) mora na MESMA linha que a foto, não abaixo
+    // de uma faixa de largura inteira.
+    expect(row!.textContent).toContain('Nº');
+    expect(row!.textContent).toContain('Por Ficha');
+    expect(row!.textContent).toContain('OFF WHITE');
   });
 
-  it('a miniatura vive DENTRO do cabeçalho da cor, não num bloco separado', () => {
+  it('o cabeçalho da cor fica na coluna da grade, sem miniatura 46px', () => {
     const { container } = renderAviamento();
-    const img = productImages(container)[0];
-    // Sobe até o cabeçalho da cor (o bloco que traz o rótulo "Cor" + o nome).
-    const header = img.closest('.keep-with-next');
-    expect(header).not.toBeNull();
-    expect(header!.textContent).toContain('Cor');
-    expect(header!.textContent).toContain('OFF WHITE');
-    // …e o mesmo bloco traz os números do card — prova que é o cabeçalho.
-    expect(header!.textContent).toContain('Pares');
+    const thumbs46 = productImages(container).filter((img) => img.getAttribute('width') === String(HEADER_THUMB_PX));
+    expect(thumbs46).toHaveLength(0);
+    expect(container.textContent).toContain('Cor');
+    expect(container.textContent).toContain('Pares');
   });
 
   it('o rótulo redundante "Grade · Pares por Numeração" saiu do papel', () => {
@@ -230,10 +233,11 @@ describe('outros setores do mesmo card', () => {
     expect(txt).toContain('Peças a Costurar');
     expect(txt).toContain('576');                 // 288 pares × 2 peças (default)
     expect(txt).toContain('2 peças/par');
-    // A foto desceu pra miniatura do cabeçalho aqui também (era 48px ao lado).
+    // A foto senta ao lado da grade (140px), não mais a miniatura 46px do header.
     const imgs = productImages(container);
     expect(imgs).toHaveLength(1);
-    expect(imgs[0].getAttribute('width')).toBe(String(HEADER_THUMB_PX));
+    expect(imgs[0].getAttribute('width')).toBe(String(CABEDAL_BESIDE_PHOTO_PX));
+    expect(container.querySelector('[data-cabedal-photo-beside]')).not.toBeNull();
   });
 
   it('Costura Cabedal: honra piecesPerPair cadastrado na ficha (ex. 4)', () => {

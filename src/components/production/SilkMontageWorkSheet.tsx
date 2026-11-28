@@ -16,6 +16,7 @@ import {
   TALLY_SIZE,
   HEADER_THUMB_PX,
   AVIAMENTO_HERO_PHOTO_PX,
+  CABEDAL_BESIDE_PHOTO_PX,
   STEP_CHECKBOX_PX,
   STRAP_ROW_PAD_Y,
   STRAP_LABEL_PAD,
@@ -487,6 +488,28 @@ export function thumbsFitBesideGrade(
     asideWidthPx: thumbRowWidthPx(thumbCount, thumbPx),
     sizeKeys, font, maxCellDigits, availableWidthPx,
   }).fits;
+}
+
+/**
+ * A foto 140px do modelo cabe AO LADO da grade (e do quadro de tiras),
+ * sem espremer a tabela abaixo do mínimo — inclusive a 1ª coluna larga
+ * do Aviamento com o rótulo compacto da tira.
+ */
+export function cabedalPhotoFitsBesideGrade(
+  sizeKeys: ReadonlyArray<string>,
+  font: AdaptiveTableFont,
+  maxCellDigits: number,
+  opts?: { strapLabelColPx?: number; availableWidthPx?: number; photoPx?: number },
+): { fits: boolean; rigidWidthPx: number } {
+  const photoPx = opts?.photoPx ?? CABEDAL_BESIDE_PHOTO_PX;
+  const availableWidthPx = opts?.availableWidthPx ?? A4_CONTENT_WIDTH_PX - 16;
+  const labelExtra = Math.max(0, (opts?.strapLabelColPx ?? 0) - 96);
+  const gradeMin = gradeMinWidthPx(sizeKeys, font, maxCellDigits) + labelExtra;
+  const needed = photoPx + SIDE_BY_SIDE_GAP_PX + gradeMin;
+  return {
+    fits: sizeKeys.length > 0 && needed <= availableWidthPx,
+    rigidWidthPx: needed,
+  };
 }
 
 export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges, heroPhotoGroupKeys }: Props) => {
@@ -1322,14 +1345,46 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       />
     );
 
-    // Foto grande opcional (Aviamento A4): bloco sob o subtítulo da ref;
-    // quando ligado (e há imagem), some a thumb de 46px dos cards desta ref.
+    // Foto 140px AO LADO da grade quando cabe (Corte/Costura Cabedal e
+    // Aviamento). A faixa própria de 140px da Opção A saiu porque gastava
+    // altura; lado a lado a altura é da grade, e a foto deixa de ser a
+    // miniatura 46px. Miniaturas multi-ref ao lado da grade continuam
+    // tendo prioridade. O hero empilhado do Aviamento só entra se a foto
+    // NÃO coube ao lado (toggle ligado).
+    const colorGetsPhotoBeside = (cg: (typeof group.colorGroups)[number]): { fits: boolean; rigidWidthPx: number } => {
+      if (!theme.showProductImage) return { fits: false, rigidWidthPx: 0 };
+      const resolved = resolveImage(cg.variantImageUrl, cg.alternateVariants, cg.technicalSheetImageUrl);
+      if (!resolved.url || resolved.url === '/placeholder.svg') return { fits: false, rigidWidthPx: 0 };
+      const sizes = gradeSizesOf(cg, sector);
+      const grid = gradeSourceGrid(cg, sector);
+      const digits = sizes.reduce((m, sz) => Math.max(m, String(grid[sz] ?? 0).length), 1);
+      const font = gradeTableFont(sizes, false);
+      const multiThumbs = (sector === 'Corte Cabedal' && theme.showCompactImages)
+        ? collectCompactThumbs(cg)
+        : [];
+      if (multiThumbs.length > 1 && thumbsFitBesideGrade(
+        multiThumbs.length,
+        compactThumbPx(multiThumbs.length),
+        sizes, font, digits, A4_CONTENT_WIDTH_PX - 16,
+      )) {
+        return { fits: false, rigidWidthPx: 0 };
+      }
+      const hasStraps = sector === 'Aviamento' && (cg.components || []).some(c =>
+        Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || ''));
+      return cabedalPhotoFitsBesideGrade(sizes, font, digits, {
+        strapLabelColPx: hasStraps ? AVIAMENTO_STRAP_LABEL_COL_PX : undefined,
+      });
+    };
+    const photoBesideByColor = group.colorGroups.map((cg) => colorGetsPhotoBeside(cg));
+    const groupHasPhotoBeside = photoBesideByColor.some((pl) => pl.fits);
+    const firstPhotoBesideIdx = photoBesideByColor.findIndex((pl) => pl.fits);
+
     const heroSources = (sector === 'Aviamento'
       && !!heroPhotoGroupKeys?.has(aviamentoGroupKey(group)))
       ? pickAviamentoHeroPhotoSources(group)
       : null;
     const showHeroPhoto = heroSources != null;
-    const heroPhotoBlock = heroSources ? (
+    const heroPhotoBlock = heroSources && !groupHasPhotoBeside ? (
       <div
         className="keep-together keep-with-next mb-1.5 flex items-center justify-start"
         data-aviamento-hero-photo={aviamentoGroupKey(group)}
@@ -1778,10 +1833,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
             </div>
           ) : null;
 
+          const photoBesidePlan = photoBesideByColor[idx] ?? { fits: false, rigidWidthPx: 0 };
+          const photoBesideGrade = photoBesidePlan.fits && !cabedalBesideGrade;
+          const markHeroOnBeside = showHeroPhoto && photoBesideGrade && idx === firstPhotoBesideIdx;
+
           const colorHeader = (
               <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
                 <div className="flex items-center gap-2 min-w-0">
-                  {theme.showProductImage && !showHeroPhoto && !cabedalBesideGrade && (
+                  {theme.showProductImage && !showHeroPhoto && !cabedalBesideGrade && !photoBesideGrade && (
                     cabedalThumbStrip || (
                       <ProductImageBlock
                         variantImageUrl={cg.variantImageUrl}
@@ -1942,10 +2001,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   );
           })() : null;
 
-          const trabalhoNode = (
-            <div key={`t-${idx}`} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
-              {colorHeader}
-              <div className="p-1 bg-white">
+          const gradeAndMeta = (
+              <>
                 {theme.showPiecesToSew && (() => {
                   const piecesPerPair = Math.max(1, Math.round(Number(cg.piecesPerPair) || 2));
                   const totalPieces = cg.totalPairs * piecesPerPair;
@@ -1991,7 +2048,48 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     {renderGradeTable(cg)}
                   </div>
                 )}
-              </div>
+              </>
+          );
+
+          const trabalhoNode = (
+            <div key={`t-${idx}`} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
+              {photoBesideGrade ? (
+                <div
+                  className="p-1 bg-white keep-together flex items-start"
+                  style={{ gap: SIDE_BY_SIDE_GAP_PX }}
+                  data-cabedal-photo-beside=""
+                  data-rigid-width={photoBesidePlan.rigidWidthPx}
+                >
+                  <div
+                    className="shrink-0"
+                    data-cabedal-beside-photo=""
+                    {...(markHeroOnBeside ? { 'data-aviamento-hero-photo': aviamentoGroupKey(group) } : {})}
+                    style={{
+                      WebkitPrintColorAdjust: 'exact',
+                      printColorAdjust: 'exact',
+                    } as React.CSSProperties}
+                  >
+                    <ProductImageBlock
+                      variantImageUrl={cg.variantImageUrl}
+                      alternateVariants={cg.alternateVariants}
+                      technicalSheetImageUrl={cg.technicalSheetImageUrl}
+                      orderColor={cg.color}
+                      size={CABEDAL_BESIDE_PHOTO_PX}
+                      showRefBadge={false}
+                      alt={`${group.soleName} ${cg.color}`}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {colorHeader}
+                    {gradeAndMeta}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {colorHeader}
+                  <div className="p-1 bg-white">{gradeAndMeta}</div>
+                </>
+              )}
             </div>
           );
 

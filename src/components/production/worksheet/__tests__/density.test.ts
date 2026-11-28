@@ -173,14 +173,18 @@ describe('guard — toda ficha de operador segue a densidade', () => {
     for (const { name, src } of worksheetFiles()) {
       for (const size of productImageSizes(src)) {
         // Tamanhos legítimos:
-        // - HEADER_THUMB_PX: miniatura do cabeçalho da cor
+        // - HEADER_THUMB_PX: miniatura do cabeçalho da cor (quando a foto
+        //   não coube ao lado da grade)
         // - IMG: miniatura por referência do Corte Forração (92px — AUMENTADA
         //   a pedido do dono em 2026-07-22, não reduzir)
         // - AVIAMENTO_HERO_PHOTO_PX: bloco grande opcional do Aviamento A4
-        //   (toggle por referência na barra de Imprimir Fichas; 140px)
+        //   (toggle por referência; 140px; só empilhado se não couber ao lado)
+        // - CABEDAL_BESIDE_PHOTO_PX: foto 140px AO LADO da grade (não é faixa
+        //   própria de largura inteira)
         const ok = size === 'HEADER_THUMB_PX'
           || size === 'IMG'
-          || size === 'AVIAMENTO_HERO_PHOTO_PX';
+          || size === 'AVIAMENTO_HERO_PHOTO_PX'
+          || size === 'CABEDAL_BESIDE_PHOTO_PX';
         if (!ok) offenders.push(`${name}: size={${size}}`);
       }
     }

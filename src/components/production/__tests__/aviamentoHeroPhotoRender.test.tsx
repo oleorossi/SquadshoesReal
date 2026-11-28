@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { SilkMontageWorkSheet, type SoleSilkGroup } from '../SilkMontageWorkSheet';
-import { AVIAMENTO_HERO_PHOTO_PX, HEADER_THUMB_PX } from '../worksheet/density';
+import { AVIAMENTO_HERO_PHOTO_PX, CABEDAL_BESIDE_PHOTO_PX, HEADER_THUMB_PX } from '../worksheet/density';
 import { aviamentoGroupKey } from '../worksheet/aviamentoHeroPhoto';
 
 beforeAll(() => {
@@ -38,7 +38,7 @@ const aviamentoGroup: SoleSilkGroup = {
 };
 
 describe('SilkMontageWorkSheet · Aviamento · foto grande por referência', () => {
-  it('sem key no Set: thumb 46px no header da cor, sem bloco hero', () => {
+  it('sem key no Set: foto 140px ao lado da grade, sem bloco hero empilhado', () => {
     const { container } = render(
       <SilkMontageWorkSheet
         sector="Aviamento"
@@ -46,15 +46,21 @@ describe('SilkMontageWorkSheet · Aviamento · foto grande por referência', () 
       />,
     );
     expect(container.querySelector('[data-aviamento-hero-photo]')).toBeNull();
+    expect(container.querySelector('[data-cabedal-photo-beside]')).toBeTruthy();
     const imgs = container.querySelectorAll('img');
-    const thumb = Array.from(imgs).find((img) => {
+    const beside = Array.from(imgs).find((img) => {
       const box = img.closest('div');
-      return box && box.getAttribute('style')?.includes(`width: ${HEADER_THUMB_PX}px`);
+      return box && box.getAttribute('style')?.includes(`width: ${CABEDAL_BESIDE_PHOTO_PX}px`);
     });
-    expect(thumb).toBeTruthy();
+    expect(beside).toBeTruthy();
+    const thumbs46 = Array.from(container.querySelectorAll('div')).filter((el) =>
+      (el.getAttribute('style') || '').includes(`width: ${HEADER_THUMB_PX}px`)
+      && (el.getAttribute('style') || '').includes(`height: ${HEADER_THUMB_PX}px`),
+    );
+    expect(thumbs46.length).toBe(0);
   });
 
-  it('com key no Set: bloco hero 140px e sem thumb 46px no header', () => {
+  it('com key no Set: foto 140px ao lado da grade marcada como hero, sem thumb 46px', () => {
     const key = aviamentoGroupKey(aviamentoGroup);
     const { container } = render(
       <SilkMontageWorkSheet

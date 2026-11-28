@@ -81,4 +81,25 @@ describe('CabedalFrenteTraseiroTally', () => {
       expect(boxes[29].style.width).toBe(`${px}px`);
     }
   });
+
+  it('com 12 fichas coloca Frente e Traseiro lado a lado', () => {
+    const { container } = render(
+      <CabedalFrenteTraseiroTally count={12} pairsPerCard={12} totalUnits={144} />,
+    );
+    const root = container.querySelector('[data-cabedal-frente-traseiro-tally]') as HTMLElement;
+    expect(root.getAttribute('data-cabedal-tally-layout')).toBe('side-by-side');
+    const frente = root.querySelector('[data-cabedal-part-band="frente"]') as HTMLElement;
+    const traseiro = root.querySelector('[data-cabedal-part-band="traseiro"]') as HTMLElement;
+    expect(frente).not.toBeNull();
+    expect(traseiro).not.toBeNull();
+    expect(frente.parentElement).toBe(traseiro.parentElement);
+  });
+
+  it('com 80 fichas empilha as faixas (lado a lado ficaria mais alto)', () => {
+    const { container } = render(
+      <CabedalFrenteTraseiroTally count={80} pairsPerCard={12} totalUnits={960} />,
+    );
+    const root = container.querySelector('[data-cabedal-frente-traseiro-tally]') as HTMLElement;
+    expect(root.getAttribute('data-cabedal-tally-layout')).toBe('stack');
+  });
 });

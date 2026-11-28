@@ -118,3 +118,65 @@ export function tallyRigidWidthPx(occupiedPx: number, opts?: { tight?: boolean }
   // grow do PaginatedSheet e fazia as caixas 30/60 vazarem de novo.
   return Math.ceil(occupiedPx * (opts?.tight ? 1 : 0.92));
 }
+
+/** Respiro entre as faixas Frente e Traseiro quando sentam lado a lado. */
+export const CABEDAL_TALLY_SIDE_GAP_PX = 8;
+
+/**
+ * Largura útil de CADA faixa quando Frente e Traseiro dividem a coluna.
+ *
+ * O inset cheio (44) soma chrome do card + da faixa. Lado a lado o card é
+ * compartilhado; cada faixa perde o gap e o próprio chrome/folga.
+ */
+export function cabedalTallySideAvailablePx(): number {
+  const page = Math.floor(PAGE_CONTENT_WIDTH_PX);
+  const cardChrome = 11; // p-1 4×2 + borda do card 1,5×2
+  const bandChrome = 16; // borda ~2×2 + padding 6×2
+  const folga = 4;
+  return Math.floor((page - cardChrome - CABEDAL_TALLY_SIDE_GAP_PX) / 2) - bandChrome - folga;
+}
+
+export interface CabedalTallyPairLayout {
+  /** As duas faixas cabem lado a lado sem ficar mais altas que empilhadas. */
+  sideBySide: boolean;
+  availableWidthPx: number;
+  layout: TallyBoxLayout;
+  stackedRows: number;
+  sideRows: number;
+}
+
+/**
+ * Frente e Traseiro lado a lado só quando a altura não aumenta.
+ *
+ * Com 80 fichas a linha cheia pede 30 colunas — metade da largura só cabe
+ * 10, e 8 linhas lado a lado perdem para 3+3 empilhadas. Com 10–20 fichas
+ * (1 linha empilhada vira 1–2 lado a lado) a troca paga.
+ */
+export function fitCabedalTalliesSideBySide(opts: {
+  count: number;
+  size?: TallySize;
+  lastNumber?: number;
+}): CabedalTallyPairLayout {
+  const size = opts.size ?? 'sm';
+  const lastNumber = opts.lastNumber ?? opts.count;
+  const stackedAvail = tallyAvailableWidthPx(CABEDAL_TALLY_INSET_PX);
+  const sideAvail = cabedalTallySideAvailablePx();
+  const stacked = fitTallyBoxLayout({
+    size, count: opts.count, lastNumber, availableWidthPx: stackedAvail,
+  });
+  const side = fitTallyBoxLayout({
+    size, count: opts.count, lastNumber, availableWidthPx: sideAvail,
+  });
+  const stackedRows = Math.ceil(opts.count / Math.max(1, stacked.cols));
+  const sideRows = Math.ceil(opts.count / Math.max(1, side.cols));
+  const fitsWidth = side.occupiedPx + 2 <= sideAvail && side.boxPx >= TALLY_MIN_BOX_PX[size];
+  // Altura empilhada = 2 faixas × stackedRows; lado a lado = sideRows.
+  const sideBySide = opts.count > 0 && fitsWidth && sideRows <= 2 * stackedRows;
+  return {
+    sideBySide,
+    availableWidthPx: sideBySide ? sideAvail : stackedAvail,
+    layout: sideBySide ? side : stacked,
+    stackedRows,
+    sideRows,
+  };
+}
