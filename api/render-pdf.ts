@@ -298,9 +298,13 @@ async function renderHtmlToPdf(html: string, landscape: boolean): Promise<Buffer
 
     const pdf = await page.pdf({
       printBackground: true,
+      // O tamanho/orientação de CADA folha vem do CSS (`@page`, inclusive
+      // `@page` nomeado: o Pacote da OP mistura A4 retrato e paisagem num PDF
+      // só). Por isso NÃO passamos `landscape: false` — só ligamos o modo
+      // paisagem quando o documento inteiro pede e o CSS não decide.
       preferCSSPageSize: true,
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
-      landscape: landscape === true,
+      ...(landscape === true ? { landscape: true } : {}),
     });
     return Buffer.from(pdf);
   } finally {

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
-import { openPrintTab, printHtmlAsPdf, serializeForPdf } from '@/lib/printPdf';
+import { openPrintTab, printHtmlAsPdf, serializeForPdf, setPrintTabStage } from '@/lib/printPdf';
 import { useWarmPdfRenderer } from '@/hooks/useWarmPdfRenderer';
 import { useIsCoarsePointer } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
@@ -15,6 +15,18 @@ import { FardoPage } from '@/components/production/FardoPage';
 import { CaixaPage } from '@/components/production/CaixaPage';
 import { CartaoMontador } from '@/components/production/CartaoMontador';
 import { EtiquetaFardoElginDialog } from '@/components/production/EtiquetaFardoElginDialog';
+import { PacoteOpPrintPanel } from '@/components/production/PacoteOpPrintPanel';
+import { PacoteOpDocument } from '@/components/production/PacoteOpDocument';
+import {
+  buildPacotePlano,
+  escolherPorIndice,
+  normalizarSelecao,
+  reempacotar,
+  selecaoCompleta,
+  type PacoteInventario,
+  type PacoteSelecao,
+} from '@/lib/pacoteOp';
+import { clonarPalmilhaHtml, contarFolhasPalmilha, PACOTE_PALMILHA_ATTR, PACOTE_PALMILHA_VALUE } from '@/lib/pacoteOpDom';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import { listAviamentoHeroEligibleGroups } from '@/components/production/worksheet/aviamentoHeroPhoto';
 import {
@@ -1183,9 +1195,25 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
   // orientação só por documento, então não misturamos no Gerar PDF das A4.
   const [includePalmilhaFardo, setIncludePalmilhaFardo] = useState(true);
   const [elginFardoOpen, setElginFardoOpen] = useState(false);
+  // Pacote da OP (Palmilha A4 → Fardo → Caixa num PDF só) — ver pacoteOp.ts.
+  // `null` = tudo marcado (padrão); qualquer filtro vira seleção explícita.
+  const [pacoteOpen, setPacoteOpen] = useState(false);
+  const [pacoteSel, setPacoteSel] = useState<PacoteSelecao | null>(null);
+  const [pacoteGerando, setPacoteGerando] = useState(false);
+  const [pacoteFolhasPalmilha, setPacoteFolhasPalmilha] = useState(0);
+  const [pacoteJob, setPacoteJob] = useState<{
+    palmilhaHtml: string;
+    fardoPages: CartaoFisicoCard[][];
+    caixaPages: CartaoCaixaCard[][];
+    selo: string | null;
+  } | null>(null);
   const includeFardoAppendix = isA4 && includePalmilhaFardo && palmilhaInSectors;
+  // Cartões calculados em A4+Palmilha mesmo com a prévia desmarcada: o Pacote
+  // da OP precisa deles (cálculo no cliente, sem escrita no banco).
+  const needFardoCards = isA4 && palmilhaInSectors;
   const [includePalmilhaCaixa, setIncludePalmilhaCaixa] = useState(true);
   const includeCaixaAppendix = isA4 && includePalmilhaCaixa && palmilhaInSectors;
+  const needCaixaCards = isA4 && palmilhaInSectors;
 
   // Faixa De/Até de folhas físicas (1-based). `pageTo === null` = Todas.
   const [pageFrom, setPageFrom] = useState(1);
@@ -3818,7 +3846,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
     cartaoFisicoCards: CartaoFisicoCard[];
     fardoRemainderPairs: number;
   } => {
-    if (!isCartao && !includeFardoAppendix) return { cartaoFisicoCards: [], fardoRemainderPairs: 0 };
+    if (!isCartao && !needFardoCards) return { cartaoFisicoCards: [], fardoRemainderPairs: 0 };
     const selectedEmitters = isCartao ? activeSectors : new Set<string>(['Palmilha']);
     const out: CartaoFisicoCard[] = [];
     let remainder = 0;
@@ -3883,7 +3911,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
     }
     return { cartaoFisicoCards: assignBatchCounters(out), fardoRemainderPairs: remainder };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCartao, includeFardoAppendix, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder, clientNameByPv]);
+  }, [isCartao, needFardoCards, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder, clientNameByPv]);
 
   // Chunk sequencial: folhas de até 18 na ordem de leitura (k/N sobe na mesma folha).
   const cartaoFisicoPages = useMemo(
@@ -3893,7 +3921,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
 
   // ── Caixa de transporte: chunk de corrugados cheios por OP × setor ────────
   const cartaoCaixaCards = useMemo((): CartaoCaixaCard[] => {
-    if (!caixaSector && !includeCaixaAppendix) return [];
+    if (!caixaSector && !needCaixaCards) return [];
     const sector: CaixaTransporteSector = caixaSector ?? 'Palmilha';
     const inputs = printOrders.map((order: any) => {
       const sheetId = order.reference_id as string | undefined;
@@ -3946,12 +3974,91 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
       orders: inputs,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caixaSector, includeCaixaAppendix, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, clientNameByPv]);
+  }, [caixaSector, needCaixaCards, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, clientNameByPv]);
 
   const cartaoCaixaPages = useMemo(
     () => chunkCaixaPages(cartaoCaixaCards, CAIXA_TRANSPORTE_PER_PAGE),
     [cartaoCaixaCards],
   );
+
+  // ── Pacote da OP: Palmilha A4 → Fardo → Caixa num PDF só ──────────────────
+  // Inventário = o que já está calculado/medido nesta tela. Nada é gravado.
+  const pacoteInventario = useMemo((): PacoteInventario => ({
+    palmilhaFolhas: pacoteFolhasPalmilha,
+    fardoCartoes: needFardoCards ? cartaoFisicoCards.length : 0,
+    caixaFichas: needCaixaCards ? cartaoCaixaCards.map((card) => card.fichasNaCaixa) : [],
+  }), [pacoteFolhasPalmilha, needFardoCards, needCaixaCards, cartaoFisicoCards, cartaoCaixaCards]);
+  const pacoteInventarioKey = `${pacoteInventario.palmilhaFolhas}|${pacoteInventario.fardoCartoes}|${pacoteInventario.caixaFichas.join(',')}`;
+  // Inventário mudou (OPs/setores/folhas) → volta a "tudo marcado".
+  useEffect(() => { setPacoteSel(null); }, [pacoteInventarioKey]);
+  // A contagem de folhas vem do DOM já paginado (PaginatedSheet).
+  useEffect(() => {
+    if (!isA4 || !palmilhaInSectors) {
+      setPacoteFolhasPalmilha(0);
+      return;
+    }
+    setPacoteFolhasPalmilha(contarFolhasPalmilha(document));
+  });
+  const pacoteSelecaoEfetiva = useMemo(
+    () => normalizarSelecao(pacoteInventario, pacoteSel ?? selecaoCompleta(pacoteInventario)),
+    [pacoteInventario, pacoteSel],
+  );
+  const pacotePlano = useMemo(
+    () => buildPacotePlano(pacoteInventario, pacoteSelecaoEfetiva),
+    [pacoteInventario, pacoteSelecaoEfetiva],
+  );
+  const pacoteContexto = useMemo(() => {
+    const pvs = [...new Set(printOrders.map((o: { sale_order_number?: string }) => o.sale_order_number).filter(Boolean))];
+    const ops = [...new Set(printOrders.map((o: { op_number?: string }) => o.op_number).filter(Boolean))];
+    const head = (list: unknown[]) => (list.length > 2 ? `${list.slice(0, 2).join(', ')} +${list.length - 2}` : list.join(', '));
+    return [head(pvs), head(ops)].filter(Boolean).join(' · ');
+  }, [printOrders]);
+
+  const printPacote = async () => {
+    if (pacoteGerando) return;
+    const plano = pacotePlano;
+    if (plano.totalFolhas === 0) {
+      toast.error('Nada marcado para imprimir. Marque ao menos uma folha ou cartão.');
+      return;
+    }
+    setPacoteGerando(true);
+    try {
+      const palmilhaHtml = clonarPalmilhaHtml(document, plano.itens.palmilha);
+      if (plano.itens.palmilha.length > 0 && !palmilhaHtml) {
+        toast.error('Não encontrei as fichas Palmilha na tela. Aguarde a conferência terminar e tente de novo.');
+        setPrintTabStage(printTabRef.current, 'preparing', 'Não encontrei as fichas Palmilha na tela.');
+        return;
+      }
+      const fardoPages = reempacotar(
+        escolherPorIndice(cartaoFisicoCards, plano.itens.fardo),
+        CARTAO_FISICO_PER_PAGE,
+      ).map((page) => [...page]);
+      const caixaPages = reempacotar(
+        escolherPorIndice(cartaoCaixaCards, plano.itens.caixa),
+        CAIXA_TRANSPORTE_PER_PAGE,
+      ).map((page) => [...page]);
+      // Monta o documento fora da tela e serializa o DOM pronto — mesmo caminho
+      // do "Gerar PDF" das fichas, só que com @page nomeado (retrato + paisagem).
+      flushSync(() => setPacoteJob({ palmilhaHtml, fardoPages, caixaPages, selo: plano.selo }));
+      await waitForPrintAssets();
+      const root = document.querySelector<HTMLElement>('[data-op-package-root]');
+      if (!root) {
+        toast.error('Não consegui montar o pacote para impressão.');
+        return;
+      }
+      await printHtmlAsPdf(serializeForPdf(root, 'Pacote da OP'), {
+        filename: `pacote-op-${new Date().toISOString().slice(0, 10)}${plano.parcial ? '-2via' : ''}`,
+        title: 'Pacote da OP',
+        // Orientação vem do @page nomeado de cada trecho (preferCSSPageSize).
+        landscape: false,
+        target: printTabRef.current,
+      });
+    } finally {
+      try { flushSync(() => setPacoteJob(null)); } catch { setPacoteJob(null); }
+      printTabRef.current = null;
+      setPacoteGerando(false);
+    }
+  };
 
   // ── Cartão do Montador: códigos persistidos na RPC idempotente ────────────
   const montadorOrderIds = useMemo(
@@ -4330,6 +4437,16 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
                 >
                   <Barcode className="h-3.5 w-3.5" /> Etiquetas do fardo (Elgin)
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setPacoteOpen((v) => !v)}
+                  aria-pressed={pacoteOpen}
+                  data-testid="op-package-open"
+                  className={`inline-flex h-9 items-center gap-1.5 border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${pacoteOpen ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-foreground hover:bg-muted/40'}`}
+                  title="Um único PDF na ordem Palmilha A4 (retrato) → Fardo → Caixa (paisagem). Permite reimprimir só uma parte, com o selo 2ª VIA."
+                >
+                  <Layers className="h-3.5 w-3.5" /> Imprimir pacote da OP
+                </button>
                 <label
                   className="inline-flex h-9 cursor-pointer items-center gap-1.5 border border-border px-2 text-xs"
                   title="Mostra na prévia os cartões que acompanham a caixa de 15 fichas de palmilha (6/folha, com linhas de recorte). A impressão sai em A4 paisagem pelo botão ao lado."
@@ -4637,6 +4754,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
         </div>
       </section>
 
+      {isA4 && palmilhaInSectors && pacoteOpen && (
+        <PacoteOpPrintPanel
+          inventario={pacoteInventario}
+          selecao={pacoteSelecaoEfetiva}
+          onSelecaoChange={setPacoteSel}
+          plano={pacotePlano}
+          gerando={pacoteGerando}
+          contexto={pacoteContexto}
+          onImprimir={() => { printTabRef.current = openPrintTab(); void printPacote(); }}
+        />
+      )}
+
       {isCartaoMontador && (fichaCartoesLoading || fichaCartoesError) && (
         <div className="no-print flex items-center justify-between gap-3 border border-border bg-muted/30 px-4 py-3 text-sm">
           <p className="min-w-0 text-foreground">
@@ -4754,7 +4883,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
           }
           if (built.groups.length === 0) return null;
           return (
-            <div className="page-break">
+            <div className="page-break" {...{ [PACOTE_PALMILHA_ATTR]: PACOTE_PALMILHA_VALUE }}>
               <PalmilhaUnifiedWorkSheet
                 mode={activePalmilhaMode}
                 groups={built.groups}
@@ -5466,6 +5595,21 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
         </div>
       )}
       </div>
+      {pacoteJob && (
+        <div
+          className="no-print"
+          aria-hidden="true"
+          style={{ position: 'fixed', left: '-12000px', top: 0, width: '297mm', pointerEvents: 'none' }}
+        >
+          <PacoteOpDocument
+            palmilhaHtml={pacoteJob.palmilhaHtml}
+            fardoPages={pacoteJob.fardoPages}
+            caixaPages={pacoteJob.caixaPages}
+            selo={pacoteJob.selo}
+            layoutStyles={fardoPageLayoutStyles + caixaPageLayoutStyles}
+          />
+        </div>
+      )}
     </div>
     </PrintPageRangeProvider>
   );
