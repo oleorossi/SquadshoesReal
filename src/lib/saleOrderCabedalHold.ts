@@ -94,3 +94,19 @@ export function summarizeCabedalHold(holds: readonly AtelierProductionHoldLine[]
     }));
   return { items, count: items.length };
 }
+
+/**
+ * Impressão de fichas de operador: PV `Aprovado` normalmente fica de fora (a OP
+ * ainda não entrou em produção). Na fase Aguardando Cabedal é o contrário: as
+ * OPs já foram geradas justamente para adiantar Corte, Palmilha, Fibra etc.,
+ * então as fichas precisam sair. Rascunho, Pendente e Cancelado seguem fora.
+ */
+export function pvStatusHiddenFromOperatorPrint(
+  pvStatus: string | null | undefined,
+  hiddenStatuses: ReadonlySet<string>,
+  awaitingCabedal: boolean,
+): boolean {
+  const status = String(pvStatus ?? '').trim();
+  if (status === 'Aprovado' && awaitingCabedal) return false;
+  return hiddenStatuses.has(status);
+}

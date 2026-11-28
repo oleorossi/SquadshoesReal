@@ -5,6 +5,7 @@ import {
   saleOrderDisplayStatus,
   saleOrderMatchesStatusFilter,
   summarizeCabedalHold,
+  pvStatusHiddenFromOperatorPrint,
 } from '@/lib/saleOrderCabedalHold';
 import type { AtelierProductionHoldLine } from '@/lib/atelierProductionHold';
 
@@ -50,5 +51,27 @@ describe('fase Aguardando Cabedal (derivada de Aprovado)', () => {
     const r = summarizeCabedalHold([line(), line({ itemId: 'i2', blocks: false })]);
     expect(r.count).toBe(1);
     expect(r.items[0].label).toBe('I90 · ROSADO');
+  });
+});
+
+describe('pvStatusHiddenFromOperatorPrint', () => {
+  const hidden = new Set(['Rascunho', 'Pendente', 'Aprovado', 'Cancelado']);
+
+  it('PV Aprovado aguardando cabedal libera as fichas', () => {
+    expect(pvStatusHiddenFromOperatorPrint('Aprovado', hidden, true)).toBe(false);
+  });
+
+  it('PV Aprovado sem cabedal fora continua escondido', () => {
+    expect(pvStatusHiddenFromOperatorPrint('Aprovado', hidden, false)).toBe(true);
+  });
+
+  it('Rascunho, Pendente e Cancelado seguem escondidos mesmo com a marca', () => {
+    for (const s of ['Rascunho', 'Pendente', 'Cancelado']) {
+      expect(pvStatusHiddenFromOperatorPrint(s, hidden, true)).toBe(true);
+    }
+  });
+
+  it('Em Produção nunca some', () => {
+    expect(pvStatusHiddenFromOperatorPrint('Em Produção', hidden, false)).toBe(false);
   });
 });
