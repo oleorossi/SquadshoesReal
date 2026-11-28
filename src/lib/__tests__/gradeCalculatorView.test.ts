@@ -126,19 +126,26 @@ describe('gradePrintDeliveryOptions', () => {
 
 describe('isGradePrintPhoneLayout', () => {
   it('usa o recorte de 767px para escolher o arquivo de retrato', () => {
-    const original = globalThis.window;
-    // @ts-expect-error ambiente de teste
-    globalThis.window = {
-      matchMedia: (query: string) => ({ matches: query.includes('767px') }),
-    };
+    const original = window.matchMedia;
+    const stub = (matches: boolean) =>
+      ((query: string): MediaQueryList => ({
+        matches,
+        media: query,
+        onchange: null,
+        addListener() {},
+        removeListener() {},
+        addEventListener() {},
+        removeEventListener() {},
+        dispatchEvent() { return false; },
+      })) as typeof window.matchMedia;
+
+    window.matchMedia = ((query: string) => stub(query.includes('767px'))(query));
     expect(isGradePrintPhoneLayout()).toBe(true);
-    // @ts-expect-error ambiente de teste
-    globalThis.window = {
-      matchMedia: () => ({ matches: false }),
-    };
+
+    window.matchMedia = stub(false);
     expect(isGradePrintPhoneLayout()).toBe(false);
-    if (original) globalThis.window = original;
-    else delete (globalThis as { window?: unknown }).window;
+
+    window.matchMedia = original;
   });
 });
 
