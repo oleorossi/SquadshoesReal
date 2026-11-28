@@ -1911,8 +1911,10 @@ function DemandsTab({
     return map;
   }, [boardQuery.data]);
 
+  // Suspended = bloqueada (cadastro/agenda); não entra no Resumo "a fazer".
+  // Fulfilled/cancelled/superseded já saíram do fluxo operacional.
   const openDemands = (query.data?.demands || []).filter(
-    (demand) => !['fulfilled', 'cancelled', 'superseded'].includes(demand.status),
+    (demand) => !['fulfilled', 'cancelled', 'superseded', 'suspended'].includes(demand.status),
   );
 
   const demands = openDemands.filter((demand) => {
@@ -1964,6 +1966,14 @@ function DemandsTab({
       const yieldM = measureId ? (yieldByMeasure.get(measureId) ?? null) : null;
       const shortage = Number(demand.replenishment_required_m) || 0;
       const strapM = shortage > 0 ? shortage : (Number(demand.required_m) || 0);
+      // Sinal de compra = base_shortage do motor (não inventar tira÷sample_yield).
+      const baseShortageRaw = demand.base_shortage_m;
+      const baseShortage =
+        baseShortageRaw == null ? null : Number(baseShortageRaw);
+      const napaFromEngine =
+        baseShortage != null && Number.isFinite(baseShortage) && baseShortage > 0
+          ? baseShortage
+          : null;
       const key = [
         identity.typeName,
         identity.measureName,
@@ -1976,8 +1986,8 @@ function DemandsTab({
         prev.strapM += strapM;
         prev.shortageM += shortage;
         prev.count += 1;
-        if (prev.yieldMPerM && prev.yieldMPerM > 0) {
-          prev.napaM = prev.strapM / prev.yieldMPerM;
+        if (napaFromEngine != null) {
+          prev.napaM = (prev.napaM ?? 0) + napaFromEngine;
         }
       } else {
         byKey.set(key, {
@@ -1991,7 +2001,7 @@ function DemandsTab({
           strapM,
           shortageM: shortage,
           yieldMPerM: yieldM,
-          napaM: yieldM && yieldM > 0 ? strapM / yieldM : null,
+          napaM: napaFromEngine,
           count: 1,
         });
       }
@@ -2009,18 +2019,21 @@ function DemandsTab({
       if (prev) {
         prev.strapM += row.strapM;
         if (napaAdd != null) prev.napaM += napaAdd;
-        else prev.missingYield = true;
+        else if (row.shortageM > 0) prev.missingYield = true;
       } else {
         byBase.set(key, {
           key,
           baseName: key,
           napaM: napaAdd ?? 0,
           strapM: row.strapM,
-          missingYield: napaAdd == null,
+          // Âmbar só quando há falta de tira e o motor não deu base_shortage.
+          missingYield: napaAdd == null && row.shortageM > 0,
         });
       }
     }
-    return [...byBase.values()].sort((a, b) => b.napaM - a.napaM);
+    return [...byBase.values()]
+      .filter((row) => row.napaM > 0 || row.missingYield)
+      .sort((a, b) => b.napaM - a.napaM);
   }, [strapSummary]);
 
   if (query.isLoading) return <TableSkeleton rows={7} />;
@@ -2130,7 +2143,7 @@ function DemandsTab({
           <Panel
             eyebrow="NAPA A PEDIR"
             title="Metros por família"
-            subtitle="tira ÷ rendimento do grupo. Sem rendimento fica âmbar — cadastre em Configuração."
+            subtitle="Soma do base_shortage do motor por família. Sem sinal de compra, some da lista."
           >
             {napaSummary.length === 0 ? (
               <EmptyState
