@@ -23,6 +23,8 @@ import { volumesForPairs, pairsPerVolumeForMode, isPairAsVolumeMode, collectiveT
 import { packSaleOrderItem, packSaleOrderItemBySize, singleSizeMisfits } from '@/lib/boxPacking';
 import { resolveColmeiaByGrade, type ColmeiaCatalogBox } from '@/lib/resolveColmeiaByGrade';
 import { useAccessControl } from '@/hooks/useAccessControl';
+import { useSaleOrderAtelierProductionHolds } from '@/hooks/useSaleOrderAtelierProductionHolds';
+import { saleOrderDisplayStatus } from '@/lib/saleOrderCabedalHold';
 import { useContractors } from '@/hooks/useContractors';
 import { DISPLAY_SECTORS, SECTOR_LABELS, type SectorKey } from '@/lib/sectors';
 import { useClientCommercialDefaults } from '@/hooks/useEconomicGroup360';
@@ -980,6 +982,12 @@ export default function SaleOrderFormPanel({
    const [showBuyReadyGapDialog, setShowBuyReadyGapDialog] = useState(false);
    const [buyReadyCadastroTarget, setBuyReadyCadastroTarget] = useState<OrderBuyReadyStrapGap | null>(null);
    const queryClient = useQueryClient();
+   // Barra de passos: PV Aprovado com cabedal complexo fora aparece como
+   // "Aguardando Cabedal" (fase derivada, ver saleOrderCabedalHold).
+   const { data: cabedalHoldsById } = useSaleOrderAtelierProductionHolds(
+     saleOrderId && form.status === 'Aprovado' ? [saleOrderId] : [],
+   );
+   const cabedalHolds = saleOrderId ? cabedalHoldsById?.get(saleOrderId) : undefined;
    const typedStrapCatalog = sharedStrapCatalog as ArtisanalStrapCatalog | undefined;
    const needsBuyReadyDiagnostics = useMemo(
      () => items.some((item) => (item.strap_colors || []).some((strap) => (
@@ -1850,7 +1858,7 @@ export default function SaleOrderFormPanel({
       {!isNewOrder && (
         <Card className="border-border/60 bg-muted/20 shadow-sm">
           <CardContent className="px-3 py-2 sm:px-4">
-            <OrderStatusStepper currentStatus={form.status} />
+            <OrderStatusStepper currentStatus={saleOrderDisplayStatus(form.status, cabedalHolds)} />
           </CardContent>
         </Card>
       )}

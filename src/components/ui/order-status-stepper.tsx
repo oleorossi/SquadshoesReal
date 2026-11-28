@@ -1,5 +1,6 @@
-import { Check, Clock, CheckCircle as CheckCircle2, Factory, Truck, FileText, FileX } from '@phosphor-icons/react';
+import { Check, Clock, CheckCircle as CheckCircle2, Factory, Truck, FileText, FileX, Hourglass } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { AGUARDANDO_CABEDAL } from '@/lib/saleOrderCabedalHold';
 
 // Stages refletem o fluxo canônico de sale_orders (saleOrderStateMachine.ts).
 // Antes tinha 'Pronto' que não é status válido — substituído por 'Expedido'
@@ -22,6 +23,17 @@ const INFORMAL_STAGES = [
   { key: 'Finalizado s/ NF', label: 'Sem NF', icon: FileX },
 ] as const;
 
+// Fase derivada de Aprovado (cabedal complexo no Ateliê). Só aparece quando o PV
+// está nela, para os demais pedidos o fluxo continua com cinco passos.
+const CABEDAL_STAGES = [
+  STAGES[0],
+  STAGES[1],
+  { key: AGUARDANDO_CABEDAL, label: 'Aguardando cabedal', icon: Hourglass },
+  STAGES[2],
+  STAGES[3],
+  STAGES[4],
+] as const;
+
 interface Props {
   currentStatus?: string;
   className?: string;
@@ -29,7 +41,11 @@ interface Props {
 
 export function OrderStatusStepper({ currentStatus = 'Pendente', className }: Props) {
   const isInformal = currentStatus === 'Finalizado s/ NF';
-  const stages = isInformal ? INFORMAL_STAGES : STAGES;
+  const stages = isInformal
+    ? INFORMAL_STAGES
+    : currentStatus === AGUARDANDO_CABEDAL
+      ? CABEDAL_STAGES
+      : STAGES;
   const currentIdx = stages.findIndex(s => s.key === currentStatus);
   const safeIdx = currentIdx === -1 ? 0 : currentIdx;
 
