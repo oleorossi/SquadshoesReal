@@ -78,7 +78,7 @@ import { scaleGradeWithLargestRemainder } from '@/lib/scaleGrade';
 import { sheetHasSector } from '@/lib/sectors';
 import { facaLabelForSize, expandFacasByBoundaries } from '@/lib/knifeFacas';
 import { useKnifeFacasDefault } from '@/hooks/useKnifeFacasDefault';
-import { pmgLabelForSize } from '@/lib/aviamentoSizeRanges';
+import { pmgLabelForSize, expandPmgByBoundaries } from '@/lib/aviamentoSizeRanges';
 import { useAviamentoPmgDefault } from '@/hooks/useAviamentoPmgDefault';
 import { getUpperWorkEligibility, requiresUpperCut } from '@/lib/upperCutEligibility';
 import { leftoverLabelsFromSheet } from '@/lib/cabedalLeftover';
@@ -4830,13 +4830,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
                     if (!sheetId) continue;
                     const sheet = sheetById.get(sheetId);
                     if (sectorName === 'Corte Cabedal' && !requiresUpperCut(sheet)) continue;
-                    const sizes = Object.keys(((order as any).grid || {}));
+                    const sizes = Object.keys(order.grid || {});
                     let ranges: Array<{ label: string; sizes: string[] }> | undefined;
                     if (sectorName === 'Aviamento') {
                       ranges = aviamentoRangesByRef.get(sheetId);
                       if ((!ranges || ranges.length === 0) && !aviamentoOptOutByRef.has(sheetId)
                           && Array.isArray(aviamentoDefaultBoundaries) && aviamentoDefaultBoundaries.length > 0) {
-                        ranges = expandFacasByBoundaries(sizes, aviamentoDefaultBoundaries as any);
+                        ranges = expandPmgByBoundaries(sizes, aviamentoDefaultBoundaries);
                       }
                       // Sem faixa própria de Aviamento: herda as facas de cabedal.
                       if ((!ranges || ranges.length === 0) && !aviamentoOptOutByRef.has(sheetId)) {
