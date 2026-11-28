@@ -234,10 +234,28 @@ export function sumFardoRemainderPairs(args: BuildCartaoFisicoCardsArgs): number
 }
 
 /**
- * Cartões por folha A4 paisagem (3 colunas × 5 linhas).
+ * Cartões por folha A4 paisagem (3 colunas × 6 linhas).
  * Envelope canônico do modo Fardo — chunk sequencial assume esta capacidade.
+ * Cartão do Montador permanece em 15/folha (`CARTAO_MONTADOR_PER_PAGE`).
  */
-export const CARTAO_FISICO_PER_PAGE = 15;
+export const CARTAO_FISICO_PER_PAGE = 18;
+
+/**
+ * Envelope canônico da folha de fardo (A4 paisagem).
+ * 2,9×2 + 3×96 + 2×1,6 = 297 mm; 1,7×2 + 6×33,1 + 5×1,6 = 210 mm.
+ * O Cartão do Montador NÃO usa este envelope (permanece 15/folha).
+ */
+export const FARDO_LAYOUT = {
+  cols: 3,
+  rows: 6,
+  cardWmm: 96,
+  cardHmm: 33.1,
+  gapMm: 1.6,
+  padXmm: 2.9,
+  padYmm: 1.7,
+  pageWmm: 297,
+  pageHmm: 210,
+} as const;
 
 /**
  * Fatia a lista em páginas sequenciais de até `capacity` itens.

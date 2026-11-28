@@ -11,7 +11,7 @@ import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsCloc
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { PalmilhaUnifiedWorkSheet } from '@/components/production/PalmilhaUnifiedWorkSheet';
-import { CartaoFisico } from '@/components/production/CartaoFisico';
+import { FardoPage } from '@/components/production/FardoPage';
 import { CartaoMontador } from '@/components/production/CartaoMontador';
 import { CartaoCaixaTransporte } from '@/components/production/CartaoCaixaTransporte';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
@@ -137,21 +137,71 @@ function printableOperatorStraps(
 /**
  * CSS do modo CARTÃO (aprovado pelo dono 31/07/2026 — "Opção B, 3 colunas").
  *
- * Cartões em A4 PAISAGEM: até 15 por folha (`CARTAO_FISICO_PER_PAGE`).
- * Padding 1,5mm + gap 1mm enchem a área útil (297×210) sem sobra ociosa.
+ * Cartões em A4 PAISAGEM: até 18 por folha (`CARTAO_FISICO_PER_PAGE`, 3×6).
+ * Envelope FARDO_LAYOUT: padding 1,7×2,9 mm + vão 1,6 mm (linhas de recorte).
  *
  * Por que ≥93mm: a grade de 7 numerações precisa disso pra sair legível
  * (8 colunas com número de 3 dígitos). Abaixo disso o `table-layout: fixed`
  * do print CORTA o número — o operador lê "18" onde estava "180".
  *
- * Altura: min-height por fileira (~40mm) pra as 5 linhas ocuparem ~205mm
- * úteis; sem max-height (conteúdo alto não corta). break-inside: avoid.
+ * Altura: slot de 33,1 mm por fileira pra as 6 linhas + vãos ocuparem a folha
+ * (210 mm); sem max-height (conteúdo alto não corta). break-inside: avoid.
+ * `.cartao-page--fardo` não vale para o Cartão do Montador (15/folha).
  *
  * Ordem do DOM = chunk sequencial (`chunkPages`): cada `.cartao-page` é uma
- * folha A4 com até 15 cartões na ordem de leitura (k/N sobe na mesma folha).
+ * folha A4 com até 18 cartões na ordem de leitura (k/N sobe na mesma folha).
  * Wrappers de página também fazem o "Inverter saída" inverter por FOLHA
  * (não por cartão). Faixa De/Até omite `.cartao-page` fora do intervalo.
  */
+
+/** Layout compartilhado da folha de fardo (prévia e print). Montador não usa. */
+const fardoPageLayoutStyles = `
+  .cartao-page--fardo {
+    display: grid;
+    grid-template-columns: repeat(3, 96mm);
+    grid-auto-rows: 33.1mm;
+    justify-content: start;
+    align-content: start;
+    column-gap: 1.6mm;
+    row-gap: 1.6mm;
+    padding: 1.7mm 2.9mm;
+    width: 297mm;
+    height: 210mm;
+    min-height: 210mm;
+    max-height: 210mm;
+    box-sizing: border-box;
+    background: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .cartao-page--fardo > .cartao-lote {
+    position: relative;
+    z-index: 1;
+  }
+  .fardo-cut-guides {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .fardo-appendix {
+    width: 297mm;
+    margin: 10mm auto 0;
+    background: #fff;
+  }
+  .fardo-appendix-banner {
+    margin: 0 0 4mm;
+    padding: 2.5mm 3mm;
+    border: 1px solid #ccc;
+    background: #f7f6f3;
+    font-family: 'Fira Sans', sans-serif;
+    font-size: 11px;
+    color: #222;
+  }
+`;
+
 const cartaoStyles = `
   @media screen {
     /* A prévia do modo cartão precisa mostrar o mesmo conjunto que será
@@ -164,6 +214,9 @@ const cartaoStyles = `
       border-top: 1px dashed #ccc;
       margin-top: 4mm;
       padding-top: 4mm;
+    }
+    .cartao-page--fardo + .cartao-page--fardo {
+      padding-top: 1.7mm;
     }
   }
   @media print {
@@ -192,6 +245,24 @@ const cartaoStyles = `
       break-after: auto !important;
       page-break-after: auto !important;
     }
+    .cartao-page--fardo {
+      display: grid !important;
+      grid-template-columns: repeat(3, 96mm) !important;
+      grid-auto-rows: 33.1mm !important;
+      justify-content: start !important;
+      align-content: start !important;
+      column-gap: 1.6mm !important;
+      row-gap: 1.6mm !important;
+      gap: unset !important;
+      padding: 1.7mm 2.9mm !important;
+      width: 297mm !important;
+      height: 210mm !important;
+      min-height: 210mm !important;
+      max-height: 210mm !important;
+      box-sizing: border-box !important;
+      position: relative !important;
+      overflow: hidden !important;
+    }
     /* Cartão inteiro ou nada — nunca parte entre duas folhas. */
     .cartao-lote {
       break-inside: avoid !important;
@@ -217,7 +288,13 @@ const cartaoStyles = `
     box-sizing: border-box;
     background: #fff;
   }
-`;
+` + fardoPageLayoutStyles;
+
+const fardoAppendixStyles = `
+  @media print {
+    .fardo-appendix { display: none !important; }
+  }
+` + fardoPageLayoutStyles;
 
 /**
  * CSS do modo CAIXA DE TRANSPORTE — 6 cartões por A4 paisagem (3×2).
@@ -1004,8 +1081,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
   );
 
   // Modo FARDO (spec cartao-fisico-corrugado): 1 cartão por corrugado
-  // cheio (12/15/18) por OP, nos 3 setores do fluxo cabedal
-  // (Corte Cabedal · Costura Cabedal · Aviamento).
+  // cheio (12/15/18) por OP, nos emissores Palmilha · Corte Cabedal ·
+  // Costura Cabedal · Aviamento. Calculado no cliente, sem escrita no banco.
   const [cartao, setCartao] = useState(!!initialCartao && !initialCartaoMontador);
   // Modo CAIXA DE TRANSPORTE (spec cartao-caixa-transporte): mutuamente
   // exclusivo com A4 e Cartão físico — um setor de caixa por vez.
@@ -1015,6 +1092,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
   const isCaixa = caixaSector != null && !isCartaoMontador;
   const isCartao = cartao && !isCaixa && !isCartaoMontador;
   const isA4 = !cartao && !isCaixa && !isCartaoMontador;
+  const palmilhaInSectors = activeSectors.has('Palmilha')
+    || activeSectors.has('Só Fibra')
+    || activeSectors.has('Só Forração');
+  // Prévia dos cartões da Palmilha junto das fichas A4 (ligado por padrão).
+  // A emissão sai num PDF à parte (paisagem) — o pipeline atual força uma
+  // orientação só por documento, então não misturamos no Gerar PDF das A4.
+  const [includePalmilhaFardo, setIncludePalmilhaFardo] = useState(true);
+  const includeFardoAppendix = isA4 && includePalmilhaFardo && palmilhaInSectors;
 
   // Faixa De/Até de folhas físicas (1-based). `pageTo === null` = Todas.
   const [pageFrom, setPageFrom] = useState(1);
@@ -1183,6 +1268,13 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
       }
       return next.size > 0 ? next : new Set(CARTAO_FISICO_EMITTERS);
     });
+  };
+  const setFormatFardoPalmilha = () => {
+    setCartao(true);
+    setCaixaSector(null);
+    setCartaoMontador(false);
+    resetPageRange();
+    setActiveSectors(new Set(['Palmilha']));
   };
   const setFormatCaixa = (sector: CaixaTransporteSector = 'Palmilha') => {
     setCaixaSector(sector);
@@ -3640,11 +3732,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
     cartaoFisicoCards: CartaoFisicoCard[];
     fardoRemainderPairs: number;
   } => {
-    if (!isCartao) return { cartaoFisicoCards: [], fardoRemainderPairs: 0 };
+    if (!isCartao && !includeFardoAppendix) return { cartaoFisicoCards: [], fardoRemainderPairs: 0 };
+    const selectedEmitters = isCartao ? activeSectors : new Set<string>(['Palmilha']);
     const out: CartaoFisicoCard[] = [];
     let remainder = 0;
     for (const sector of CARTAO_FISICO_EMITTERS) {
-      if (!activeSectors.has(sector)) continue;
+      if (!selectedEmitters.has(sector)) continue;
       const inputs = printOrders.map((order: any) => {
         const sheetId = order.reference_id as string | undefined;
         const sheet = sheetId ? sheetById.get(sheetId) : null;
@@ -3704,9 +3797,9 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
     }
     return { cartaoFisicoCards: assignBatchCounters(out), fardoRemainderPairs: remainder };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCartao, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder, clientNameByPv]);
+  }, [isCartao, includeFardoAppendix, activeSectors, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, resolveSoleForOrder, clientNameByPv]);
 
-  // Chunk sequencial: folhas de até 15 na ordem de leitura (k/N sobe na mesma folha).
+  // Chunk sequencial: folhas de até 18 na ordem de leitura (k/N sobe na mesma folha).
   const cartaoFisicoPages = useMemo(
     () => chunkPages(cartaoFisicoCards, CARTAO_FISICO_PER_PAGE),
     [cartaoFisicoCards],
@@ -4011,6 +4104,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
       {/* Modo CARTÃO / CAIXA: A4 PAISAGEM. Injetado SÓ nesses modos porque
           troca a orientação do @page, que é global. */}
       {(isCartao || isCartaoMontador) && <style>{cartaoStyles}</style>}
+      {includeFardoAppendix && <style>{fardoAppendixStyles}</style>}
       {isCaixa && <style>{caixaStyles}</style>}
 
       {/* ── Painel de conferência (no-print) ── */}
@@ -4085,6 +4179,37 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
                 <QrCode className="h-3.5 w-3.5" /> Cartão do Montador
               </button>
             </div>
+
+            {isA4 && palmilhaInSectors && (
+              <div className="inline-flex flex-wrap items-center gap-2">
+                <label
+                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 border border-border px-2 text-xs"
+                  title="Mostra na prévia os cartões de palmilha já prontos (18/folha, com linhas de recorte). A impressão sai em A4 paisagem pelo botão ao lado — o PDF das fichas A4 não mistura orientação."
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-primary"
+                    checked={includePalmilhaFardo}
+                    onChange={(e) => setIncludePalmilhaFardo(e.target.checked)}
+                  />
+                  <span className="font-semibold">Incluir cartões do fardo</span>
+                  {includePalmilhaFardo && cartaoFisicoCards.length > 0 && (
+                    <span className="font-mono tabular-nums text-muted-foreground">
+                      {cartaoFisicoCards.length}·{cartaoFisicoPages.length} fl.
+                    </span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={setFormatFardoPalmilha}
+                  disabled={cartaoFisicoCards.length === 0}
+                  className="inline-flex h-9 items-center gap-1.5 border border-border px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  title="Abre o formato Fardo já com todos os cartões de palmilha desta OP, prontos para recortar e colocar com a palmilha física."
+                >
+                  <Cards className="h-3.5 w-3.5" /> Imprimir cartões do fardo
+                </button>
+              </div>
+            )}
 
             <div
               className="inline-flex h-9 items-center gap-1.5 border border-border px-2 text-xs"
@@ -4398,25 +4523,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
             Fora de .page-break pra o CSS do modo cartão não esconder.
             Páginas = chunkPages sequencial; só a faixa De/Até no DOM. */}
         {isCartao && cartaoFisicoPagesInRange.map((pageCards, pageIdx) => (
-          <div key={`cartao-page-${pageRange.from - 1 + pageIdx}`} className="cartao-page">
-            {pageCards.map((card) => (
-              <CartaoFisico
-                key={`${card.sectorName}-${card.opNumber}-${card.lotCode}`}
-                destinoLabel={card.destinoLabel}
-                opNumber={card.opNumber}
-                pvLabel={card.pvLabel}
-                clientName={card.clientName}
-                title={card.title}
-                subtitle={card.subtitle}
-                imageUrl={card.imageUrl}
-                sizes={card.sizes}
-                grade={card.grade}
-                totalPairs={card.totalPairs}
-                lotLabel={card.lotLabel}
-                lotCode={card.lotCode}
-              />
-            ))}
-          </div>
+          <FardoPage key={`cartao-page-${pageRange.from - 1 + pageIdx}`} cards={pageCards} />
         ))}
 
         {/* Caixa de transporte — 6 por A4 paisagem; parcial incluso. */}
@@ -5206,6 +5313,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
       </PrintOrderIdentityProvider>
       </ReversePrintContext.Provider>
       </div>
+      {includeFardoAppendix && cartaoFisicoPages.length > 0 && (
+        <div className="fardo-appendix" data-fardo-appendix="" aria-label="Prévia dos cartões do fardo">
+          <div className="fardo-appendix-banner">
+            <strong>Cartões do fardo · Palmilha</strong>
+            {' — '}
+            {cartaoFisicoCards.length} cartão{cartaoFisicoCards.length === 1 ? '' : 's'} em {cartaoFisicoPages.length} folha{cartaoFisicoPages.length === 1 ? '' : 's'} (18/folha, com linhas de recorte).
+            {' '}Não entram no PDF das fichas A4 (orientação diferente). Use «Imprimir cartões do fardo» — já saem prontos para recortar e colocar com a palmilha física.
+          </div>
+          {cartaoFisicoPages.map((pageCards, pageIdx) => (
+            <FardoPage key={`fardo-appendix-${pageIdx}`} cards={pageCards} />
+          ))}
+        </div>
+      )}
       </div>
     </div>
     </PrintPageRangeProvider>

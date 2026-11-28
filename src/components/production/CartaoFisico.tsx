@@ -2,16 +2,15 @@
  * Cartão físico por corrugado — acompanha o fardo na saída do setor emissor.
  *
  * Spec: specs/cartao-fisico-corrugado.md
- * Envelope ~96 mm · A4 paisagem · 15/folha (3×5).
+ * Envelope ~96 mm · A4 paisagem · 18/folha (3×6).
  * Conteúdo: OP · PV (destaque) · cliente · (destino opcional) · identidade ·
- * grade · ordem de número individual · total · k/N do maço.
+ * grade · total · k/N do maço.
  * Sem Origem/setor no papel. Sem QR/barcode.
  *
- * Altura fixa no slot de 5 fileiras (~40,5 mm) para a ordem de numeração
- * ocupar o espaço que antes ficava em branco no pé do cartão.
+ * Altura fixa no slot de 6 fileiras (33,1 mm) para preencher a folha
+ * com vãos de recorte (1,6 mm) e sem a faixa de ordem no pé.
  */
 import React from 'react';
-import { SizeOrderStrip } from './worksheet/SizeOrderStrip';
 
 export interface CartaoFisicoProps {
   /** Mantido por compat; não impresso (setor saiu do papel). */
@@ -36,8 +35,8 @@ const RED = '#C00000';
 const MONO = "'Fira Code', monospace";
 const DISPLAY = "'Anton', Impact, sans-serif";
 const SANS = "'Fira Sans', sans-serif";
-/** (210mm − 2mm padding − 4×0,8mm gap) / 5 fileiras, com 0,4 mm de folga. */
-const CARD_HEIGHT = '40.5mm';
+/** FARDO_LAYOUT.cardHmm — (210 − 2×1,7 − 5×1,6) / 6. */
+const CARD_HEIGHT = '33.1mm';
 
 const lbl: React.CSSProperties = {
   fontFamily: MONO, fontSize: 5.5, letterSpacing: '0.12em',
@@ -69,7 +68,8 @@ export function CartaoFisico({
         padding: '1mm 1.2mm',
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.45mm',
+        justifyContent: 'space-between',
+        gap: '0.35mm',
         fontFamily: SANS,
         boxSizing: 'border-box',
         ...printColor,
@@ -201,17 +201,6 @@ export function CartaoFisico({
             </tr>
           </tbody>
         </table>
-      )}
-
-      {sizes.length > 0 && (
-        <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <SizeOrderStrip
-            sizes={sizes}
-            grade={grade}
-            label="Ordem"
-            compact
-          />
-        </div>
       )}
 
       <div style={{

@@ -4,7 +4,6 @@ import { A4_CONTENT_WIDTH_PX, gradeTableFont, floorSafeScale } from './worksheet
 import { thumbUrl } from '@/lib/imageThumb';
 import { TallyBox } from './worksheet/TallyBox';
 import { FichaBlockCard, FichaBlocksHeader, fichaBlockStartNumber } from './worksheet/FichaBlocks';
-import { SizeOrderStrip } from './worksheet/SizeOrderStrip';
 import { fitBesideGrade, thumbRowWidthPx } from './worksheet/sideBySide';
 import { PalmilhaLayerTallies } from './worksheet/PalmilhaLayerTally';
 import { splitFichasIntoBlocks } from './worksheet/fichaBlocks';
@@ -535,15 +534,6 @@ export function PalmilhaUnifiedWorkSheet({
                     )}
                   </tbody>
                 </table>
-                {!card.mixedGrades && card.baseGrade && Object.keys(card.baseGrade).length > 0 && (
-                  <div className="px-1 pt-1">
-                    <SizeOrderStrip
-                      sizes={groupSizes}
-                      grade={card.baseGrade}
-                      label="Ordem da ficha"
-                    />
-                  </div>
-                )}
                 {card.mixedGrades && (
                   <p className="font-mono text-[8px] tracking-wider uppercase px-1 py-0.5" style={{ borderTop: '1px solid #000' }}>
                     * Grades base diferentes entre OPs — total agregado

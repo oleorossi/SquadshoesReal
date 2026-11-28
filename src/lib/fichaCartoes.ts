@@ -7,11 +7,12 @@
  * esta lib só calcula a quebra da OP.
  */
 import { resolveFicha } from '@/components/production/worksheet/fichaSize';
-import { CARTAO_FISICO_PER_PAGE, chunkPages } from '@/lib/cartaoFisico';
+import { chunkPages } from '@/lib/cartaoFisico';
 
 export const FICHA_CARTAO_SETOR_PALMILHA = 'palmilha';
 export const FICHA_CARTAO_CODIGO_PREFIX = 'PM-';
-export const CARTAO_MONTADOR_PER_PAGE = CARTAO_FISICO_PER_PAGE;
+/** Cartão do Montador permanece 15/folha (3×5); o Fardo passou a 18 (3×6). */
+export const CARTAO_MONTADOR_PER_PAGE = 15;
 
 export interface FichaCartaoPlanItem {
   ficha_index: number;

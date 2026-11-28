@@ -31,13 +31,6 @@ describe('CartaoFisico · lotCode', () => {
     const header = container.querySelector('.cartao-fisico > div');
     expect(header?.textContent).toContain('OP-01001');
     expect(header?.textContent).not.toContain('30/62');
-
-    const ordem = container.querySelector('[data-size-order-strip]');
-    expect(ordem).toBeTruthy();
-    expect(ordem?.getAttribute('data-size-order-count')).toBe('12');
-    expect(Array.from(container.querySelectorAll('[data-size-order-cell]')).map((el) => el.textContent)).toEqual([
-      '35', '35', '35', '35', '35', '35',
-      '36', '36', '36', '36', '36', '36',
-    ]);
+    expect(container.querySelector('[data-size-order-strip]')).toBeNull();
   });
 });

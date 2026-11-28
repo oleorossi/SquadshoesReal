@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import PrintWorkSheetsPage, { SECTORS } from '@/components/production/PrintWorkSheetsPage';
 import { normalizePalmilhaPrintSectors } from '@/lib/buildPalmilhaUnifiedGroups';
+import { parsePrintFormatParam } from '@/lib/printWorkSheetsDeepLink';
 import { Card, CardContent } from '@/components/ui/card';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
@@ -108,14 +109,22 @@ export default function PrintWorkSheets() {
   // navegam pra cá em vez do popup legado de fichas por setor (lib removida)
   // — assim TODOS os caminhos de impressão passam pelo modelo v7 (TallyBox
   // em todo setor). Nomes inválidos são descartados; sem param = todos.
+  const deepLinkFormat = useMemo(
+    () => parsePrintFormatParam(searchParams.get('format')),
+    [searchParams],
+  );
   const deepLinkSectors = useMemo(() => {
     const raw = searchParams.get('sectors');
-    if (!raw) return null;
+    if (!raw) {
+      // format=fardo sem sectors = só Palmilha (cartão que acompanha a palmilha física).
+      if (deepLinkFormat === 'fardo') return new Set(['Palmilha']);
+      return null;
+    }
     const valid = new Set<string>([...SECTORS, 'Corte Palmilha', 'Corte Forração', 'Corte Fibra']);
     const list = raw.split(',').map(s => s.trim()).filter(s => valid.has(s));
     if (list.length === 0) return null;
     return new Set(normalizePalmilhaPrintSectors(list));
-  }, [searchParams]);
+  }, [searchParams, deepLinkFormat]);
   const [statusFilter, setStatusFilter] = useState<string>(deepLinkIds.length > 0 ? 'todos' : 'em_fluxo');
   const [pvFilter, setPvFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -266,6 +275,21 @@ export default function PrintWorkSheets() {
         material_variant_id: r.sale_order_items?.material_variant_id ?? null,
       }));
   }, [rows, sel.selectedIds]);
+
+  // ?format=fardo&orderIds= abre a prévia já no Fardo, com os cartões prontos
+  // (sem o controlador escolher formato/OP na tela de seleção).
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (deepLinkFormat !== 'fardo' && deepLinkFormat !== 'montador') return;
+    if (deepLinkIds.length === 0) return;
+    if (isLoading) return;
+    if (selectedOrders.length === 0) return;
+    autoOpenedRef.current = true;
+    setOpenAsCartao(deepLinkFormat === 'fardo');
+    setOpenAsMontador(deepLinkFormat === 'montador');
+    setShowPrintView(true);
+  }, [deepLinkFormat, deepLinkIds, isLoading, selectedOrders.length]);
 
   if (showPrintView) {
     return (

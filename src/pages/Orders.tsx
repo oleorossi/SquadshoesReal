@@ -3,7 +3,7 @@ import { useDebounce } from 'use-debounce';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
-import { Baby, ClipboardText as ClipboardList, Trash as Trash2, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, Printer, Factory, Funnel as Filter, MagnifyingGlass as Search, Calendar, Stack as Layers, X, CaretDown as ChevronDown, Checks as CheckCheck, PencilSimple as Pencil, FileText, Square, CheckSquare, FileXls as FileSpreadsheet, Check, CaretUpDown as ChevronsUpDown, Package, Image as ImageIcon, Plus, CaretUp as ChevronUp, DotsThree as MoreHorizontal, Download, GridFour as LayoutGrid, List, ArrowRight } from '@phosphor-icons/react';
+import { Baby, ClipboardText as ClipboardList, Trash as Trash2, CircleNotch as Loader2, Warning as AlertTriangle, CheckCircle as CheckCircle2, Printer, Factory, Funnel as Filter, MagnifyingGlass as Search, Calendar, Stack as Layers, X, CaretDown as ChevronDown, Checks as CheckCheck, PencilSimple as Pencil, FileText, Square, CheckSquare, FileXls as FileSpreadsheet, Check, CaretUpDown as ChevronsUpDown, Package, Image as ImageIcon, Plus, CaretUp as ChevronUp, DotsThree as MoreHorizontal, Download, GridFour as LayoutGrid, List, ArrowRight, Cards } from '@phosphor-icons/react';
 import { BulkActionsBar, MarqueeOverlay } from '@/components/ui/bulk-actions-bar';
 import { useMarqueeSelection } from '@/hooks/useMarqueeSelection';
 import OrdersKanbanBoard from '@/components/orders/OrdersKanbanBoard';
@@ -59,6 +59,7 @@ import {
   parseOrderCodeList,
 } from '@/lib/orderCodeSearch';
 import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
+import { fardoPrintPath } from '@/lib/printWorkSheetsDeepLink';
 import { HighlightMatch } from '@/components/ui/highlight-match';
 // ExcelJS is imported dynamically in handleExportExcel to avoid large bundle on page load
 
@@ -716,6 +717,12 @@ function getWeekOptions() {
     if (ids.size === 0) return;
     if (!confirmHidden('Imprimir fichas de')) return;
     navigate('/imprimir-fichas?orderIds=' + Array.from(ids).join(','));
+  };
+
+  const handleBulkPrintFardo = (ids: Set<string>) => {
+    if (ids.size === 0) return;
+    if (!confirmHidden('Imprimir cartões do fardo de')) return;
+    navigate(fardoPrintPath(Array.from(ids)));
   };
 
   const handleBulkCancel = (ids: Set<string>) => {
@@ -1789,6 +1796,7 @@ function getWeekOptions() {
         actions={[
           { label: 'Avançar Setor', icon: <ArrowRight className="h-3.5 w-3.5" />, onClick: handleBulkAdvance },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrintWorksheets },
+          { label: 'Cartões do fardo', icon: <Cards className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrintFardo },
           { label: 'Cancelar OPs', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
           { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
         ]}

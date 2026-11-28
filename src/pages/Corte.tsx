@@ -3,7 +3,7 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers, DotsThreeVertical, Package, ClipboardText, Needle, Warning as AlertTriangle, CircleNotch as Loader2 } from '@phosphor-icons/react';
+import { Printer, Funnel as Filter, CheckCircle as CheckCircle2, Stack as Layers, DotsThreeVertical, Package, ClipboardText, Needle, Warning as AlertTriangle, CircleNotch as Loader2, Cards } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,7 @@ import {
 } from '@/lib/orderCodeSearch';
 import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
 import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
+import { fardoPrintPath } from '@/lib/printWorkSheetsDeepLink';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { RefChip } from '@/components/ui/ref-chip';
 import { normalizeSector } from '@/lib/sectors';
@@ -1542,6 +1543,14 @@ if (totalPairsAll !== palmTotal) {
                 navigate(`/imprimir-fichas?orderIds=${ids}&sectors=${encodeURIComponent('Corte Palmilha,Corte Forração,Corte Cabedal')}`);
               }}>
                     <Printer className="h-3.5 w-3.5 mr-2" /> Fichas Operador {sel.count > 0 ? `(${sel.count})` : ''}
+                  </DropdownMenuItem>
+                )}
+                {sel.count > 0 && (
+                  <DropdownMenuItem disabled={sel.count === 0} onClick={() => {
+                if (!confirmSelection('Imprimir cartões do fardo de')) return;
+                navigate(fardoPrintPath(Array.from(sel.selectedIds)));
+              }}>
+                    <Cards className="h-3.5 w-3.5 mr-2" /> Cartões do fardo {sel.count > 0 ? `(${sel.count})` : ''}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
