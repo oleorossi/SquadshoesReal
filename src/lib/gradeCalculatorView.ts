@@ -3,10 +3,20 @@ import { escapeHtml } from '@/lib/htmlUtils';
 
 export const GRADE_PRINT_WINDOW_FEATURES = 'width=1400,height=900';
 
-export function gradePrintDeliveryOptions(model = ''): {
+export type GradePrintLayout = 'sheet' | 'phone';
+
+export function isGradePrintPhoneLayout(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(max-width: 767px)').matches;
+}
+
+export function gradePrintDeliveryOptions(
+  model = '',
+  layout: GradePrintLayout = 'sheet',
+): {
   filename: string;
   title: string;
-  landscape: true;
+  landscape: boolean;
 } {
   const slug = model
     .trim()
@@ -19,7 +29,7 @@ export function gradePrintDeliveryOptions(model = ''): {
   return {
     filename: slug ? `calculadora-grade-${slug}` : 'calculadora-grade',
     title: 'Calculadora Grade',
-    landscape: true,
+    landscape: layout === 'sheet',
   };
 }
 
@@ -75,37 +85,153 @@ export function buildGradeSummaryText(
   ].join('\n');
 }
 
+export function sumGradeRows(rows: GradeCalculation['rows']): GradeCalculation['totals'] {
+  return rows.reduce<GradeCalculation['totals']>((sum, row) => ({
+    needPerSheet: sum.needPerSheet + row.needPerSheet,
+    need: sum.need + row.need,
+    ready: sum.ready + row.ready,
+    used: sum.used + row.used,
+    final: sum.final + row.final,
+    surplus: sum.surplus + row.surplus,
+  }), {
+    needPerSheet: 0,
+    need: 0,
+    ready: 0,
+    used: 0,
+    final: 0,
+    surplus: 0,
+  });
+}
+
+/** Numerações que o operador ainda precisa produzir (a produzir > 0). */
+export function gradePrintVisibleRows(calculation: GradeCalculation): GradeCalculation['rows'] {
+  return calculation.rows.filter((row) => row.final > 0);
+}
+
+/** Numerações ocultas porque a palmilha já pronta cobre toda a necessidade. */
+export function gradePrintCoveredRows(calculation: GradeCalculation): GradeCalculation['rows'] {
+  return calculation.rows.filter((row) => row.final === 0 && row.need > 0);
+}
+
 export function buildGradePrintHtml(
   draft: GradeCalculatorDraft,
   calculation: GradeCalculation,
+  layout: GradePrintLayout = 'sheet',
 ): string {
   const model = draft.model.trim() || 'Não informado';
   const color = draft.color.trim() || 'Não informada';
-  const sizeHeaders = calculation.rows
+  const visibleRows = gradePrintVisibleRows(calculation);
+  const visibleTotals = sumGradeRows(visibleRows);
+  const produceTotal = formatGradeQuantity(visibleTotals.final);
+  const emptyMessage = 'A palmilha já pronta cobre todas as numerações. Nada a produzir.';
+
+  const identification = `
+      <header>
+        <p class="eyebrow">PRODUÇÃO · SOLADOS</p>
+        <h1>Calculadora Grade</h1>
+      </header>
+      <section class="meta">
+        <div><span>Modelo</span><strong>${escapeHtml(model)}</strong></div>
+        <div><span>Cor</span><strong>${escapeHtml(color)}</strong></div>
+        <div><span>Faixa</span><strong>${draft.from}–${draft.to}</strong></div>
+        <div><span>Fichas</span><strong>${calculation.sheetCount}</strong></div>
+      </section>
+      <section class="produce-banner">
+        <span>A produzir</span>
+        <strong>${produceTotal}</strong>
+      </section>`;
+
+  if (layout === 'phone') {
+    const list = visibleRows.length === 0
+      ? `<p class="empty">${emptyMessage}</p>`
+      : `<table class="cut-list">
+        <thead>
+          <tr>
+            <th scope="col">Nº</th>
+            <th scope="col">A cortar</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${visibleRows.map((row) => `
+          <tr>
+            <th scope="row" class="size">${row.size}</th>
+            <td class="qty">${formatGradeQuantity(row.final)}</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total</th>
+            <td class="qty total">${produceTotal}</td>
+          </tr>
+        </tfoot>
+      </table>`;
+
+    return `<!doctype html>
+  <html lang="pt-BR">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Calculadora Grade · ${escapeHtml(model)}</title>
+      <style>
+        @page { size: A4 portrait; margin: 12mm 10mm; }
+        * { box-sizing: border-box; }
+        body { margin: 0; color: #000; background: #fff; font: 16px Arial, Helvetica, sans-serif; }
+        header { border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
+        h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: .02em; }
+        .eyebrow { margin: 0 0 4px; font: bold 10px monospace; letter-spacing: .12em; }
+        .meta { display: grid; grid-template-columns: 1fr 1fr; border: 2px solid #000; }
+        .meta div { padding: 10px 12px; border-right: 1px solid #000; border-bottom: 1px solid #000; }
+        .meta div:nth-child(2n) { border-right: 0; }
+        .meta div:nth-last-child(-n+2) { border-bottom: 0; }
+        .meta span { display: block; color: #444; font-size: 10px; font-weight: bold; letter-spacing: .08em; text-transform: uppercase; }
+        .meta strong { display: block; font-size: 20px; margin-top: 3px; word-break: break-word; }
+        .produce-banner { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 12px 0 16px; padding: 14px 16px; border: 2px solid #000; background: #c8c8c8; }
+        .produce-banner span { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+        .produce-banner strong { font-size: 48px; line-height: 1; font-variant-numeric: tabular-nums; }
+        .cut-list { border-collapse: collapse; width: 100%; }
+        .cut-list th, .cut-list td { border: 2px solid #000; padding: 14px 16px; vertical-align: middle; }
+        .cut-list thead th { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; background: #f2f2f2; }
+        .cut-list thead th:last-child, .cut-list td { text-align: right; }
+        .cut-list th.size { text-align: left; font-size: 36px; font-weight: 800; }
+        .cut-list td.qty { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; }
+        .cut-list tfoot th, .cut-list tfoot td { background: #c8c8c8; }
+        .cut-list tfoot th { text-align: left; font-size: 16px; letter-spacing: .08em; text-transform: uppercase; }
+        .empty { border: 2px solid #000; padding: 18px 14px; font-size: 18px; font-weight: 700; text-align: center; }
+        footer { color: #555; font-size: 9px; margin-top: 16px; text-align: right; }
+      </style>
+    </head>
+    <body>
+      ${identification}
+      ${list}
+      <footer>Gerado no Squad Shoes</footer>
+    </body>
+  </html>`;
+  }
+
+  const sizeHeaders = visibleRows
     .map((row) => `<th scope="col" class="size">${row.size}</th>`)
     .join('');
-
-  const metricRow = (
-    label: string,
-    className: string,
-    pick: (row: GradeCalculation['rows'][number]) => number,
-    total: number,
-    emphasizeSurplus = false,
-  ) => {
-    const cells = calculation.rows
-      .map((row) => {
-        const value = pick(row);
-        const extra = emphasizeSurplus && value > 0 ? ' class="has-surplus"' : '';
-        return `<td${extra}>${formatGradeQuantity(value)}</td>`;
-      })
-      .join('');
-    return `
-      <tr class="${className}">
-        <th scope="row">${label}</th>
-        ${cells}
-        <td class="total">${formatGradeQuantity(total)}</td>
-      </tr>`;
-  };
+  const qtyCells = visibleRows
+    .map((row) => `<td>${formatGradeQuantity(row.final)}</td>`)
+    .join('');
+  const table = visibleRows.length === 0
+    ? `<p class="empty">${emptyMessage}</p>`
+    : `<table>
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            ${sizeHeaders}
+            <th scope="col" class="total">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="produce">
+            <th scope="row">A produzir</th>
+            ${qtyCells}
+            <td class="total">${produceTotal}</td>
+          </tr>
+        </tbody>
+      </table>`;
 
   return `<!doctype html>
   <html lang="pt-BR">
@@ -120,64 +246,31 @@ export function buildGradePrintHtml(
         header { border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 10px; }
         h1 { margin: 0; font-size: 26px; text-transform: uppercase; letter-spacing: .02em; }
         .eyebrow { margin: 0 0 4px; font: bold 10px monospace; letter-spacing: .12em; }
-        .meta, .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: 10px 0; border: 2px solid #000; }
-        .meta div, .summary div { padding: 8px 10px; border-right: 1px solid #000; }
-        .meta div:last-child, .summary div:last-child { border-right: 0; }
-        .meta span, .summary span { display: block; color: #444; font-size: 9px; font-weight: bold; letter-spacing: .08em; text-transform: uppercase; }
-        .meta strong, .summary strong { display: block; font-size: 18px; margin-top: 3px; }
-        .summary { margin-top: 0; margin-bottom: 12px; }
-        .summary .produce { background: #d0d0d0; }
-        .summary .produce strong { font-size: 22px; }
+        .meta { display: grid; grid-template-columns: repeat(4, 1fr); border: 2px solid #000; margin: 10px 0; }
+        .meta div { padding: 8px 10px; border-right: 1px solid #000; }
+        .meta div:last-child { border-right: 0; }
+        .meta span { display: block; color: #444; font-size: 9px; font-weight: bold; letter-spacing: .08em; text-transform: uppercase; }
+        .meta strong { display: block; font-size: 18px; margin-top: 3px; }
+        .produce-banner { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 0 0 14px; padding: 10px 14px; border: 2px solid #000; background: #c8c8c8; }
+        .produce-banner span { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+        .produce-banner strong { font-size: 36px; line-height: 1; font-variant-numeric: tabular-nums; }
         table { border-collapse: collapse; width: 100%; }
         th, td { border: 1.5px solid #000; padding: 8px 6px; text-align: center; vertical-align: middle; }
         thead th { background: #f2f2f2; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
         thead th.size { font-size: 22px; font-weight: 800; letter-spacing: 0; }
         thead th.total, td.total { background: #d9d9d9; font-weight: 800; }
         thead th.total { font-size: 12px; }
-        tbody th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; width: 132px; background: #f7f7f7; padding-left: 10px; }
-        tbody td { font-size: 16px; font-variant-numeric: tabular-nums; font-family: Arial, Helvetica, sans-serif; }
-        tbody tr:nth-child(odd) td { background: #fafafa; }
-        tbody td:nth-child(even) { background: #f0f0f0; }
+        tbody th { text-align: left; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; width: 132px; background: #c8c8c8; padding-left: 10px; }
+        tbody td { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
         tr.produce th, tr.produce td { background: #c8c8c8 !important; font-weight: 800; }
-        tr.produce td { font-size: 24px; padding: 12px 6px; }
-        tr.produce th { font-size: 13px; }
-        tr.surplus td.has-surplus { background: #e8e8e8 !important; font-weight: 700; }
+        tr.produce td { padding: 16px 6px; }
+        .empty { border: 2px solid #000; padding: 18px 14px; font-size: 16px; font-weight: 700; text-align: center; }
         footer { color: #555; font-size: 9px; margin-top: 10px; text-align: right; }
       </style>
     </head>
     <body>
-      <header>
-        <p class="eyebrow">PRODUÇÃO · SOLADOS</p>
-        <h1>Calculadora Grade</h1>
-      </header>
-      <section class="meta">
-        <div><span>Modelo</span><strong>${escapeHtml(model)}</strong></div>
-        <div><span>Cor</span><strong>${escapeHtml(color)}</strong></div>
-        <div><span>Faixa</span><strong>${draft.from}–${draft.to}</strong></div>
-        <div><span>Fichas</span><strong>${calculation.sheetCount}</strong></div>
-      </section>
-      <section class="summary">
-        <div><span>Necessidade</span><strong>${formatGradeQuantity(calculation.totals.need)}</strong></div>
-        <div><span>Aproveitado</span><strong>${formatGradeQuantity(calculation.totals.used)}</strong></div>
-        <div><span>Sobra</span><strong>${formatGradeQuantity(calculation.totals.surplus)}</strong></div>
-        <div class="produce"><span>A produzir</span><strong>${formatGradeQuantity(calculation.totals.final)}</strong></div>
-      </section>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col"></th>
-            ${sizeHeaders}
-            <th scope="col" class="total">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${metricRow('Por ficha', 'per-sheet', (row) => row.needPerSheet, calculation.totals.needPerSheet)}
-          ${metricRow('Necessidade', 'need', (row) => row.need, calculation.totals.need)}
-          ${metricRow('Já pronta', 'ready', (row) => row.ready, calculation.totals.ready)}
-          ${metricRow('A produzir', 'produce', (row) => row.final, calculation.totals.final)}
-          ${metricRow('Sobra', 'surplus', (row) => row.surplus, calculation.totals.surplus, true)}
-        </tbody>
-      </table>
+      ${identification}
+      ${table}
       <footer>Gerado no Squad Shoes</footer>
     </body>
   </html>`;
