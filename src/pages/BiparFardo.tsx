@@ -5,7 +5,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { searchMatchesAllTerms } from '@/lib/searchUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { formatFardoCounter, normalizeFichaCartaoCodigo } from '@/lib/etiquetaFardoElgin';
+import { fardoLabelSizes, formatFardoCounter, normalizeFichaCartaoCodigo, resolveFardoLabelGrade } from '@/lib/etiquetaFardoElgin';
 
 export interface BiparFardoResult {
   id: string;
@@ -55,9 +55,6 @@ export interface BiparFardoViewProps {
   linking?: boolean;
 }
 
-function gradeSizes(grade: Record<string, number>): string[] {
-  return Object.keys(grade).sort((a, b) => Number(a) - Number(b));
-}
 
 export function BiparFardoView({
   codeInput, onCodeInput, onSubmitCode, lookingUp, scanning, onStartScan, onStopScan,
@@ -66,7 +63,7 @@ export function BiparFardoView({
 }: BiparFardoViewProps) {
   const hidRef = useRef<HTMLInputElement | null>(null);
   const counter = result ? formatFardoCounter(result.ficha_index, result.total_fichas) : null;
-  const sizes = result ? (result.sizes.length ? result.sizes : gradeSizes(result.grade)) : [];
+  const sizes = result ? (result.sizes.length ? result.sizes : fardoLabelSizes(result.grade)) : [];
 
   useEffect(() => {
     if (!scanning && !picking) hidRef.current?.focus();
@@ -397,7 +394,7 @@ async function lookupCartao(codigo: string): Promise<BiparFardoResult | null> {
   let op = row.op_number || '';
   let modelo = '';
   let cor = '';
-  let grade = row.grade_json && Object.keys(row.grade_json).length > 0 ? row.grade_json : {};
+  const grade = resolveFardoLabelGrade(row.grade_json);
   let montadorNome: string | null = null;
 
   const { data: order } = await (supabase as unknown as {
@@ -408,14 +405,11 @@ async function lookupCartao(codigo: string): Promise<BiparFardoResult | null> {
         };
       };
     };
-  }).from('orders').select('order_number, color, grade, sale_order_id, reference_id').eq('id', row.order_id).maybeSingle();
+  }).from('orders').select('order_number, color, sale_order_id, reference_id').eq('id', row.order_id).maybeSingle();
 
   if (order) {
     op = op || String(order.order_number || '');
     cor = String(order.color || '');
-    if ((!grade || Object.keys(grade).length === 0) && order.grade && typeof order.grade === 'object') {
-      grade = order.grade as Record<string, number>;
-    }
     if (order.sale_order_id) {
       const { data: so } = await (supabase as unknown as {
         from: (t: string) => {
@@ -466,7 +460,7 @@ async function lookupCartao(codigo: string): Promise<BiparFardoResult | null> {
     modelo,
     cor,
     grade,
-    sizes: gradeSizes(grade),
+    sizes: fardoLabelSizes(grade),
     montadorId: row.montador_id,
     montadorNome,
   };

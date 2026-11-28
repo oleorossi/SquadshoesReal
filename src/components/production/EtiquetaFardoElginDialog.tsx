@@ -15,6 +15,8 @@ import {
   elginFardoZplFileName,
   formatFardoCounter,
   formatReprintStamp,
+  fardoLabelSizes,
+  resolveFardoLabelGrade,
   selectFardoLabels,
   type FardoElginLabel,
 } from '@/lib/etiquetaFardoElgin';
@@ -39,10 +41,6 @@ interface Props {
 
 const ZOOM = 2;
 
-function sizesFromGrade(grade: Record<string, number> | null | undefined): string[] {
-  return Object.keys(grade || {}).sort((a, b) => Number(a) - Number(b));
-}
-
 function toLabels(
   rows: FichaCartaoRow[],
   orders: EtiquetaFardoElginOrderMeta[],
@@ -51,9 +49,7 @@ function toLabels(
   const meta = new Map(orders.map((o) => [o.id, o]));
   return rows.map((row) => {
     const order = meta.get(row.order_id);
-    const grade = (row.grade_json && Object.keys(row.grade_json).length > 0)
-      ? row.grade_json
-      : (order?.grade || {});
+    const grade = resolveFardoLabelGrade(row.grade_json);
     return {
       codigo: row.codigo,
       ficha_index: row.ficha_index,
@@ -64,7 +60,7 @@ function toLabels(
       op: row.op_number || order?.op_number || '',
       modelo: order?.reference_code || order?.reference_name || '',
       cor: order?.color || '',
-      sizes: sizesFromGrade(grade),
+      sizes: fardoLabelSizes(grade),
       grade,
       isReprint,
       reprintAt: isReprint ? new Date() : undefined,
@@ -111,7 +107,7 @@ function drawPair(canvas: HTMLCanvasElement, label: FardoElginLabel) {
   ctx.fillText(`${label.op}  ${label.pares} PAR`, ELGIN_FARDO_LABEL_W_DOTS / 2, 134);
   ctx.textAlign = 'left';
 
-  const sizes = label.sizes.length ? label.sizes : sizesFromGrade(label.grade);
+  const sizes = label.sizes.length ? label.sizes : fardoLabelSizes(label.grade);
   const cols = [...sizes, 'T'];
   const vals = [...sizes.map((s) => String(label.grade[s] ?? 0)), String(label.pares)];
   const cell = Math.floor((ELGIN_FARDO_LABEL_W_DOTS - 20) / Math.max(1, cols.length));

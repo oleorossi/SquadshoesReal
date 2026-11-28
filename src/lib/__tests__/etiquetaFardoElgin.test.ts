@@ -7,10 +7,12 @@ import {
   buildFardoBatchZpl,
   buildFardoPairZpl,
   elginFardoZplFileName,
+  fardoLabelSizes,
   formatFardoCounter,
   formatReprintStamp,
   normalizeFichaCartaoCodigo,
   parseFardoSelection,
+  resolveFardoLabelGrade,
   selectFardoLabels,
   type FardoElginLabel,
 } from '@/lib/etiquetaFardoElgin';
@@ -27,6 +29,42 @@ const sample: FardoElginLabel = {
   sizes: ['34', '35', '36', '37', '38', '39', '40'],
   grade: { '34': 1, '35': 1, '36': 2, '37': 3, '38': 2, '39': 2, '40': 1 },
 };
+
+describe('resolveFardoLabelGrade', () => {
+  const opGrade = { '35': 10, '36': 30, '37': 40, '38': 20, '39': 20 };
+
+  it('usa a curva-base gravada no cartão da ficha cheia', () => {
+    const perFicha = { '35': 1, '36': 3, '37': 4, '38': 2, '39': 2 };
+    expect(resolveFardoLabelGrade(perFicha)).toEqual(perFicha);
+    expect(fardoLabelSizes(perFicha)).toEqual(['35', '36', '37', '38', '39']);
+  });
+
+  it('não cai na grade da OP quando a sobra gravou {}', () => {
+    expect(resolveFardoLabelGrade({})).toEqual({});
+    expect(resolveFardoLabelGrade(null)).toEqual({});
+    expect(fardoLabelSizes(resolveFardoLabelGrade({}))).toEqual([]);
+    expect(Object.values(opGrade).reduce((s, n) => s + n, 0)).toBe(120);
+  });
+
+  it('etiqueta da sobra só emite a coluna T (pares do maço), sem numeração da OP', () => {
+    const sobra: FardoElginLabel = {
+      ...sample,
+      codigo: 'PM-000011',
+      ficha_index: 11,
+      total_fichas: 11,
+      pares: 6,
+      is_sobra: true,
+      sizes: fardoLabelSizes(resolveFardoLabelGrade({})),
+      grade: resolveFardoLabelGrade({}),
+    };
+    const zpl = buildFardoPairZpl(sobra);
+    expect(zpl).toContain('^FDT^FS');
+    expect(zpl).toContain('^FD6^FS');
+    expect(zpl).not.toContain('^FD10^FS');
+    expect(zpl).not.toContain('^FD30^FS');
+    expect(zpl).not.toContain('^FD40^FS');
+  });
+});
 
 describe('parseFardoSelection', () => {
   it('aceita lista, faixa e mistura no formato 1,5,10:15', () => {

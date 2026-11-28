@@ -119,6 +119,31 @@ export function normalizeFichaCartaoCodigo(raw: string): string | null {
   return null;
 }
 
+/**
+ * Grade do fardo na etiqueta / bipagem.
+ *
+ * `plan_ficha_cartoes` grava `{}` na sobra e quando não há curva-base
+ * confiável (pedido antigo que não fecha 12/15/18). Isso é de propósito:
+ * não existe numeração por maço. Cair na grade da OP mostraria o pedido
+ * inteiro (ex. 120 pares) num fardo de 6 — o montador monta o tamanho
+ * errado. Sem curva, a arte fica só com o total de pares.
+ */
+export function resolveFardoLabelGrade(
+  gradeJson: Record<string, number> | null | undefined,
+): Record<string, number> {
+  if (!gradeJson || typeof gradeJson !== 'object') return {};
+  const out: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(gradeJson)) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) out[key] = n;
+  }
+  return out;
+}
+
+export function fardoLabelSizes(grade: Record<string, number> | null | undefined): string[] {
+  return Object.keys(grade || {}).sort((a, b) => Number(a) - Number(b));
+}
+
 export function elginFardoZplFileName(pvOrOp: string): string {
   const slug = String(pvOrOp || 'OP')
     .trim()
