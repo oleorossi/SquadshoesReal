@@ -59,7 +59,7 @@ import {
   parseOrderCodeList,
 } from '@/lib/orderCodeSearch';
 import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
-import { fardoPrintPath } from '@/lib/printWorkSheetsDeepLink';
+import { caixaPrintPath, fardoPrintPath } from '@/lib/printWorkSheetsDeepLink';
 import { HighlightMatch } from '@/components/ui/highlight-match';
 // ExcelJS is imported dynamically in handleExportExcel to avoid large bundle on page load
 
@@ -723,6 +723,12 @@ function getWeekOptions() {
     if (ids.size === 0) return;
     if (!confirmHidden('Imprimir cartões do fardo de')) return;
     navigate(fardoPrintPath(Array.from(ids)));
+  };
+
+  const handleBulkPrintCaixa = (ids: Set<string>) => {
+    if (ids.size === 0) return;
+    if (!confirmHidden('Imprimir cartões da caixa de')) return;
+    navigate(caixaPrintPath(Array.from(ids)));
   };
 
   const handleBulkCancel = (ids: Set<string>) => {
@@ -1797,6 +1803,7 @@ function getWeekOptions() {
           { label: 'Avançar Setor', icon: <ArrowRight className="h-3.5 w-3.5" />, onClick: handleBulkAdvance },
           { label: 'Imprimir Fichas', icon: <Printer className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrintWorksheets },
           { label: 'Cartões do fardo', icon: <Cards className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrintFardo },
+          { label: 'Cartões da caixa', icon: <Package className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkPrintCaixa },
           { label: 'Cancelar OPs', icon: <X className="h-3.5 w-3.5" />, variant: 'destructive', onClick: handleBulkCancel },
           { label: 'Exportar', icon: <Download className="h-3.5 w-3.5" />, variant: 'outline', onClick: handleBulkExport },
         ]}

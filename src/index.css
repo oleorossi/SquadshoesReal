@@ -1895,7 +1895,8 @@ a:focus-visible {
    do Cabedal (t148u): rótulos cinza, zebra clara, print-color-adjust.
    ───────────────────────────────────────────────────────────── */
 .ficha-viz-palmilha,
-.ficha-viz-fardo {
+.ficha-viz-fardo,
+.ficha-viz-caixa {
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }

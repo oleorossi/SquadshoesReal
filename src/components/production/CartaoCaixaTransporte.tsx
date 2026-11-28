@@ -2,11 +2,13 @@
  * Cartão de caixa de transporte — acompanha a caixa na saída do setor.
  *
  * Spec: specs/cartao-caixa-transporte.md
- * Envelope: A4 paisagem, **6/folha** (3×2, ~96 × ~100 mm).
- * Conteúdo: OP · PV (destaque) · cliente · (destino opcional) · identidade · grade · fichas · pares · k/N do maço.
- * Caixa Palmilha: sem Origem/Destino.
+ * Envelope: A4 paisagem, 6/folha (3×2, 96 × 102,5 mm) com linhas de recorte.
+ * Conteúdo: OP · PV (destaque) · cliente · (destino opcional) · identidade ·
+ * grade · fichas na caixa · pares · k/N do maço.
+ * Caixa Palmilha: sem Origem/Destino; 15 fichas por caixa.
  */
 import React from 'react';
+import { CAIXA_LAYOUT } from '@/lib/cartaoCaixaTransporte';
 
 export interface CartaoCaixaTransporteProps {
   /** Origem (setor emissor). Vazio = não imprime bloco Origem. */
@@ -35,10 +37,12 @@ const RED = '#C00000';
 const MONO = "'Fira Code', monospace";
 const DISPLAY = "'Anton', Impact, sans-serif";
 const SANS = "'Fira Sans', sans-serif";
+const CARD_WIDTH = `${CAIXA_LAYOUT.cardWmm}mm`;
+const CARD_HEIGHT = `${CAIXA_LAYOUT.cardHmm}mm`;
 
 const lbl: React.CSSProperties = {
-  fontFamily: MONO, fontSize: 6, letterSpacing: '0.12em',
-  textTransform: 'uppercase', color: '#555', display: 'block', lineHeight: 1.15,
+  fontFamily: MONO, fontSize: 5.5, letterSpacing: '0.12em',
+  textTransform: 'uppercase', color: '#3a3a3a', display: 'block', lineHeight: 1.15,
 };
 
 export function CartaoCaixaTransporte({
@@ -54,29 +58,35 @@ export function CartaoCaixaTransporte({
   const pv = String(pvLabel || '').trim();
   const client = String(clientName || '').trim();
   const gradeTot = Object.values(grade).reduce((a, b) => a + (Number(b) || 0), 0);
+  const printColor = {
+    WebkitPrintColorAdjust: 'exact',
+    printColorAdjust: 'exact',
+  } as React.CSSProperties;
 
   return (
     <div
-      className="caixa-transporte-card"
+      className="caixa-transporte-card ficha-viz-caixa"
       style={{
-        width: '96mm',
-        flex: '0 0 96mm',
-        minHeight: '98mm',
+        width: CARD_WIDTH,
+        height: CARD_HEIGHT,
+        minHeight: CARD_HEIGHT,
         background: '#fff',
         color: '#000',
-        border: '1.5px solid #000',
-        padding: '2mm',
+        border: '1px solid #000',
+        padding: '2mm 2.2mm',
         display: 'flex',
         flexDirection: 'column',
-        gap: '1.2mm',
+        gap: '1.4mm',
         fontFamily: SANS,
         boxSizing: 'border-box',
+        ...printColor,
       }}
     >
       {/* OP · cliente · PV destaque */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-        borderBottom: '1.5px solid #000', paddingBottom: '1mm', gap: '2mm',
+        borderBottom: '1px solid #000', paddingBottom: '1mm', gap: '2mm',
+        flex: 'none',
       }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           {showOrigem && (
@@ -84,17 +94,17 @@ export function CartaoCaixaTransporte({
               <span style={lbl}>Origem</span>
               <div style={{
                 fontFamily: DISPLAY, fontSize: 12, lineHeight: 1,
-                textTransform: 'uppercase', marginBottom: '0.5mm',
+                textTransform: 'uppercase', marginBottom: '0.4mm',
               }}>
                 {sectorName}
               </div>
             </>
           )}
-          <div style={{ fontFamily: DISPLAY, fontSize: 13, lineHeight: 1 }}>{opNumber}</div>
+          <div style={{ fontFamily: DISPLAY, fontSize: 14, lineHeight: 1 }}>{opNumber}</div>
           {client && (
             <div style={{
-              fontFamily: SANS, fontSize: 8.5, fontWeight: 700, lineHeight: 1.15,
-              textTransform: 'uppercase', marginTop: '0.5mm',
+              fontFamily: SANS, fontSize: 8, fontWeight: 700, lineHeight: 1.15,
+              textTransform: 'uppercase', marginTop: '0.4mm',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {client}
@@ -105,8 +115,9 @@ export function CartaoCaixaTransporte({
           <div style={{ textAlign: 'right', flex: 'none' }}>
             <span style={lbl}>Pedido</span>
             <div style={{
-              fontFamily: DISPLAY, fontSize: 18, lineHeight: 0.95, color: RED,
+              fontFamily: DISPLAY, fontSize: 20, lineHeight: 0.95, color: RED,
               textTransform: 'uppercase',
+              ...printColor,
             }}>
               {pv}
             </div>
@@ -115,37 +126,43 @@ export function CartaoCaixaTransporte({
       </div>
 
       {showDestino && (
-        <div style={{ borderBottom: '1px solid #000', paddingBottom: '0.8mm' }}>
+        <div style={{
+          borderBottom: '1px solid #000', paddingBottom: '0.8mm', flex: 'none',
+        }}>
           <span style={lbl}>Destino</span>
           <div style={{
-            fontFamily: DISPLAY, fontSize: 18, lineHeight: 0.95, color: RED,
+            fontFamily: DISPLAY, fontSize: 16, lineHeight: 0.95, color: RED,
             textTransform: 'uppercase',
+            ...printColor,
           }}>
             {destinoLabel}
           </div>
         </div>
       )}
 
-      {/* Identidade + fichas */}
+      {/* Identidade + fichas na caixa */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '2mm',
+        flex: 'none',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5mm', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.6mm', minWidth: 0 }}>
           {imageUrl ? (
             <img
               src={imageUrl}
               alt=""
               style={{
-                width: '9mm', height: '9mm', flex: 'none', objectFit: 'cover',
+                width: '14mm', height: '14mm', flex: 'none', objectFit: 'cover',
                 border: '1px solid #000', background: '#F2F0EB', display: 'block',
+                ...printColor,
               }}
             />
           ) : null}
           <div style={{ minWidth: 0 }}>
             <div style={{
-              fontFamily: DISPLAY, fontSize: 15, lineHeight: 0.95, color: RED,
+              fontFamily: DISPLAY, fontSize: 16, lineHeight: 0.95, color: RED,
               textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
+              ...printColor,
             }}>
               {title}
             </div>
@@ -161,70 +178,81 @@ export function CartaoCaixaTransporte({
         </div>
 
         <div style={{ textAlign: 'right', flex: 'none' }}>
-          <span style={lbl}>{parcial ? 'Fichas (parcial)' : 'Fichas'}</span>
+          <span style={lbl}>{parcial ? 'Fichas · parcial' : 'Fichas na caixa'}</span>
           <div style={{
-            fontFamily: DISPLAY, fontSize: 26, lineHeight: 0.9,
+            fontFamily: DISPLAY, fontSize: 28, lineHeight: 0.9,
             color: parcial ? RED : '#000',
+            ...printColor,
           }}>
             {fichasLabel}
           </div>
         </div>
       </div>
 
-      {/* Grade — preenche o corpo */}
+      {/* Grade da curva do corrugado — preenche o corpo da folha */}
       {sizes.length > 0 && (
-        <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', flex: 1 }}>
-          <thead>
-            <tr>
-              {sizes.map((s) => (
-                <th key={s} style={{
+        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+          <table style={{
+            borderCollapse: 'collapse', width: '100%', height: '100%',
+            tableLayout: 'fixed',
+          }}>
+            <thead>
+              <tr>
+                {sizes.map((s) => (
+                  <th key={s} style={{
+                    border: '1px solid #000', textAlign: 'center', fontFamily: MONO,
+                    fontSize: 7, fontWeight: 700, padding: '0.6mm 0',
+                    background: '#efeee9', height: '7mm',
+                    ...printColor,
+                  }}>{s}</th>
+                ))}
+                <th style={{
                   border: '1px solid #000', textAlign: 'center', fontFamily: MONO,
-                  fontSize: 8, fontWeight: 700, padding: '0.6mm 0',
-                }}>{s}</th>
-              ))}
-              <th style={{
-                border: '1px solid #000', textAlign: 'center', fontFamily: MONO,
-                fontSize: 8, fontWeight: 700, padding: '0.6mm 0',
-                background: '#000', color: '#fff',
-                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
-              } as React.CSSProperties}>TOT</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              {sizes.map((s) => (
-                <td key={s} style={{
+                  fontSize: 7, fontWeight: 700, padding: '0.6mm 0',
+                  background: '#000', color: '#fff', height: '7mm',
+                  ...printColor,
+                }}>TOT</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                {sizes.map((s) => (
+                  <td key={s} style={{
+                    border: '1px solid #000', textAlign: 'center', fontFamily: MONO,
+                    fontSize: 16, fontWeight: 700, padding: '1mm 0',
+                    fontVariantNumeric: 'tabular-nums', height: '100%',
+                    verticalAlign: 'middle',
+                  }}>{grade[s] || 0}</td>
+                ))}
+                <td style={{
                   border: '1px solid #000', textAlign: 'center', fontFamily: MONO,
-                  fontSize: 12, fontWeight: 700, padding: '1mm 0',
-                  fontVariantNumeric: 'tabular-nums',
-                }}>{grade[s] || 0}</td>
-              ))}
-              <td style={{
-                border: '1px solid #000', textAlign: 'center', fontFamily: MONO,
-                fontSize: 12, fontWeight: 700, padding: '1mm 0',
-                fontVariantNumeric: 'tabular-nums',
-                background: '#000', color: '#fff',
-                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
-              } as React.CSSProperties}>
-                {gradeTot.toLocaleString('pt-BR')}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                  fontSize: 16, fontWeight: 700, padding: '1mm 0',
+                  fontVariantNumeric: 'tabular-nums', height: '100%',
+                  verticalAlign: 'middle',
+                  background: '#000', color: '#fff',
+                  ...printColor,
+                }}>
+                  {gradeTot.toLocaleString('pt-BR')}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       )}
 
       <div style={{
-        borderTop: '1.5px solid #000', paddingTop: '1mm',
+        borderTop: '1px solid #000', paddingTop: '1mm',
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '2mm',
+        flex: 'none',
       }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '1.5mm' }}>
-          <span style={{ fontFamily: DISPLAY, fontSize: 20, lineHeight: 1 }}>
+          <span style={{ fontFamily: DISPLAY, fontSize: 22, lineHeight: 1 }}>
             {totalPairs.toLocaleString('pt-BR')}
           </span>
           <span style={{ ...lbl, fontSize: 6.5 }}>pares</span>
         </div>
         {lotCode && (
-          <span style={{ fontFamily: DISPLAY, fontSize: 16, lineHeight: 1 }}>
+          <span style={{ fontFamily: DISPLAY, fontSize: 18, lineHeight: 1 }}>
             {lotCode}
           </span>
         )}

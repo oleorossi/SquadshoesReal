@@ -13,6 +13,7 @@ describe('Cartões do fardo · geração automática (contrato)', () => {
   const corte = readFileSync(resolve(root, 'pages/Corte.tsx'), 'utf8');
   const orders = readFileSync(resolve(root, 'pages/Orders.tsx'), 'utf8');
   const deepLink = readFileSync(resolve(root, 'lib/printWorkSheetsDeepLink.ts'), 'utf8');
+  // também cobre o cartão da caixa (15 fichas de palmilha)
 
   it('entende ?format=fardo e abre a prévia sozinho', () => {
     expect(printRoute).toMatch(/parsePrintFormatParam/);
@@ -36,5 +37,39 @@ describe('Cartões do fardo · geração automática (contrato)', () => {
     expect(printPage).toMatch(/setFormatFardoPalmilha/);
     expect(printPage).toMatch(/includeFardoAppendix/);
     expect(printPage).toMatch(/FardoPage/);
+  });
+});
+
+describe('Cartões da caixa · geração automática (contrato)', () => {
+  const root = resolve(__dirname, '../../..');
+  const printPage = readFileSync(resolve(__dirname, '../PrintWorkSheetsPage.tsx'), 'utf8');
+  const printRoute = readFileSync(resolve(root, 'pages/PrintWorkSheets.tsx'), 'utf8');
+  const corte = readFileSync(resolve(root, 'pages/Corte.tsx'), 'utf8');
+  const orders = readFileSync(resolve(root, 'pages/Orders.tsx'), 'utf8');
+  const deepLink = readFileSync(resolve(root, 'lib/printWorkSheetsDeepLink.ts'), 'utf8');
+  const config = readFileSync(resolve(root, 'lib/caixaTransporteConfig.ts'), 'utf8');
+
+  it('Palmilha agrupa 15 fichas por caixa', () => {
+    expect(config).toMatch(/fichasPorCaixa:\s*15/);
+  });
+
+  it('entende ?format=caixa e abre a prévia sozinho', () => {
+    expect(printRoute).toMatch(/setOpenAsCaixa\(deepLinkFormat === 'caixa'\)/);
+    expect(deepLink).toMatch(/format=caixa/);
+    expect(deepLink).toMatch(/caixaPrintPath/);
+  });
+
+  it('oferece atalho Cartões da caixa no Corte e nas OPs', () => {
+    expect(corte).toMatch(/caixaPrintPath/);
+    expect(corte).toMatch(/Cartões da caixa/);
+    expect(orders).toMatch(/caixaPrintPath/);
+    expect(orders).toMatch(/Cartões da caixa/);
+  });
+
+  it('na ficha A4 inclui prévia dos cartões da caixa e o botão direto', () => {
+    expect(printPage).toMatch(/Incluir cartões da caixa/);
+    expect(printPage).toMatch(/Imprimir cartões da caixa/);
+    expect(printPage).toMatch(/includeCaixaAppendix/);
+    expect(printPage).toMatch(/CaixaPage/);
   });
 });

@@ -39,7 +39,7 @@ import {
 } from '@/lib/orderCodeSearch';
 import { matchesDeliveryWeek } from '@/lib/deliveryWeekOptions';
 import { confirmIfHiddenSelection } from '@/lib/confirmHiddenSelection';
-import { fardoPrintPath } from '@/lib/printWorkSheetsDeepLink';
+import { caixaPrintPath, fardoPrintPath } from '@/lib/printWorkSheetsDeepLink';
 import { TableSkeleton } from '@/components/layout/PageSkeleton';
 import { RefChip } from '@/components/ui/ref-chip';
 import { normalizeSector } from '@/lib/sectors';
@@ -1551,6 +1551,14 @@ if (totalPairsAll !== palmTotal) {
                 navigate(fardoPrintPath(Array.from(sel.selectedIds)));
               }}>
                     <Cards className="h-3.5 w-3.5 mr-2" /> Cartões do fardo {sel.count > 0 ? `(${sel.count})` : ''}
+                  </DropdownMenuItem>
+                )}
+                {sel.count > 0 && (
+                  <DropdownMenuItem disabled={sel.count === 0} onClick={() => {
+                if (!confirmSelection('Imprimir cartões da caixa de')) return;
+                navigate(caixaPrintPath(Array.from(sel.selectedIds)));
+              }}>
+                    <Package className="h-3.5 w-3.5 mr-2" /> Cartões da caixa {sel.count > 0 ? `(${sel.count})` : ''}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>

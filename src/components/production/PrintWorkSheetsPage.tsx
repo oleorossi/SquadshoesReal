@@ -7,13 +7,13 @@ import { toast } from 'sonner';
 import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle, QrCode } from '@phosphor-icons/react';
+import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle, QrCode, Package } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { PalmilhaUnifiedWorkSheet } from '@/components/production/PalmilhaUnifiedWorkSheet';
 import { FardoPage } from '@/components/production/FardoPage';
+import { CaixaPage } from '@/components/production/CaixaPage';
 import { CartaoMontador } from '@/components/production/CartaoMontador';
-import { CartaoCaixaTransporte } from '@/components/production/CartaoCaixaTransporte';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import { listAviamentoHeroEligibleGroups } from '@/components/production/worksheet/aviamentoHeroPhoto';
 import {
@@ -300,6 +300,46 @@ const fardoAppendixStyles = `
  * CSS do modo CAIXA DE TRANSPORTE — 6 cartões por A4 paisagem (3×2).
  * Mesmo padrão WYSIWYG do cartão físico (preview = print).
  */
+
+/** Layout compartilhado da folha de caixa (prévia e print). */
+const caixaPageLayoutStyles = `
+  .caixa-page--sheet {
+    display: grid;
+    grid-template-columns: repeat(3, 96mm);
+    grid-auto-rows: 102.5mm;
+    justify-content: start;
+    align-content: start;
+    column-gap: 1.6mm;
+    row-gap: 1.6mm;
+    padding: 1.7mm 2.9mm;
+    width: 297mm;
+    height: 210mm;
+    min-height: 210mm;
+    max-height: 210mm;
+    box-sizing: border-box;
+    background: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .caixa-page--sheet > .caixa-transporte-card {
+    position: relative;
+    z-index: 1;
+  }
+  .caixa-cut-guides {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .caixa-appendix {
+    width: 297mm;
+    margin: 10mm auto 0;
+    background: #fff;
+  }
+`;
+
 const caixaStyles = `
   @media screen {
     .caixa-grid .pagi-sheet,
@@ -308,6 +348,9 @@ const caixaStyles = `
       border-top: 1px dashed #ccc;
       margin-top: 4mm;
       padding-top: 4mm;
+    }
+    .caixa-page--sheet + .caixa-page--sheet {
+      padding-top: 1.7mm;
     }
   }
   @media print {
@@ -335,6 +378,24 @@ const caixaStyles = `
       break-after: auto !important;
       page-break-after: auto !important;
     }
+    .caixa-page--sheet {
+      display: grid !important;
+      grid-template-columns: repeat(3, 96mm) !important;
+      grid-auto-rows: 102.5mm !important;
+      justify-content: start !important;
+      align-content: start !important;
+      column-gap: 1.6mm !important;
+      row-gap: 1.6mm !important;
+      gap: unset !important;
+      padding: 1.7mm 2.9mm !important;
+      width: 297mm !important;
+      height: 210mm !important;
+      min-height: 210mm !important;
+      max-height: 210mm !important;
+      box-sizing: border-box !important;
+      position: relative !important;
+      overflow: hidden !important;
+    }
     .caixa-transporte-card {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
@@ -357,7 +418,13 @@ const caixaStyles = `
     box-sizing: border-box;
     background: #fff;
   }
-`;
+` + caixaPageLayoutStyles;
+
+const caixaAppendixStyles = `
+  @media print {
+    .caixa-appendix { display: none !important; }
+  }
+` + caixaPageLayoutStyles;
 
 const printStyles = `
   /* ─────────────────────────────────────────────────────────────
@@ -784,6 +851,8 @@ interface PrintWorkSheetsPageProps {
   initialCartao?: boolean;
   /** Abre já no formato Cartão do Montador (Palmilha, código único persistido). */
   initialCartaoMontador?: boolean;
+  /** Abre já no formato Caixa de transporte (Palmilha por padrão). */
+  initialCaixa?: boolean;
 }
 
 // 'Corte Cabedal' adicionado em 2026-05-12 como 3ª sub-etapa de Corte
@@ -1058,7 +1127,7 @@ const PRINT_OWNED_QUERY_KEY_ROOTS = new Set<string>([
   'sole_group_packaging_v3',
 ]);
 
-const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, initialCartaoMontador }: PrintWorkSheetsPageProps) => {
+const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, initialCartaoMontador, initialCaixa }: PrintWorkSheetsPageProps) => {
   useWarmPdfRenderer();
   const coarsePointer = useIsCoarsePointer();
   // Fluxo unificado (2026-05-18): chips toggleáveis com state interno —
@@ -1076,6 +1145,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
         }
         return mapped.size > 0 ? mapped : new Set(CARTAO_FISICO_EMITTERS);
       }
+      if (initialCaixa) {
+        for (const s of seed) {
+          if (isCaixaTransporteSector(s)) return new Set([s]);
+        }
+        return new Set(['Palmilha']);
+      }
       return new Set(seed);
     },
   );
@@ -1083,10 +1158,17 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
   // Modo FARDO (spec cartao-fisico-corrugado): 1 cartão por corrugado
   // cheio (12/15/18) por OP, nos emissores Palmilha · Corte Cabedal ·
   // Costura Cabedal · Aviamento. Calculado no cliente, sem escrita no banco.
-  const [cartao, setCartao] = useState(!!initialCartao && !initialCartaoMontador);
+  const [cartao, setCartao] = useState(!!initialCartao && !initialCartaoMontador && !initialCaixa);
   // Modo CAIXA DE TRANSPORTE (spec cartao-caixa-transporte): mutuamente
   // exclusivo com A4 e Cartão físico — um setor de caixa por vez.
-  const [caixaSector, setCaixaSector] = useState<CaixaTransporteSector | null>(null);
+  const [caixaSector, setCaixaSector] = useState<CaixaTransporteSector | null>(() => {
+    if (!initialCaixa || initialCartao || initialCartaoMontador) return null;
+    const seed = initialSectors ? [...initialSectors] : ['Palmilha'];
+    for (const s of seed) {
+      if (isCaixaTransporteSector(s)) return s;
+    }
+    return 'Palmilha';
+  });
   const [cartaoMontador, setCartaoMontador] = useState(!!initialCartaoMontador);
   const isCartaoMontador = cartaoMontador && !cartao && caixaSector == null;
   const isCaixa = caixaSector != null && !isCartaoMontador;
@@ -1100,6 +1182,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
   // orientação só por documento, então não misturamos no Gerar PDF das A4.
   const [includePalmilhaFardo, setIncludePalmilhaFardo] = useState(true);
   const includeFardoAppendix = isA4 && includePalmilhaFardo && palmilhaInSectors;
+  const [includePalmilhaCaixa, setIncludePalmilhaCaixa] = useState(true);
+  const includeCaixaAppendix = isA4 && includePalmilhaCaixa && palmilhaInSectors;
 
   // Faixa De/Até de folhas físicas (1-based). `pageTo === null` = Todas.
   const [pageFrom, setPageFrom] = useState(1);
@@ -3807,8 +3891,8 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
 
   // ── Caixa de transporte: chunk de corrugados cheios por OP × setor ────────
   const cartaoCaixaCards = useMemo((): CartaoCaixaCard[] => {
-    if (!caixaSector) return [];
-    const sector = caixaSector;
+    if (!caixaSector && !includeCaixaAppendix) return [];
+    const sector: CaixaTransporteSector = caixaSector ?? 'Palmilha';
     const inputs = printOrders.map((order: any) => {
       const sheetId = order.reference_id as string | undefined;
       const sheet = sheetId ? sheetById.get(sheetId) : null;
@@ -3860,7 +3944,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
       orders: inputs,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caixaSector, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, clientNameByPv]);
+  }, [caixaSector, includeCaixaAppendix, printOrders, sheetById, liningFlagLookup, variantsByRef, tsImageByRef, sheetMaterialsByRef, clientNameByPv]);
 
   const cartaoCaixaPages = useMemo(
     () => chunkCaixaPages(cartaoCaixaCards, CAIXA_TRANSPORTE_PER_PAGE),
@@ -4106,6 +4190,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
       {(isCartao || isCartaoMontador) && <style>{cartaoStyles}</style>}
       {includeFardoAppendix && <style>{fardoAppendixStyles}</style>}
       {isCaixa && <style>{caixaStyles}</style>}
+      {includeCaixaAppendix && <style>{caixaAppendixStyles}</style>}
 
       {/* ── Painel de conferência (no-print) ── */}
       <section className="no-print relative z-30 border border-l-4 border-border border-l-primary bg-background shadow-sm md:sticky md:top-3">
@@ -4165,7 +4250,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
                 onClick={() => setFormatCaixa(caixaSector && isCaixaTransporteSector(caixaSector) ? caixaSector : 'Palmilha')}
                 aria-pressed={isCaixa}
                 className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isCaixa ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                title="Caixa de transporte: Palmilha (8), Costura Cabedal (30→Aviamento), Aviamento (30→Colagem)"
+                title="Caixa de transporte: Palmilha (15 fichas/caixa), Costura Cabedal (30→Aviamento), Aviamento (30→Colagem)"
               >
                 <Cards className="h-3.5 w-3.5" /> Caixa
               </button>
@@ -4207,6 +4292,32 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
                   title="Abre o formato Fardo já com todos os cartões de palmilha desta OP, prontos para recortar e colocar com a palmilha física."
                 >
                   <Cards className="h-3.5 w-3.5" /> Imprimir cartões do fardo
+                </button>
+                <label
+                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 border border-border px-2 text-xs"
+                  title="Mostra na prévia os cartões que acompanham a caixa de 15 fichas de palmilha (6/folha, com linhas de recorte). A impressão sai em A4 paisagem pelo botão ao lado."
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-primary"
+                    checked={includePalmilhaCaixa}
+                    onChange={(e) => setIncludePalmilhaCaixa(e.target.checked)}
+                  />
+                  <span className="font-semibold">Incluir cartões da caixa</span>
+                  {includePalmilhaCaixa && cartaoCaixaCards.length > 0 && (
+                    <span className="font-mono tabular-nums text-muted-foreground">
+                      {cartaoCaixaCards.length}·{cartaoCaixaPages.length} fl.
+                    </span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setFormatCaixa('Palmilha')}
+                  disabled={cartaoCaixaCards.length === 0}
+                  className="inline-flex h-9 items-center gap-1.5 border border-border px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  title="Abre o formato Caixa já com todos os cartões de palmilha desta OP (1 cartão por caixa de 15 fichas), prontos para recortar e colocar na caixa física."
+                >
+                  <Package className="h-3.5 w-3.5" /> Imprimir cartões da caixa
                 </button>
               </div>
             )}
@@ -4528,29 +4639,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
 
         {/* Caixa de transporte — 6 por A4 paisagem; parcial incluso. */}
         {isCaixa && cartaoCaixaPagesInRange.map((pageCards, pageIdx) => (
-          <div key={`caixa-page-${pageRange.from - 1 + pageIdx}`} className="caixa-page">
-            {pageCards.map((card) => (
-              <CartaoCaixaTransporte
-                key={`${card.sectorName}-${card.opNumber}-${card.lotCode}`}
-                sectorName={card.sectorDisplayLabel}
-                destinoLabel={card.destinoLabel}
-                opNumber={card.opNumber}
-                pvLabel={card.pvLabel}
-                clientName={card.clientName}
-                title={card.title}
-                subtitle={card.subtitle}
-                imageUrl={card.imageUrl}
-                sizes={card.sizes}
-                grade={card.grade}
-                fichasNaCaixa={card.fichasNaCaixa}
-                capacidade={card.capacidade}
-                totalPairs={card.totalPairs}
-                lotLabel={card.lotLabel}
-                lotCode={card.lotCode}
-                parcial={card.parcial}
-              />
-            ))}
-          </div>
+          <CaixaPage key={`caixa-page-${pageRange.from - 1 + pageIdx}`} cards={pageCards} />
         ))}
 
         {/* Cartão do Montador — 15 por A4 paisagem, com linha de recorte. */}
@@ -5323,6 +5412,19 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
           </div>
           {cartaoFisicoPages.map((pageCards, pageIdx) => (
             <FardoPage key={`fardo-appendix-${pageIdx}`} cards={pageCards} />
+          ))}
+        </div>
+      )}
+      {includeCaixaAppendix && cartaoCaixaPages.length > 0 && (
+        <div className="caixa-appendix" data-caixa-appendix="" aria-label="Prévia dos cartões da caixa">
+          <div className="fardo-appendix-banner">
+            <strong>Cartões da caixa · Palmilha</strong>
+            {' — '}
+            {cartaoCaixaCards.length} cartão{cartaoCaixaCards.length === 1 ? '' : 's'} em {cartaoCaixaPages.length} folha{cartaoCaixaPages.length === 1 ? '' : 's'} (15 fichas/caixa, 6/folha, com linhas de recorte).
+            {' '}Não entram no PDF das fichas A4. Use «Imprimir cartões da caixa» — já saem prontos para recortar e colocar na caixa física.
+          </div>
+          {cartaoCaixaPages.map((pageCards, pageIdx) => (
+            <CaixaPage key={`caixa-appendix-${pageIdx}`} cards={pageCards} />
           ))}
         </div>
       )}
