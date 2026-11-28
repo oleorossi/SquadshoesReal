@@ -4,11 +4,30 @@ import {
   getValidNextStatuses,
 } from '@/lib/saleOrderStateMachine';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { AGUARDANDO_CABEDAL } from '@/lib/saleOrderCabedalHold';
 
 export const STATUS_OPTIONS = [
   'Rascunho',
   'Pendente',
   'Aprovado',
+  'Em Produção',
+  'Faturado',
+  'Expedido',
+  'Concluído',
+  'Finalizado s/ NF',
+  'Cancelado',
+] as const;
+
+/**
+ * Opções do FILTRO da lista. "Aguardando Cabedal" é uma fase derivada de
+ * Aprovado (ver `saleOrderCabedalHold`), então só existe aqui e nas cores:
+ * nunca na lista de transições, porque ninguém grava esse texto no banco.
+ */
+export const FILTER_STATUS_OPTIONS = [
+  'Rascunho',
+  'Pendente',
+  'Aprovado',
+  AGUARDANDO_CABEDAL,
   'Em Produção',
   'Faturado',
   'Expedido',
@@ -48,6 +67,7 @@ export const STATUS_COLORS: Record<string, string> = {
   Rascunho: 'bg-muted text-muted-foreground border-border',
   Pendente: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30',
   Aprovado: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+  [AGUARDANDO_CABEDAL]: 'bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30',
   'Em Produção': 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
   Faturado: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30',
   Expedido: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30',
@@ -60,6 +80,7 @@ export const STATUS_DOT: Record<string, string> = {
   Rascunho: 'bg-muted-foreground',
   Pendente: 'bg-yellow-500',
   Aprovado: 'bg-emerald-500',
+  [AGUARDANDO_CABEDAL]: 'bg-orange-500',
   'Em Produção': 'bg-blue-500',
   Faturado: 'bg-violet-500',
   Expedido: 'bg-cyan-500',
@@ -72,6 +93,7 @@ export const STATUS_BAND: Record<string, string> = {
   Rascunho: 'bg-muted/40',
   Pendente: 'bg-yellow-500/5',
   Aprovado: 'bg-emerald-500/5',
+  [AGUARDANDO_CABEDAL]: 'bg-orange-500/5',
   'Em Produção': 'bg-blue-500/5',
   Faturado: 'bg-violet-500/5',
   Expedido: 'bg-cyan-500/5',

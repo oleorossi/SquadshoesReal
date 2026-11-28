@@ -15,6 +15,7 @@ import {
 import { SaleOrderFloorProgressSummary } from '@/components/sale-orders/SaleOrderFloorProgressSummary';
 import type { SaleOrderFloorProgress } from '@/hooks/useSaleOrdersFloorProgress';
 import { SaleOrderMaterialShortageBadge } from '@/components/sale-orders/SaleOrderMaterialShortageBadge';
+import { saleOrderDisplayStatus } from '@/lib/saleOrderCabedalHold';
 import { SaleOrderAtelierProductionHoldBadge } from '@/components/sale-orders/SaleOrderAtelierProductionHoldBadge';
 import type { AtelierProductionHoldLine } from '@/lib/atelierProductionHold';
 import {
@@ -61,6 +62,7 @@ export function SaleOrderMobileCard({
   onOpenConsumption,
   onEdit,
 }: SaleOrderMobileCardProps) {
+  const displayStatus = saleOrderDisplayStatus(order.status, atelierHolds);
   const isOverdue = !!(
     order.delivery_deadline
     && parseDateOnly(order.delivery_deadline) < new Date()
@@ -95,9 +97,9 @@ export function SaleOrderMobileCard({
         <button type="button" onClick={onOpenDetails} className="min-w-0 flex-1 text-left">
           <div className="flex items-center justify-between gap-2">
             <span className={cn('font-mono text-sm font-bold text-primary', isInfantil && INFANTIL_ORDER_NUMBER_CLASS)}>{order.order_number || '—'}</span>
-            <Badge variant="outline" className={cn('shrink-0 text-xs', STATUS_COLORS[order.status])}>
-              <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[order.status])} />
-              {order.status}
+            <Badge variant="outline" className={cn('shrink-0 text-xs', STATUS_COLORS[displayStatus])}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[displayStatus])} />
+              {displayStatus}
             </Badge>
           </div>
           <p className="mt-1 truncate text-sm font-semibold">{order.client_name}</p>

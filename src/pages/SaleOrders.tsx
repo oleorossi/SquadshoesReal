@@ -5,6 +5,7 @@ import { ListPagination } from '@/components/ui/list-pagination';
 import { PAGE_SIZE, paginateInMemory } from '@/lib/pagination';
 import {
   STATUS_OPTIONS,
+  FILTER_STATUS_OPTIONS,
   STATUS_TRANSITION_OPTIONS,
   STATUS_COLORS,
   STATUS_DOT,
@@ -33,6 +34,12 @@ import {
 } from '@/hooks/useSaleOrderGateBlocks';
 import { SaleOrderGateBlockBadge } from '@/components/sale-orders/SaleOrderGateBlockBadge';
 import { SaleOrderAtelierProductionHoldBadge } from '@/components/sale-orders/SaleOrderAtelierProductionHoldBadge';
+import { SaleOrderCabedalHoldPanel } from '@/components/sale-orders/SaleOrderCabedalHoldPanel';
+import {
+  saleOrderAwaitsCabedal,
+  saleOrderDisplayStatus,
+  saleOrderMatchesStatusFilter,
+} from '@/lib/saleOrderCabedalHold';
 import {
   EMPTY_ATELIER_PRODUCTION_HOLDS,
   saleOrderShowsAtelierProductionHold,
@@ -592,6 +599,26 @@ export default function SaleOrders() {
     return map;
   }, [allSaleItems, references]);
 
+  // Cabedal complexo ainda no Ateliê: aprovação segue; Em Produção não.
+  // Vem ANTES do filtro da lista porque "Aguardando Cabedal" é uma fase derivada
+  // de Aprovado (saleOrderCabedalHold): o filtro precisa saber quais PVs estão
+  // com cabedal fora, e não só os da página atual.
+  const atelierHoldIds = useMemo(() => {
+    const ids = orders
+      .filter((o) => saleOrderShowsAtelierProductionHold(o.status))
+      .map((o) => o.id);
+    if (
+      selectedOrder
+      && saleOrderShowsAtelierProductionHold(selectedOrder.status)
+      && !ids.includes(selectedOrder.id)
+    ) {
+      ids.push(selectedOrder.id);
+    }
+    return ids;
+  }, [orders, selectedOrder]);
+  const { data: atelierHoldsById = EMPTY_ATELIER_PRODUCTION_HOLDS } =
+    useSaleOrderAtelierProductionHolds(atelierHoldIds);
+
   // Busca ATRAVESSA as abas (spec melhorias-busca-sistema R5, 2026-07-11 —
   // substitui o comportamento "buscar apenas na aba" de 29/06/2026): o match
   // roda sobre o conjunto todo num único passe; a aba ativa exibe os seus
@@ -683,7 +710,7 @@ export default function SaleOrders() {
 
     const current: typeof orders = [];
     for (const order of orders) {
-      if (filterStatus !== 'all' && order.status !== filterStatus) continue;
+      if (!saleOrderMatchesStatusFilter(filterStatus, order.status, atelierHoldsById.get(order.id))) continue;
       if (filterRep !== 'all' && order.representative !== filterRep) continue;
       if (filterGroup !== 'all') {
         const grp = clientGroupMap[order.client_name];
@@ -700,7 +727,7 @@ export default function SaleOrders() {
       if (tab === mainTab) current.push(order);
     }
     return { filteredOrders: current, searchTabCounts: searching ? counts : null };
-  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, debouncedSearchTerm, clientGroupMap, clientByName, itemsBySaleOrder, knownSaleOrderCodes, economicGroups, filterMonth]);
+  }, [orders, mainTab, filterStatus, filterRep, filterGroup, filterSegment, segmentsBySaleOrder, debouncedSearchTerm, clientGroupMap, clientByName, itemsBySaleOrder, knownSaleOrderCodes, economicGroups, filterMonth, atelierHoldsById]);
 
   // Marquee selection + range/Ctrl click + Esc-to-clear (replaces ad-hoc
   // useState<Set>). `selectedIds`/`setSelectedIds` shims abaixo mantêm
@@ -771,22 +798,7 @@ export default function SaleOrders() {
   const { data: gateBlocksById = EMPTY_GATE_BLOCKS } =
     useSaleOrderGateBlocks(gateBlockIds);
 
-  // Cabedal complexo ainda no Ateliê: aprovação segue; Em Produção não.
-  const atelierHoldIds = useMemo(() => {
-    const ids = visibleOrders
-      .filter((o) => saleOrderShowsAtelierProductionHold(o.status))
-      .map((o) => o.id);
-    if (
-      selectedOrder
-      && saleOrderShowsAtelierProductionHold(selectedOrder.status)
-      && !ids.includes(selectedOrder.id)
-    ) {
-      ids.push(selectedOrder.id);
-    }
-    return ids;
-  }, [visibleOrders, selectedOrder]);
-  const { data: atelierHoldsById = EMPTY_ATELIER_PRODUCTION_HOLDS } =
-    useSaleOrderAtelierProductionHolds(atelierHoldIds);
+
 
   // ⚠ A seleção é alimentada pelas linhas VISÍVEIS (página atual). Shift+clique
   // seleciona intervalo na tela; selectedIds persiste entre páginas.
@@ -867,10 +879,11 @@ export default function SaleOrders() {
   const kpis = useMemo(() => {
     const total = filteredOrders.reduce((s, o) => s + Number(o.total || 0), 0);
     const drafts = filteredOrders.filter(o => o.status === 'Rascunho').length;
-    const approved = filteredOrders.filter(o => o.status === 'Aprovado').length;
+    const approved = filteredOrders.filter(o => o.status === 'Aprovado' && !saleOrderAwaitsCabedal(o.status, atelierHoldsById.get(o.id))).length;
+    const awaitingCabedal = filteredOrders.filter(o => saleOrderAwaitsCabedal(o.status, atelierHoldsById.get(o.id))).length;
     const inProduction = filteredOrders.filter(o => o.status === 'Em Produção').length;
-    return { total, pending: drafts, approved, inProduction, count: filteredOrders.length };
-  }, [filteredOrders]);
+    return { total, pending: drafts, approved, awaitingCabedal, inProduction, count: filteredOrders.length };
+  }, [filteredOrders, atelierHoldsById]);
 
   const totalPares = useMemo(() =>
     filteredOrders.reduce((s, o) => s + (pairsBySaleOrder[o.id] || 0), 0),
@@ -2171,7 +2184,7 @@ export default function SaleOrders() {
                   <SelectTrigger aria-label="Filtrar por status" className="h-9 w-[140px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    {FILTER_STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -2495,11 +2508,11 @@ export default function SaleOrders() {
                           }
                         }}>
                           <SelectTrigger aria-label={`Status do pedido ${order.order_number}: ${order.status}. Alterar`} className="h-7 w-[130px] text-xs border-0 bg-transparent p-0 shadow-none hover:ring-1 hover:ring-border [&>svg]:hidden disabled:opacity-60">
-                            <Badge variant="outline" className={`${STATUS_COLORS[order.status] || ''} text-xs gap-1`}>
+                            <Badge variant="outline" className={`${STATUS_COLORS[saleOrderDisplayStatus(order.status, atelierHoldsById.get(order.id))] || ''} text-xs gap-1`}>
                               {statusPendingId === order.id
                                 ? <Loader2 className="h-3 w-3 mr-1 animate-spin" aria-label="Processando" />
-                                : <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[order.status]}`} />}
-                              {order.status}
+                                : <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[saleOrderDisplayStatus(order.status, atelierHoldsById.get(order.id))]}`} />}
+                              {saleOrderDisplayStatus(order.status, atelierHoldsById.get(order.id))}
                               <CaretDown className="h-3 w-3 opacity-50" />
                             </Badge>
                           </SelectTrigger>
@@ -2907,14 +2920,17 @@ export default function SaleOrders() {
           <DialogHeader className="sticky top-0 z-30 space-y-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
             <div className={cn(
               'border-b px-4 py-2 pr-12',
-              STATUS_BAND[selectedOrder?.status || ''] || 'bg-muted/30'
+              STATUS_BAND[saleOrderDisplayStatus(selectedOrder?.status, selectedOrder ? atelierHoldsById.get(selectedOrder.id) : undefined)] || 'bg-muted/30'
             )}>
             <div className="flex items-start justify-between gap-3 gap-y-2 flex-wrap">
               <div className="min-w-0">
                 <p className="eyebrow">Comercial · Pedido de Venda</p>
                 <div className="flex items-center gap-2 flex-wrap mt-0.5">
                   <DialogTitle className="display text-xl sm:text-2xl m-0 leading-none">{selectedOrder?.order_number || ''}</DialogTitle>
-                  {selectedOrder && <Badge variant="outline" className={STATUS_COLORS[selectedOrder.status] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[selectedOrder.status]}`} />{selectedOrder.status}</Badge>}
+                  {selectedOrder && (() => {
+                    const shown = saleOrderDisplayStatus(selectedOrder.status, atelierHoldsById.get(selectedOrder.id));
+                    return <Badge variant="outline" className={STATUS_COLORS[shown] || ''}><span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_DOT[shown]}`} />{shown}</Badge>;
+                  })()}
                   {selectedOrder && (
                     <SaleOrderAtelierProductionHoldBadge
                       status={selectedOrder.status}
@@ -2958,6 +2974,25 @@ export default function SaleOrders() {
 
           {selectedOrder && (
             <div className="space-y-3 px-4 pb-4 pt-2">
+              {selectedOrder && saleOrderAwaitsCabedal(selectedOrder.status, atelierHoldsById.get(selectedOrder.id)) && (
+                <SaleOrderCabedalHoldPanel
+                  orderNumber={selectedOrder.order_number}
+                  holds={atelierHoldsById.get(selectedOrder.id) ?? []}
+                  itemIdsWithOp={new Set(
+                    selectedOrderItems
+                      .filter((i) => (i.productionOrders ?? []).length > 0)
+                      .map((i) => String(i.id)),
+                  )}
+                  totalItems={selectedOrderItems.filter((i) => !i.production_excluded_at).length}
+                  canGenerate={isAdmin}
+                  // Sem onGenerate: a ação de gerar ordens antes do cabedal só
+                  // existe depois da migration (RPC release_preproduction_*).
+                  onPrintFichas={() => {
+                    const ids = selectedOrderItems.flatMap((i) => (i.productionOrders ?? []).map((op: any) => String(op.id)));
+                    if (ids.length > 0) navigate(`/imprimir-fichas?orderIds=${ids.join(',')}`);
+                  }}
+                />
+              )}
               {/* Mesa de liberação do PV: as ações seguem a ordem de trabalho
                   (pedido → materiais/produção → documentos/terceiros). */}
               <div className="grid overflow-hidden rounded-lg border bg-card lg:grid-cols-[0.72fr_1.55fr_0.9fr] [&_button]:h-8 [&_button]:px-2.5 [&_button]:text-xs [&_button]:gap-1.5">
