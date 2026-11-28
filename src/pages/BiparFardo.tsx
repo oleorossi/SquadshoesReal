@@ -345,7 +345,6 @@ async function startCameraScan(
       });
       zxingReset = () => {
         try { controls?.stop(); } catch { /* already stopped */ }
-        try { reader.reset(); } catch { /* already reset */ }
       };
     } catch {
       onError('nosupport');
