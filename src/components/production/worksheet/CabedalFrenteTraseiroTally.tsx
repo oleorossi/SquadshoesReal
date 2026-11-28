@@ -84,10 +84,10 @@ function PartBand({ part, children, flushTop }: BandProps) {
           className="font-mono uppercase"
           style={{
             marginLeft: 'auto',
-            fontSize: '8px',
+            fontSize: '7px',
             letterSpacing: '0.08em',
-            color: isFrente ? '#d9d6d0' : '#333',
-            fontWeight: 700,
+            color: isFrente ? '#c8c4bc' : '#555',
+            fontWeight: 600,
           }}
         >
           marca independente
@@ -147,7 +147,7 @@ export function CabedalFrenteTraseiroTally({
     >
       <p
         className="keep-with-next font-mono uppercase leading-tight"
-        style={{ fontSize: '8px', letterSpacing: '0.06em', fontWeight: 700, margin: '4px 0 0', color: '#000' }}
+        style={{ fontSize: '7.5px', letterSpacing: '0.06em', fontWeight: 600, margin: '3px 0 2px', color: '#3a3a3a' }}
       >
         {hint}
       </p>

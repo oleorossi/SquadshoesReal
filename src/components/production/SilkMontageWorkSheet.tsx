@@ -34,6 +34,7 @@ import {
   pickAviamentoHeroPhotoSources,
 } from './worksheet/aviamentoHeroPhoto';
 import { PaginatedSheet, type SheetBlock } from './worksheet/PaginatedSheet';
+import { CABEDAL_VIZ, CABEDAL_VIZ_CLASS, cabedalVizPrintColor, isCabedalVizSector } from './worksheet/cabedalSheetViz';
 import { usePrintOrderIdentity } from './worksheet/PrintOrderIdentityContext';
 import { pageIdentityForOps } from './worksheet/pageIdentity';
 import { SectorAlerts, type SectorAlert } from './worksheet/SectorAlerts';
@@ -514,6 +515,10 @@ export function cabedalPhotoFitsBesideGrade(
 
 export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBand, sectorLabel, knives, facaRanges, heroPhotoGroupKeys }: Props) => {
   const theme = SECTOR_THEME[sector];
+  const viz = isCabedalVizSector(sector);
+  const cardRule = viz ? CABEDAL_VIZ.card : '1.5px solid #000';
+  const hairRule = viz ? CABEDAL_VIZ.hair : '1px solid #000';
+  const heavyRule = viz ? CABEDAL_VIZ.rule : '1.5px solid #000';
   const Icon = theme.icon;
   // Modelo de informação da ficha (rodada 1, 20/08/2026). Este componente
   // serve 8 setores; só o Silk foi decidido ('mao'). Os demais seguem
@@ -598,13 +603,13 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     };
     return (
       <>
-      <table className="w-full text-center bg-white" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: '1.5px solid #000' }}>
+      <table className={`w-full text-center bg-white${viz ? ' ficha-viz-grade' : ''}`} style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: viz ? 'none' : '1.5px solid #000' }}>
         <thead>
-          <tr style={{ borderBottom: '1.5px solid #000' }}>
+          <tr style={{ borderBottom: heavyRule }}>
             {/* Coluna do rótulo: largura precisa caber "Total × N
                 fichas" (≈96px). Sob table-layout:fixed quem manda é
                 o width do TH — antes era 54 e cortava o texto. */}
-            <th className="section-label py-1" style={{ color: '#000', width: (sector === 'Aviamento' && (cg.components || []).some(c => Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || '')) ? AVIAMENTO_STRAP_LABEL_COL_PX : 96), borderRight: '1px solid #000' }}>Nº</th>
+            <th className="section-label py-1" style={{ color: '#000', width: (sector === 'Aviamento' && (cg.components || []).some(c => Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || '')) ? AVIAMENTO_STRAP_LABEL_COL_PX : 96), borderRight: hairRule }}>Nº</th>
             {activeSizes.map(s => (
               <th
                 key={s}
@@ -612,7 +617,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 style={{
                   fontSize: `${ft.headerPx}px`,
                   fontFamily: "'Fira Code', monospace",
-                  borderRight: '1px solid #000',
+                  borderRight: hairRule,
                   padding: `${ft.padY}px 1px`,
                   lineHeight: 1.2,
                 }}
@@ -646,12 +651,12 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               ? activeSizes.reduce((sum, s) => sum + (perFicha[s] || 0), 0)
               : (cg.baseGradeSum || 0);
             return (
-              <tr style={{ borderBottom: '1.5px solid #000' }}>
-                <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 76, whiteSpace: 'nowrap', padding: '4px 6px', letterSpacing: '0.04em' }}>
+              <tr style={{ borderBottom: heavyRule }}>
+                <td className="py-1 text-[9px] font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: hairRule, minWidth: 76, whiteSpace: 'nowrap', padding: '4px 6px', letterSpacing: '0.04em', color: viz ? CABEDAL_VIZ.muted : undefined }}>
                   Por Ficha<br />({perFichaTotal}p)
                 </td>
                 {activeSizes.map(s => (
-                  <td key={s} className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, borderRight: '1px solid #000', padding: `${ft.padY}px 1px`, lineHeight: 1.2 }}>
+                  <td key={s} className="font-mono font-bold text-black" style={{ fontSize: `${ft.cellPx}px`, borderRight: hairRule, padding: `${ft.padY}px 1px`, lineHeight: 1.2, color: viz ? CABEDAL_VIZ.muted : undefined }}>
                     {perFicha[s] || '—'}
                   </td>
                 ))}
@@ -661,8 +666,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               </tr>
             );
           })()}
-          <tr style={{ borderBottom: (theme.showFrenteTraseiro || showCortadoMark) ? '1px solid #000' : 'none' }}>
-            <td className="py-1 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: '1px solid #000', minWidth: 96, whiteSpace: 'nowrap', padding: '5px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(cg.fichas, cg.mixedGrades) }}>
+          <tr style={{ borderBottom: (theme.showFrenteTraseiro || showCortadoMark) ? hairRule : 'none' }}>
+            <td className="py-1 font-mono font-bold text-black uppercase leading-tight" style={{ borderRight: hairRule, minWidth: 96, whiteSpace: 'nowrap', padding: '5px 6px', letterSpacing: '0.04em', fontSize: adaptiveLabelFontSize(cg.fichas, cg.mixedGrades) }}>
               {cg.fichasAproximadas
                 ? <>Total<br />≈ {cg.fichas || 0} fichas</>
                 : cg.mixedGrades
@@ -680,7 +685,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   fontSize: `${ft.displayPx}px`,
                   letterSpacing: '-0.02em',
                   lineHeight: '1.1',
-                  borderRight: '1px solid #000',
+                  borderRight: hairRule,
                   padding: `${ft.padY}px 1px`,
                 }}
               >
@@ -705,15 +710,15 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           </tr>
 
           {showCortadoMark && (
-            <tr style={{ borderBottom: theme.showFrenteTraseiro ? '1px solid #000' : 'none' }}>
+            <tr style={{ borderBottom: theme.showFrenteTraseiro ? hairRule : 'none' }}>
               <td
                 className="text-[10px] font-mono font-bold text-black uppercase tracking-wider"
-                style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 4px` }}
+                style={{ borderRight: hairRule, padding: `${STEP_ROW_PAD_Y}px 4px`, color: viz ? CABEDAL_VIZ.muted : undefined, letterSpacing: viz ? '0.08em' : undefined }}
               >
                 CORTADO
               </td>
               {activeSizes.map(s => (
-                <td key={s} style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 1px` }}>
+                <td key={s} style={{ borderRight: hairRule, padding: `${STEP_ROW_PAD_Y}px 1px` }}>
                   <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
                 </td>
               ))}
@@ -757,12 +762,13 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   data-strap-position={position}
                   data-technical-strap-line-id={c.technicalStrapLineId}
                   data-strap-compact=""
-                  style={{ borderBottom: '1px solid #000', borderTop: i === 0 ? '1.5px solid #000' : undefined }}
+                  className={viz && i % 2 === 1 ? 'ficha-viz-zebra' : undefined}
+                  style={{ borderBottom: hairRule, borderTop: i === 0 ? heavyRule : undefined }}
                 >
                   <td
                     className="font-mono font-bold uppercase"
                     style={{
-                      borderRight: '1px solid #000',
+                      borderRight: hairRule,
                       padding: STRAP_LABEL_PAD,
                       color: '#000',
                       lineHeight: 1.15,
@@ -821,7 +827,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                         className="font-mono font-bold"
                         style={{
                           fontSize: `${STRAP_MEASURE_FONT_PX}px`,
-                          borderRight: '1px solid #000',
+                          borderRight: hairRule,
                           padding: `${STRAP_ROW_PAD_Y}px 1px`,
                           color: '#C00000',
                           lineHeight: 1.1,
@@ -858,14 +864,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                     ? 'none'
                     : part === 'traseiro'
                       ? '2px dashed #000'
-                      : '1px solid #000',
+                      : hairRule,
                 }}
               >
                 <td
                   className="font-mono font-bold text-black uppercase tracking-wider"
                   style={{
                     fontSize: '8px',
-                    borderRight: '1px solid #000',
+                    borderRight: hairRule,
                     padding: `${STEP_ROW_PAD_Y}px 4px`,
                     borderLeft: part === 'frente' ? '5px solid #000' : part === 'traseiro' ? '5px dashed #000' : undefined,
                     background: part === 'traseiro' ? '#f0f0f0' : '#fff',
@@ -879,7 +885,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   </span>
                 </td>
                 {activeSizes.map(s => (
-                  <td key={s} style={{ borderRight: '1px solid #000', padding: `${STEP_ROW_PAD_Y}px 1px` }}>
+                  <td key={s} style={{ borderRight: hairRule, padding: `${STEP_ROW_PAD_Y}px 1px` }}>
                     <span className="inline-block" style={{ width: STEP_CHECKBOX_PX, height: STEP_CHECKBOX_PX, border: '1.5px solid #000' }} />
                   </td>
                 ))}
@@ -904,7 +910,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       {sector === 'Aviamento' && (cg.components || []).some(c =>
         Boolean(c.technicalStrapLineId) || /^TIRA(\s|$)/i.test(c.name || ''),
       ) && (
-        <p className="leading-tight" style={{ fontSize: '9px', fontWeight: 700, color: '#C00000', marginTop: 1 }}>
+        <p className="leading-tight" style={{ fontSize: '8px', fontWeight: 600, color: viz ? CABEDAL_VIZ.muted : '#C00000', marginTop: 2 }}>
           Linhas TIRA = sequência da ficha técnica · cor e material do PV · medida em cm "do pé" por numeração (ou faixa P/M/G).
         </p>
       )}
@@ -953,7 +959,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       const colorStr = (r.color || '').trim();
       const showColor = !!colorStr && !(r.product_name || '').toLowerCase().includes(colorStr.toLowerCase());
       return (
-        <div className="keep-together mt-1 bg-white flex items-center justify-between gap-2 px-2 py-1" style={{ border: '1.5px solid #000' }}>
+        <div className="keep-together mt-1 bg-white flex items-center justify-between gap-2 px-2 py-1" style={{ border: cardRule }}>
           <span className="flex items-baseline gap-1.5 min-w-0">
             <Scissors className="h-3 w-3 shrink-0 self-center" weight="bold" />
             <span className="uppercase leading-none truncate" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#000' }}>
@@ -977,12 +983,12 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     }
 
     return (
-      <div className="keep-together mt-1 bg-white" style={{ border: '1.5px solid #000' }}>
-        <div className="flex items-baseline justify-between gap-2 px-2 py-1" style={{ background: '#000' }}>
-          <span className="font-mono uppercase flex items-center gap-1.5" style={{ color: '#fff', fontSize: '9px', letterSpacing: '0.13em', fontWeight: 700 }}>
+      <div className="keep-together mt-1 bg-white" style={{ border: cardRule }}>
+        <div className={viz ? 'ficha-viz-sec' : 'flex items-baseline justify-between gap-2 px-2 py-1'} style={viz ? undefined : { background: '#000' }}>
+          <span className="font-mono uppercase flex items-center gap-1.5" style={{ color: viz ? '#000' : '#fff', fontSize: '9px', letterSpacing: viz ? '0.10em' : '0.13em', fontWeight: 700 }}>
             <Scissors className="h-3 w-3" weight="bold" /> Consumo · Corte do Rolo
           </span>
-          <span className="font-mono uppercase" style={{ color: '#d9d6d0', fontSize: '8px', letterSpacing: '0.06em' }}>
+          <span className="font-mono uppercase" style={{ color: viz ? CABEDAL_VIZ.muted : '#d9d6d0', fontSize: '8px', letterSpacing: '0.06em' }}>
             cálculo do PV
           </span>
         </div>
@@ -1090,7 +1096,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       const colorStr = (r.color || '').trim();
       const showColor = !!colorStr && !(r.product_name || '').toLowerCase().includes(colorStr.toLowerCase());
       return (
-        <div className="keep-together mt-1 bg-white flex items-center justify-between gap-2 px-2 py-1" style={{ border: '1.5px solid #000' }}>
+        <div className="keep-together mt-1 bg-white flex items-center justify-between gap-2 px-2 py-1" style={{ border: cardRule }}>
           <span className="flex items-baseline gap-1.5 min-w-0">
             <Paperclip className="h-3 w-3 shrink-0 self-center" weight="bold" />
             <span className="uppercase leading-none truncate" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#000' }}>
@@ -1118,19 +1124,19 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     }
 
     return (
-      <div className="keep-together mt-1 bg-white" style={{ border: '1.5px solid #000' }}>
-        <div className="flex items-baseline justify-between gap-2 px-2 py-1" style={{ background: '#000' }}>
-          <span className="font-mono uppercase flex items-center gap-1.5" style={{ color: '#fff', fontSize: '9px', letterSpacing: '0.13em', fontWeight: 700 }}>
+      <div className="keep-together mt-1 bg-white" style={{ border: cardRule }}>
+        <div className={viz ? 'ficha-viz-sec' : 'flex items-baseline justify-between gap-2 px-2 py-1'} style={viz ? undefined : { background: '#000' }}>
+          <span className="font-mono uppercase flex items-center gap-1.5" style={{ color: viz ? '#000' : '#fff', fontSize: '9px', letterSpacing: viz ? '0.10em' : '0.13em', fontWeight: 700 }}>
             <Paperclip className="h-3 w-3" weight="bold" /> Consumo de Tiras · Metros
           </span>
-          <span className="font-mono uppercase" style={{ color: '#d9d6d0', fontSize: '8px', letterSpacing: '0.06em' }}>
+          <span className="font-mono uppercase" style={{ color: viz ? CABEDAL_VIZ.muted : '#d9d6d0', fontSize: '8px', letterSpacing: '0.06em' }}>
             cálculo do PV
           </span>
         </div>
         <table className="w-full" style={{ borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '1.5px solid #000' }}>
-              <th className="text-left font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>Tira · cor</th>
+            <tr style={{ borderBottom: heavyRule }}>
+              <th className="text-left font-mono uppercase" style={{ color: viz ? CABEDAL_VIZ.muted : '#000', fontSize: '8px', letterSpacing: '0.12em', padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>Tira · cor</th>
               {showPerFicha && (
                 <th className="text-right font-mono uppercase" style={{ color: '#000', fontSize: '8px', letterSpacing: '0.12em', width: 92, padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>Por Ficha</th>
               )}
@@ -1143,8 +1149,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
               const showColor = !!colorStr && !(r.product_name || '').toLowerCase().includes(colorStr.toLowerCase());
               const req = Number(r.required) || 0;
               return (
-                <tr key={i} style={{ borderBottom: i < rows.length - 1 || rows.length > 1 ? '1px solid #000' : 'none' }}>
-                  <td className="align-middle" style={{ padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px` }}>
+                <tr key={i} className={viz && i % 2 === 1 ? 'ficha-viz-zebra' : undefined} style={{ borderBottom: i < rows.length - 1 || rows.length > 1 ? hairRule : 'none' }}>
+                  <td className="align-middle" style={{ padding: `${CONSUMO_TABLE_PAD_Y}px ${CONSUMO_TABLE_PAD_X}px`, background: viz && i % 2 === 1 ? CABEDAL_VIZ.zebra : undefined, ...cabedalVizPrintColor }}>
                     <span className="uppercase leading-none" style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '13px', letterSpacing: '-0.01em', color: '#000' }}>
                       {r.product_name}
                     </span>
@@ -1250,7 +1256,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     const multiRef = knives.length > 1;
     const totalKnives = knives.reduce((s, k) => s + k.ranges.length, 0);
     return (
-      <div className="keep-together mb-2 bg-white" style={{ border: '1.5px solid #000' }}>
+      <div className="keep-together mb-2 bg-white" style={{ border: cardRule }}>
         <div className="px-3 py-1.5 flex items-baseline justify-between gap-3" style={{ borderBottom: '1.5px solid #000' }}>
           <span className="section-label" style={{ color: '#000' }}>02 / Facas de Corte</span>
           <span
@@ -1342,6 +1348,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
         pairs={group.totalPairs}
         ops={groupOps}
         sizeBand={group.sizeBand}
+        refined={viz}
       />
     );
 
@@ -1838,7 +1845,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           const markHeroOnBeside = showHeroPhoto && photoBesideGrade && idx === firstPhotoBesideIdx;
 
           const colorHeader = (
-              <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: '1.5px solid #000' }}>
+              <div className="keep-together keep-with-next px-2 py-0.5 flex items-center justify-between" style={{ borderBottom: heavyRule }}>
                 <div className="flex items-center gap-2 min-w-0">
                   {theme.showProductImage && !showHeroPhoto && !cabedalBesideGrade && !photoBesideGrade && (
                     cabedalThumbStrip || (
@@ -2007,8 +2014,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   const piecesPerPair = Math.max(1, Math.round(Number(cg.piecesPerPair) || 2));
                   const totalPieces = cg.totalPairs * piecesPerPair;
                   return (
-                  <div className="keep-together keep-with-next flex items-baseline justify-between gap-2 px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
-                    <span className="section-label" style={{ color: '#000' }}>Peças a Costurar</span>
+                  <div className={`keep-together keep-with-next flex items-baseline justify-between gap-2 px-2 py-0.5 mb-1${viz ? ' ficha-viz-sec' : ''}`} style={viz ? { border: 'none', marginBottom: 4 } : { border: '1.5px solid #000' }}>
+                    <span className="section-label" style={{ color: viz ? CABEDAL_VIZ.muted : '#000' }}>Peças a Costurar</span>
                     <span
                       className="text-black leading-none"
                       style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '24px', letterSpacing: '-0.02em' }}
@@ -2022,8 +2029,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                   );
                 })()}
                 {(sector === 'Costura Cabedal' || sector === 'Corte Cabedal') && (cg.leftoverNapas?.length ?? 0) > 0 && (
-                  <div className="keep-together keep-with-next px-2 py-0.5 mb-1" style={{ border: '1.5px solid #000' }}>
-                    <span className="section-label block" style={{ color: '#000' }}>Sobra de napa</span>
+                  <div className="keep-together keep-with-next px-2 py-0.5 mb-1" style={{ border: cardRule }}>
+                    <span className="section-label block" style={{ color: viz ? CABEDAL_VIZ.muted : '#000' }}>Sobra de napa</span>
                     <span className="text-[11px] font-bold uppercase tracking-wide text-black">
                       {cg.leftoverNapas!.join(' · ')}
                     </span>
@@ -2052,7 +2059,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           );
 
           const trabalhoNode = (
-            <div key={`t-${idx}`} className="flow-card bg-white" style={{ border: '1.5px solid #000' }}>
+            <div key={`t-${idx}`} className="flow-card bg-white" style={{ border: cardRule }}>
               {photoBesideGrade ? (
                 <div
                   className="p-1 bg-white keep-together flex items-start"
@@ -2094,7 +2101,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
           );
 
           const fechamentoNode = (
-            <div key={`f-${idx}`} className="p-1 bg-white" style={{ border: '1.5px solid #000', borderTop: 0 }}>
+            <div key={`f-${idx}`} className="p-1 bg-white" style={{ border: cardRule, borderTop: 0 }}>
               {renderConsumoCorte(cg)}
               {renderConsumoTiras(cg)}
               <SectorMaterials rows={cg.consumption} sector={sector}
@@ -2195,9 +2202,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
   // maço + metros de tira somados de TODAS as fichas, com quebra por material+
   // cor. Só aparece quando há tiras com consumo (ref com tiras habilitadas).
   const strapTrailingBlock = sector === 'Aviamento' && grandStrapMeters > 0 ? (
-    <div className="keep-together mt-1 pt-1" style={{ borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+    <div className="keep-together mt-1 pt-1" style={{ borderTop: viz ? '1.5px solid #000' : '1px solid #000', borderBottom: '1px solid #000' }}>
       <div className="flex justify-between items-baseline">
-        <span className="section-label py-1" style={{ color: '#000' }}>Total Geral</span>
+        <span className="section-label py-1" style={{ color: viz ? CABEDAL_VIZ.muted : '#000' }}>Total Geral</span>
         <span
           className="text-black uppercase leading-none py-1"
           style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '28px', letterSpacing: '-0.025em' }}
@@ -2206,7 +2213,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
         </span>
       </div>
       <div className="flex justify-between items-baseline" style={{ borderTop: '1px solid #000' }}>
-        <span className="section-label py-1" style={{ color: '#000' }}>Total Tiras · todas as fichas</span>
+        <span className="section-label py-1" style={{ color: viz ? CABEDAL_VIZ.muted : '#000' }}>Total Tiras · todas as fichas</span>
         <span
           className="uppercase leading-none py-1"
           style={{ fontFamily: "'Anton', Impact, sans-serif", fontSize: '22px', letterSpacing: '-0.025em', color: '#C00000' }}
@@ -2253,6 +2260,7 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       pageIdentity={pageIdentity}
       blocks={blocks}
       minScale={minScale}
+      className={viz ? CABEDAL_VIZ_CLASS : undefined}
     />
   );
 };

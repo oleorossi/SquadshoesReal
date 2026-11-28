@@ -33,9 +33,11 @@ interface Props {
   note?: string;
   /** Selo INFANTIL/ADULTO da faixa do grupo. */
   sizeBand?: SizeBand;
+  /** Visual mais leve (fichas Cabedal/Aviamento): regra superior 2px, eyebrow discreto. */
+  refined?: boolean;
 }
 
-export const GroupSubHeader = ({ eyebrow, title, pairs, lotInfo, ops, note, sizeBand }: Props) => {
+export const GroupSubHeader = ({ eyebrow, title, pairs, lotInfo, ops, note, sizeBand, refined }: Props) => {
   const titleFont = adaptiveFontSize(title, {
     maxWidthPx: 430, baseFontPx: 20, minFontPx: 12, charWidthRatio: 0.48,
   });
@@ -45,13 +47,13 @@ export const GroupSubHeader = ({ eyebrow, title, pairs, lotInfo, ops, note, size
   return (
     <div
       className="keep-together keep-with-next"
-      style={{ borderTop: '3px solid #000', borderBottom: '1px solid #000', padding: '2px 0 3px', color: '#000' }}
+      style={{ borderTop: refined ? '2px solid #000' : '3px solid #000', borderBottom: '1px solid #000', padding: refined ? '3px 0 4px' : '2px 0 3px', color: '#000' }}
     >
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0 flex-1">
           <span
             className="block font-mono uppercase"
-            style={{ fontSize: '8px', letterSpacing: '0.18em', fontWeight: 700, color: '#000' }}
+            style={{ fontSize: '8px', letterSpacing: refined ? '0.12em' : '0.18em', fontWeight: 700, color: refined ? '#3a3a3a' : '#000' }}
           >
             {eyebrow}
           </span>

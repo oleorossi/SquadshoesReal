@@ -342,4 +342,22 @@ describe('Cabedal — Frente e Traseiro independentes', () => {
     expect(container.textContent).toContain('Costura de palmilha');
     expect(container.querySelectorAll('[data-tally-box]')).toHaveLength(48);
   });
+
+  it('Corte/Costura Cabedal e Aviamento recebem o visual refinado; Forração não', () => {
+    const { container: corte } = render(
+      <SilkMontageWorkSheet groups={[ds20([])]} sector="Corte Cabedal" sectorLabel="Corte Cabedal" />,
+    );
+    expect(corte.querySelector('.ficha-viz-cabedal')).not.toBeNull();
+    expect(corte.querySelector('.ficha-viz-grade')).not.toBeNull();
+    expect(corte.querySelector('[data-cabedal-part-band="frente"]')).not.toBeNull();
+    expect(corte.querySelector('[data-cabedal-part-badge="frente"]')?.textContent).toBe('F');
+
+    const { container: avia } = renderAviamento();
+    expect(avia.querySelector('.ficha-viz-cabedal')).not.toBeNull();
+
+    const { container: forra } = render(
+      <SilkMontageWorkSheet groups={[ds20([])]} sector="Corte Forração" sectorLabel="Corte Forração" />,
+    );
+    expect(forra.querySelector('.ficha-viz-cabedal')).toBeNull();
+  });
 });
