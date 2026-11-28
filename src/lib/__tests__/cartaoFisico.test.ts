@@ -172,8 +172,8 @@ describe('cartaoFisico', () => {
   });
 
   describe('layoutCutStack', () => {
-    it('capacidade canônica = 15 (3×5 A4 paisagem)', () => {
-      expect(CARTAO_FISICO_PER_PAGE).toBe(15);
+    it('capacidade canônica = 18 (3×6 A4 paisagem)', () => {
+      expect(CARTAO_FISICO_PER_PAGE).toBe(18);
     });
 
     it('N ≤ capacity → identidade (uma página)', () => {

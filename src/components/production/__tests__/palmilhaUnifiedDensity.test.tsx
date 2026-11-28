@@ -88,12 +88,13 @@ describe('PalmilhaUnifiedWorkSheet densidade A.3', () => {
     expect(queryByText(/placa\(s\)/i)).toBeNull();
 
     const blocks = Array.from(container.querySelectorAll('[data-block]'));
-    // header + sole(keepNext) + trabalho + fechamento(keepPrev) + total(keepPrev)
+    // header + sole + trabalho + forração/tally (keepPrev) + total (keepPrev)
     expect(blocks.length).toBeGreaterThanOrEqual(4);
-    const fechamento = blocks.find(b => b.getAttribute('data-keep-prev') === '1');
-    expect(fechamento).toBeTruthy();
-    expect(fechamento!.textContent).toMatch(/Controle de Fichas/i);
-    expect(fechamento!.textContent).toMatch(/Forração/i);
+    const keepPrev = blocks.filter(b => b.getAttribute('data-keep-prev') === '1');
+    expect(keepPrev.length).toBeGreaterThanOrEqual(1);
+    const fechamentoText = keepPrev.map(b => b.textContent || '').join(' ');
+    expect(fechamentoText).toMatch(/Controle de Fichas/i);
+    expect(fechamentoText).toMatch(/Forração/i);
   });
 
   it('mostra barra de placas só quando há qty > 0', () => {

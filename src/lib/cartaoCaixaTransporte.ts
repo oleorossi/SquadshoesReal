@@ -163,6 +163,22 @@ export function buildCartaoCaixaCards(args: BuildCartaoCaixaCardsArgs): CartaoCa
   return cards;
 }
 
+/**
+ * Envelope da folha de caixa (A4 paisagem, 6/folha, 3×2).
+ * 2,9×2 + 3×96 + 2×1,6 = 297 mm; 1,7×2 + 2×102,5 + 1,6 = 210 mm.
+ */
+export const CAIXA_LAYOUT = {
+  cols: 3,
+  rows: 2,
+  cardWmm: 96,
+  cardHmm: 102.5,
+  gapMm: 1.6,
+  padXmm: 2.9,
+  padYmm: 1.7,
+  pageWmm: 297,
+  pageHmm: 210,
+} as const;
+
 /** 6 cartões por A4 paisagem (3×2) — densifica sem perder grade/identidade. */
 export const CAIXA_TRANSPORTE_PER_PAGE = 6;
 

@@ -1,17 +1,18 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrderLotsBatch } from '@/hooks/useOrderLots';
 import PrintWorkSheetsPage, { SECTORS } from '@/components/production/PrintWorkSheetsPage';
 import { normalizePalmilhaPrintSectors } from '@/lib/buildPalmilhaUnifiedGroups';
+import { parsePrintFormatParam } from '@/lib/printWorkSheetsDeepLink';
 import { Card, CardContent } from '@/components/ui/card';
 import { EditorialPageHeader } from '@/components/layout/EditorialPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle, Cards, ArrowRight, Stack, QrCode } from '@phosphor-icons/react';
+import { Printer, MagnifyingGlass as Search, CircleNotch as Loader2, FileText, Funnel as Filter, Baby, Warning as AlertTriangle, Cards, ArrowRight, Stack, QrCode, Package } from '@phosphor-icons/react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { printOperatorFichasFromRows } from '@/lib/printOperatorFichas';
@@ -108,14 +109,22 @@ export default function PrintWorkSheets() {
   // navegam pra cá em vez do popup legado de fichas por setor (lib removida)
   // — assim TODOS os caminhos de impressão passam pelo modelo v7 (TallyBox
   // em todo setor). Nomes inválidos são descartados; sem param = todos.
+  const deepLinkFormat = useMemo(
+    () => parsePrintFormatParam(searchParams.get('format')),
+    [searchParams],
+  );
   const deepLinkSectors = useMemo(() => {
     const raw = searchParams.get('sectors');
-    if (!raw) return null;
+    if (!raw) {
+      // format=fardo/caixa sem sectors = só Palmilha.
+      if (deepLinkFormat === 'fardo' || deepLinkFormat === 'caixa') return new Set(['Palmilha']);
+      return null;
+    }
     const valid = new Set<string>([...SECTORS, 'Corte Palmilha', 'Corte Forração', 'Corte Fibra']);
     const list = raw.split(',').map(s => s.trim()).filter(s => valid.has(s));
     if (list.length === 0) return null;
     return new Set(normalizePalmilhaPrintSectors(list));
-  }, [searchParams]);
+  }, [searchParams, deepLinkFormat]);
   const [statusFilter, setStatusFilter] = useState<string>(deepLinkIds.length > 0 ? 'todos' : 'em_fluxo');
   const [pvFilter, setPvFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -126,6 +135,7 @@ export default function PrintWorkSheets() {
   // nesse formato, ainda passando pelo preview.
   const [openAsCartao, setOpenAsCartao] = useState(false);
   const [openAsMontador, setOpenAsMontador] = useState(false);
+  const [openAsCaixa, setOpenAsCaixa] = useState(false);
 
   const { data: rows = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['print_worksheets_orders', statusFilter],
@@ -267,6 +277,22 @@ export default function PrintWorkSheets() {
       }));
   }, [rows, sel.selectedIds]);
 
+  // ?format=fardo&orderIds= abre a prévia já no Fardo, com os cartões prontos
+  // (sem o controlador escolher formato/OP na tela de seleção).
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (deepLinkFormat !== 'fardo' && deepLinkFormat !== 'montador' && deepLinkFormat !== 'caixa') return;
+    if (deepLinkIds.length === 0) return;
+    if (isLoading) return;
+    if (selectedOrders.length === 0) return;
+    autoOpenedRef.current = true;
+    setOpenAsCartao(deepLinkFormat === 'fardo');
+    setOpenAsMontador(deepLinkFormat === 'montador');
+    setOpenAsCaixa(deepLinkFormat === 'caixa');
+    setShowPrintView(true);
+  }, [deepLinkFormat, deepLinkIds, isLoading, selectedOrders.length]);
+
   if (showPrintView) {
     return (
       <PrintWorkSheetsPage
@@ -275,6 +301,7 @@ export default function PrintWorkSheets() {
         initialSectors={deepLinkSectors ?? undefined}
         initialCartao={openAsCartao}
         initialCartaoMontador={openAsMontador}
+        initialCaixa={openAsCaixa}
       />
     );
   }
@@ -293,12 +320,16 @@ export default function PrintWorkSheets() {
       actionLabel,
     });
 
-  const openPreview = (asCartao: boolean, asMontador = false) => {
+  const openPreview = (asCartao: boolean, asMontador = false, asCaixa = false) => {
     if (!confirmSelection(
-      asMontador ? 'Gerar cartão do montador de' : asCartao ? 'Gerar cartão físico de' : 'Revisar fichas de',
+      asMontador ? 'Gerar cartão do montador de'
+        : asCaixa ? 'Gerar cartão da caixa de'
+        : asCartao ? 'Gerar cartão físico de'
+        : 'Revisar fichas de',
     )) return;
-    setOpenAsCartao(asCartao && !asMontador);
+    setOpenAsCartao(asCartao && !asMontador && !asCaixa);
     setOpenAsMontador(asMontador);
+    setOpenAsCaixa(asCaixa);
     setShowPrintView(true);
   };
 
@@ -406,6 +437,15 @@ export default function PrintWorkSheets() {
                   title="Prévia do fardo: 1 cartão por corrugado cheio (12/15/18), por OP"
                 >
                   <Cards className="h-4 w-4" /> Fardo
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={selectedOrders.length === 0}
+                  onClick={() => openPreview(false, false, true)}
+                  className="gap-2"
+                  title="Prévia da caixa: 1 cartão por caixa de 15 fichas de palmilha, recortável em A4 paisagem"
+                >
+                  <Package className="h-4 w-4" /> Caixa
                 </Button>
                 <Button
                   variant="ghost"

@@ -1888,3 +1888,35 @@ a:focus-visible {
 .ficha-viz-cabedal [data-cabedal-beside-photo] > div {
   border-width: 1px !important;
 }
+
+
+/* ─────────────────────────────────────────────────────────────
+   Ficha Palmilha unificada + cartão de Fardo — mesma linha visual
+   do Cabedal (t148u): rótulos cinza, zebra clara, print-color-adjust.
+   ───────────────────────────────────────────────────────────── */
+.ficha-viz-palmilha,
+.ficha-viz-fardo,
+.ficha-viz-caixa {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.ficha-viz-palmilha .section-label {
+  font-size: 8px;
+  letter-spacing: 0.10em;
+  font-weight: 600;
+  color: #3a3a3a;
+}
+.ficha-viz-palmilha table.ficha-viz-grade thead th,
+.ficha-viz-palmilha .ficha-viz-sec {
+  background: #efeee9;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.ficha-viz-palmilha tr.ficha-viz-zebra td {
+  background: #f2f0ec;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.ficha-viz-palmilha [data-palmilha-beside-photo] > div {
+  border-width: 1px !important;
+}

@@ -31,5 +31,6 @@ describe('CartaoFisico · lotCode', () => {
     const header = container.querySelector('.cartao-fisico > div');
     expect(header?.textContent).toContain('OP-01001');
     expect(header?.textContent).not.toContain('30/62');
+    expect(container.querySelector('[data-size-order-strip]')).toBeNull();
   });
 });

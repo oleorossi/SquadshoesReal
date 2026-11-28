@@ -1,7 +1,7 @@
 /**
  * Capacidade e destino das caixas de transporte por setor emissor.
  *
- * Ponto único pra plugar settings/DB depois — não espalhar 8/30 nem
+ * Ponto único pra plugar settings/DB depois — não espalhar 15/30 nem
  * "Colagem"/"Aviamento" pelos call sites. Sem UI de cadastro nesta entrega.
  *
  * Spec: specs/cartao-caixa-transporte.md
@@ -27,7 +27,8 @@ export interface CaixaTransporteSectorConfig {
 
 const CONFIG_BY_SECTOR: Record<CaixaTransporteSector, CaixaTransporteSectorConfig> = {
   Palmilha: {
-    fichasPorCaixa: 8,
+    // Chão de fábrica: a caixa de palmilha leva 15 fichas (Leonardo, 28/11/2026).
+    fichasPorCaixa: 15,
     destinoLabel: '',
   },
   'Costura Cabedal': {

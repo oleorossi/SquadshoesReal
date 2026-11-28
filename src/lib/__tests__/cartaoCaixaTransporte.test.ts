@@ -13,9 +13,9 @@ import {
 const BASE_12 = { '35': 2, '36': 2, '37': 2, '38': 2, '39': 2, '40': 2 };
 
 describe('caixaTransporteConfig', () => {
-  it('Palmilha = 8 (sem destino); Costura = 30 → Aviamento; Aviamento = 30 → Colagem', () => {
+  it('Palmilha = 15 (sem destino); Costura = 30 → Aviamento; Aviamento = 30 → Colagem', () => {
     expect(getCaixaTransporteConfig('Palmilha')).toEqual({
-      fichasPorCaixa: 8,
+      fichasPorCaixa: 15,
       destinoLabel: '',
     });
     expect(getCaixaTransporteConfig('Costura Cabedal')).toEqual({
@@ -35,7 +35,7 @@ describe('caixaTransporteConfig', () => {
 });
 
 describe('buildCartaoCaixaCards', () => {
-  it('23 corrugados Palmilha → 3 caixas (8, 8, 7) com labels 1/3…3/3', () => {
+  it('23 corrugados Palmilha → 2 caixas (15, 8) com labels 1/2…2/2', () => {
     const cards = buildCartaoCaixaCards({
       sectorName: 'Palmilha',
       sectorDisplayLabel: '',
@@ -49,17 +49,17 @@ describe('buildCartaoCaixaCards', () => {
         grid: BASE_12,
       }],
     });
-    expect(cards).toHaveLength(3);
-    expect(cards.map((c) => c.fichasNaCaixa)).toEqual([8, 8, 7]);
-    expect(cards.map((c) => c.capacidade)).toEqual([8, 8, 8]);
-    expect(cards.map((c) => c.parcial)).toEqual([false, false, true]);
-    expect(cards.map((c) => c.lotCode)).toEqual(['1/3', '2/3', '3/3']);
-    expect(cards.map((c) => c.lotLabel)).toEqual(['1 de 3', '2 de 3', '3 de 3']);
+    expect(cards).toHaveLength(2);
+    expect(cards.map((c) => c.fichasNaCaixa)).toEqual([15, 8]);
+    expect(cards.map((c) => c.capacidade)).toEqual([15, 15]);
+    expect(cards.map((c) => c.parcial)).toEqual([false, true]);
+    expect(cards.map((c) => c.lotCode)).toEqual(['1/2', '2/2']);
+    expect(cards.map((c) => c.lotLabel)).toEqual(['1 de 2', '2 de 2']);
     expect(cards.every((c) => c.destinoLabel === '')).toBe(true);
     expect(cards.every((c) => c.sectorDisplayLabel === '')).toBe(true);
     expect(cards.every((c) => c.opNumber === 'OP-01001')).toBe(true);
-    expect(cards[0].totalPairs).toBe(8 * 12);
-    expect(cards[2].totalPairs).toBe(7 * 12);
+    expect(cards[0].totalPairs).toBe(15 * 12);
+    expect(cards[1].totalPairs).toBe(8 * 12);
     expect(cards[0].title).toContain('OFF WHITE');
     expect(cards[0].title).toContain('NAPA SUDANI');
     expect(cards[0].sizes.length).toBeGreaterThan(0);
@@ -79,7 +79,7 @@ describe('buildCartaoCaixaCards', () => {
     });
     expect(cards).toHaveLength(1);
     expect(cards[0].fichasNaCaixa).toBe(5);
-    expect(cards[0].capacidade).toBe(8);
+    expect(cards[0].capacidade).toBe(15);
     expect(cards[0].parcial).toBe(true);
     expect(cards[0].lotCode).toBe('1/1');
     expect(cards[0].totalPairs).toBe(60);
@@ -92,7 +92,7 @@ describe('buildCartaoCaixaCards', () => {
         {
           opNumber: 'OP-A',
           color: 'OFF WHITE',
-          totalPairs: 12 * 12, // 12 corrugados → 2 caixas (8+4)
+          totalPairs: 20 * 12, // 20 corrugados → 2 caixas (15+5)
           grid: BASE_12,
         },
         {
