@@ -381,9 +381,11 @@ interface PaginatedSheetProps {
    *  8px → 6,4px). Decisão do dono 31/07/2026: legibilidade vence densidade.
    *  Sem valor, mantém o comportamento antigo (só o piso global). */
   minScale?: number;
+  /** Classe extra no root do maço (ex.: refinamento visual do Cabedal). */
+  className?: string;
 }
 
-export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, minScale }: PaginatedSheetProps) => {
+export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, minScale, className }: PaginatedSheetProps) => {
   const sheetInstanceId = useId();
   const sheetKey = `${sectorLabel}::${sheetInstanceId}`;
   const continuity = usePrintContinuity(sheetKey);
@@ -809,7 +811,7 @@ export const PaginatedSheet = ({ sectorLabel, pageIdentity, blocks, pageStyle, m
   return (
     <div
       ref={sheetRootRef}
-      className={`pagi-sheet${reversePages ? ' pagi-sheet--reversed' : ''}`}
+      className={`pagi-sheet${reversePages ? ' pagi-sheet--reversed' : ''}${className ? ` ${className}` : ''}`}
       style={{ width: '210mm', margin: '0 auto' }}
     >
       {portaledBlocks}

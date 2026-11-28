@@ -62,4 +62,44 @@ describe('CabedalFrenteTraseiroTally', () => {
     const { container } = render(<CabedalFrenteTraseiroTally count={1} />);
     expect(container.textContent).toMatch(/traseiro pode ficar pronto com a frente pendente/i);
   });
+
+  it('com 80 fichas auto-ajusta a caixa pra não vazar a borda da faixa', () => {
+    const { container } = render(
+      <CabedalFrenteTraseiroTally count={80} pairsPerCard={12} totalUnits={960} />,
+    );
+    for (const part of ['frente', 'traseiro'] as const) {
+      const band = container.querySelector(`[data-cabedal-part-band="${part}"]`) as HTMLElement;
+      const boxes = boxesIn(band);
+      expect(boxes).toHaveLength(80);
+      const px = Number(boxes[0].dataset.tallyBoxPx || boxes[0].style.width.replace('px', ''));
+      expect(px).toBeLessThan(20);
+      expect(px).toBeGreaterThanOrEqual(14);
+      expect(boxes[0].style.width).toBe(`${px}px`);
+      // Caixinhas 30 e 60 existem e têm o mesmo tamanho (não saem da linha).
+      expect(boxes[29].textContent).toBe('30');
+      expect(boxes[59].textContent).toBe('60');
+      expect(boxes[29].style.width).toBe(`${px}px`);
+    }
+  });
+
+  it('com 12 fichas coloca Frente e Traseiro lado a lado', () => {
+    const { container } = render(
+      <CabedalFrenteTraseiroTally count={12} pairsPerCard={12} totalUnits={144} />,
+    );
+    const root = container.querySelector('[data-cabedal-frente-traseiro-tally]') as HTMLElement;
+    expect(root.getAttribute('data-cabedal-tally-layout')).toBe('side-by-side');
+    const frente = root.querySelector('[data-cabedal-part-band="frente"]') as HTMLElement;
+    const traseiro = root.querySelector('[data-cabedal-part-band="traseiro"]') as HTMLElement;
+    expect(frente).not.toBeNull();
+    expect(traseiro).not.toBeNull();
+    expect(frente.parentElement).toBe(traseiro.parentElement);
+  });
+
+  it('com 80 fichas empilha as faixas (lado a lado ficaria mais alto)', () => {
+    const { container } = render(
+      <CabedalFrenteTraseiroTally count={80} pairsPerCard={12} totalUnits={960} />,
+    );
+    const root = container.querySelector('[data-cabedal-frente-traseiro-tally]') as HTMLElement;
+    expect(root.getAttribute('data-cabedal-tally-layout')).toBe('stack');
+  });
 });

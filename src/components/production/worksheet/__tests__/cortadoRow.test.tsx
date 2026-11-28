@@ -125,6 +125,46 @@ describe('linha CORTADO nas fichas de corte', () => {
   });
 });
 
+
+describe('grade P/M/G nas fichas de cabedal', () => {
+  const facaRanges = { P: ['34', '35'], M: ['36', '37'], G: ['38', '39', '40'] };
+  const cg = baseCg({
+    combinedGrid: { '34': 2, '35': 2, '36': 3, '37': 3, '38': 2, '39': 2, '40': 2 },
+    knifeGrid: { P: 4, M: 6, G: 6 },
+    aviamentoGrid: { P: 4, M: 6, G: 6 },
+    totalPairs: 16,
+    fichas: 2,
+    aviamentoSteps: ['Frente', 'Traseira'],
+  });
+
+  it.each([
+    'Corte Cabedal',
+    'Costura Cabedal',
+    'Aviamento',
+  ] as const)('%s: cabeçalho P/M/G com ranges e legenda; Controle de Fichas segue 1..N', (sector) => {
+    const { container } = render(
+      <SilkMontageWorkSheet
+        sector={sector}
+        groups={[soleGroup(cg)]}
+        sectorLabel={sector}
+        facaRanges={facaRanges}
+      />,
+    );
+    const legend = container.querySelector('[data-cabedal-pmg-legend]');
+    expect(legend?.textContent).toMatch(/P 34-35/);
+    expect(legend?.textContent).toMatch(/M 36-37/);
+    expect(legend?.textContent).toMatch(/G 38-40/);
+    expect(legend?.textContent).toMatch(/corrugado/);
+    expect(container.textContent).toMatch(/Controle de Fichas/);
+    // Ranges no cabeçalho, não só na legenda.
+    expect(screen.getByText('34-35')).toBeTruthy();
+    expect(screen.getByText('36-37')).toBeTruthy();
+    expect(screen.getByText('38-40')).toBeTruthy();
+    // Não inventa "ficha P/M/G": o tally continua numerando fichas físicas.
+    expect(container.textContent).not.toMatch(/Controle de Fichas · P\b/);
+  });
+});
+
 describe('fichas sem visto / checklist', () => {
   it('Expedição não renderiza Checklist Final nem Visto', () => {
     const group: ExpedicaoCustomerGroup = {

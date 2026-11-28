@@ -8,6 +8,9 @@ import {
   STEP_CHECKBOX_PX,
   STRAP_ROW_PAD_Y,
   STRAP_LABEL_PAD,
+  STRAP_COLOR_FONT_PX,
+  STRAP_IDENTITY_FONT_PX,
+  STRAP_MEASURE_FONT_PX,
   STRAP_STACK_GAP_PX,
   STEP_ROW_PAD_Y,
   CONSUMO_TABLE_PAD_Y,
@@ -94,6 +97,17 @@ describe('density — constantes da Opção A', () => {
     expect(STRAP_LABEL_PAD).toMatch(/^1px\s/);
   });
 
+  it('quadro de tiras compacto: cor e medidas cabem numa linha e sobrevivem ao auto-fit 0,80', () => {
+    expect(STRAP_COLOR_FONT_PX).toBeLessThanOrEqual(12);
+    expect(STRAP_COLOR_FONT_PX).toBeGreaterThanOrEqual(10);
+    expect(STRAP_IDENTITY_FONT_PX).toBeLessThanOrEqual(9);
+    expect(STRAP_MEASURE_FONT_PX).toBeLessThanOrEqual(9);
+    // Piso de leitura após o auto-fit mínimo do PaginatedSheet (0,80).
+    expect(STRAP_COLOR_FONT_PX * 0.8).toBeGreaterThanOrEqual(8);
+    expect(STRAP_IDENTITY_FONT_PX * 0.8).toBeGreaterThanOrEqual(6);
+    expect(STRAP_MEASURE_FONT_PX * 0.8).toBeGreaterThanOrEqual(6);
+  });
+
   it('A.3: tabela de consumo multi-linha aperta só o eixo vertical', () => {
     expect(CONSUMO_TABLE_PAD_Y).toBeLessThanOrEqual(2);
     expect(CONSUMO_TABLE_PAD_X).toBeGreaterThanOrEqual(4);
@@ -159,14 +173,18 @@ describe('guard — toda ficha de operador segue a densidade', () => {
     for (const { name, src } of worksheetFiles()) {
       for (const size of productImageSizes(src)) {
         // Tamanhos legítimos:
-        // - HEADER_THUMB_PX: miniatura do cabeçalho da cor
+        // - HEADER_THUMB_PX: miniatura do cabeçalho da cor (quando a foto
+        //   não coube ao lado da grade)
         // - IMG: miniatura por referência do Corte Forração (92px — AUMENTADA
         //   a pedido do dono em 2026-07-22, não reduzir)
         // - AVIAMENTO_HERO_PHOTO_PX: bloco grande opcional do Aviamento A4
-        //   (toggle por referência na barra de Imprimir Fichas; 140px)
+        //   (toggle por referência; 140px; só empilhado se não couber ao lado)
+        // - CABEDAL_BESIDE_PHOTO_PX: foto 140px AO LADO da grade (não é faixa
+        //   própria de largura inteira)
         const ok = size === 'HEADER_THUMB_PX'
           || size === 'IMG'
-          || size === 'AVIAMENTO_HERO_PHOTO_PX';
+          || size === 'AVIAMENTO_HERO_PHOTO_PX'
+          || size === 'CABEDAL_BESIDE_PHOTO_PX';
         if (!ok) offenders.push(`${name}: size={${size}}`);
       }
     }

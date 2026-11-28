@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { SilkMontageWorkSheet, type SoleSilkGroup } from '../SilkMontageWorkSheet';
 import type { ConsumptionRow } from '@/hooks/useBulkOrderConsumption';
+import { STRAP_COLOR_FONT_PX, STRAP_IDENTITY_FONT_PX } from '@/components/production/worksheet/density';
 
 // PaginatedSheet observa cada bloco com ResizeObserver — inexistente no jsdom.
 // Mock no-op: os blocos ainda são commitados no DOM (measurement=0 → 1 página).
@@ -96,15 +97,17 @@ describe('SilkMontageWorkSheet · Aviamento · Consumo de Tiras (metros)', () =>
     const material = rows[1].querySelector<HTMLElement>('[data-strap-material]')!;
     const color = rows[1].querySelector<HTMLElement>('[data-strap-color]')!;
     expect(material).toHaveTextContent('NAPA SOFT + MASSABOX');
-    expect(material).toHaveStyle({ fontSize: '10px', whiteSpace: 'normal', overflowWrap: 'anywhere' });
-    expect(color).toHaveStyle({ fontSize: '18px' });
+    expect(material).toHaveStyle({ fontSize: `${STRAP_IDENTITY_FONT_PX}px`, whiteSpace: 'normal', overflowWrap: 'anywhere' });
+    expect(color).toHaveStyle({ fontSize: `${STRAP_COLOR_FONT_PX}px` });
+    // Uma linha só: TIRA n · rótulo técnico · cor · material.
+    expect(rows[1].textContent?.replace(/\s+/g, ' ')).toMatch(/TIRA 2 · ALÇA FRONTAL · BRANCO · NAPA SOFT \+ MASSABOX/i);
     expect(rows[2]).toHaveTextContent('TIRA 3');
     expect(rows[2]).toHaveTextContent('VERMELHO');
     expect(rows[2]).toHaveTextContent('—');
     expect(rows[2].querySelector('[data-strap-material]')).toBeNull();
     // Os pisos também valem após o auto-fit mínimo de 0,8.
-    expect(Number.parseFloat(material.style.fontSize) * 0.8).toBeGreaterThanOrEqual(7.5);
-    expect(Number.parseFloat(color.style.fontSize) * 0.8).toBeGreaterThanOrEqual(14);
+    expect(Number.parseFloat(material.style.fontSize) * 0.8).toBeGreaterThanOrEqual(6);
+    expect(Number.parseFloat(color.style.fontSize) * 0.8).toBeGreaterThanOrEqual(8);
     expect(screen.getByText(/cor e material do PV/i)).toBeInTheDocument();
 
     rerender(<SilkMontageWorkSheet groups={[withSequence]} sector="Montagem" />);

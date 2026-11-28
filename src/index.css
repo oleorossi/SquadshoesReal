@@ -1824,3 +1824,67 @@ a:focus-visible {
 [data-marquee-container] {
   cursor: default;
 }
+
+
+/* ─────────────────────────────────────────────────────────────
+   Fichas Cabedal/Aviamento — refinamento visual (t145u, 2026-11-27)
+   Escopado em .ficha-viz-cabedal (Corte Cabedal, Costura Cabedal,
+   Aviamento). Hierarquia: dados-chave em Anton; rótulos discretos.
+   Linhas internas mais leves; zebra clara com print-color-adjust.
+   ───────────────────────────────────────────────────────────── */
+.ficha-viz-cabedal {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Rótulos secundários (Pedido, Resumo, Cor, Ref., Nº) — discretos,
+   sem competir com PV, OFF WHITE, totais e modelo. */
+.ficha-viz-cabedal .section-label {
+  font-size: 8px;
+  letter-spacing: 0.10em;
+  font-weight: 600;
+  color: #3a3a3a;
+}
+
+.ficha-viz-cabedal table.ficha-viz-grade {
+  border-collapse: collapse;
+  border: none;
+}
+.ficha-viz-cabedal table.ficha-viz-grade thead th {
+  background: #efeee9;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.ficha-viz-cabedal table.ficha-viz-grade tbody tr.ficha-viz-zebra td,
+.ficha-viz-cabedal tr.ficha-viz-zebra td {
+  background: #f2f0ec;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Cabeçalho de seção padronizado (consumo, peças, total). Não se aplica
+   às faixas Frente/Traseiro, que mantêm o contraste sólido/tracejado. */
+.ficha-viz-cabedal .ficha-viz-sec {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 8px;
+  background: #efeee9;
+  border-bottom: 1px solid #000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Título do TallyBox dentro da faixa F/T: o cabeçalho da faixa já nomeia
+   a parte — o rótulo "Controle de Fichas · …" fica secundário. */
+.ficha-viz-cabedal [data-cabedal-part-band] .section-label {
+  font-size: 7.5px;
+  letter-spacing: 0.08em;
+  color: #3a3a3a;
+}
+
+/* Foto ao lado da grade: borda 1px, alinhada ao bloco. */
+.ficha-viz-cabedal [data-cabedal-beside-photo] > div {
+  border-width: 1px !important;
+}
