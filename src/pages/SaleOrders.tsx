@@ -34,6 +34,7 @@ import {
 } from '@/hooks/useSaleOrderGateBlocks';
 import { SaleOrderGateBlockBadge } from '@/components/sale-orders/SaleOrderGateBlockBadge';
 import { SaleOrderAtelierProductionHoldBadge } from '@/components/sale-orders/SaleOrderAtelierProductionHoldBadge';
+import { useReleasePreproduction } from '@/hooks/useReleasePreproduction';
 import { SaleOrderCabedalHoldPanel } from '@/components/sale-orders/SaleOrderCabedalHoldPanel';
 import {
   saleOrderAwaitsCabedal,
@@ -294,6 +295,7 @@ export default function SaleOrders() {
   const [previewNfeOrder, setPreviewNfeOrder] = useState<{ id: string; orderNumber: string } | null>(null);
   const resyncOPs = useResyncOPsFromSheets();
   const resyncPVOPs = useResyncOPsFromPV();
+  const releasePreproduction = useReleasePreproduction();
   // O fallback de picking pode debitar muitos itens de uma vez; a confirmação
   // estruturada mantém o impacto visível antes de tocar nas reservas das OPs.
   const commitPicking = useCommitPickingForSaleOrder();
@@ -2985,8 +2987,19 @@ export default function SaleOrders() {
                   )}
                   totalItems={selectedOrderItems.filter((i) => !i.production_excluded_at).length}
                   canGenerate={isAdmin}
-                  // Sem onGenerate: a ação de gerar ordens antes do cabedal só
-                  // existe depois da migration (RPC release_preproduction_*).
+                  generating={releasePreproduction.isPending}
+                  onGenerate={() => setPendingConfirm({
+                    title: `Gerar as ordens do ${selectedOrder.order_number} agora?`,
+                    description: (
+                      <div className="space-y-2">
+                        <p>Cria a ordem de produção de cada item que ainda não tem, para você imprimir as fichas e adiantar Corte, Palmilha, Fibra e Forração.</p>
+                        <p>O pedido <strong>continua Aguardando Cabedal</strong>: não vai para Em Produção. Costura Cabedal e Aviamento seguem travados até o cabedal voltar.</p>
+                        <p>Mesma regra da aprovação: o material é só reservado, sem baixa, e a embalagem do pedido é debitada do estoque. Nenhuma ordem de compra é criada.</p>
+                      </div>
+                    ),
+                    actionLabel: 'Gerar ordens e fichas',
+                    onConfirm: () => releasePreproduction.mutate(selectedOrder.id),
+                  })}
                   onPrintFichas={() => {
                     const ids = selectedOrderItems.flatMap((i) => (i.productionOrders ?? []).map((op: any) => String(op.id)));
                     if (ids.length > 0) navigate(`/imprimir-fichas?orderIds=${ids.join(',')}`);
