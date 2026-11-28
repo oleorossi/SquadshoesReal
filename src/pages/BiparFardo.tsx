@@ -209,7 +209,7 @@ export function BiparFardoView({
       )}
 
       {scanning && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
+        <div className="fixed inset-0 z-50 flex flex-col bg-foreground text-background">
           <div className="flex items-center justify-between px-4 py-3">
             <p className="text-base font-semibold">Aponte para o Code128</p>
             <button type="button" onClick={onStopScan} className="flex h-12 items-center gap-2 rounded-lg px-3 text-base font-semibold">
@@ -218,10 +218,10 @@ export function BiparFardoView({
           </div>
           <div className="relative flex-1">
             <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay />
-            <div className="pointer-events-none absolute inset-x-8 top-1/3 h-24 rounded-lg border-2 border-white/80" />
+            <div className="pointer-events-none absolute inset-x-8 top-1/3 h-24 rounded-lg border-2 border-background/80" />
           </div>
           {cameraError && (
-            <div className="m-4 flex gap-2 rounded-lg bg-amber-500/20 p-3 text-sm text-amber-100">
+            <div className="m-4 flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-600">
               <Warning className="h-5 w-5 shrink-0" />
               {cameraError === 'nosupport'
                 ? 'Não deu pra carregar o leitor da câmera. Use o campo de código ou um leitor USB.'
