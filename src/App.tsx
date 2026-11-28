@@ -112,6 +112,7 @@ const GroupedReportSummary = lazy(() => import("./pages/GroupedReportSummary"));
 const TerceirizadosHub = lazy(() => import("./pages/TerceirizadosHub"));
 // SectorAggregatedView é a visão legada "lote" de /producao/analises.
 const PrintWorkSheets = lazy(() => import("./pages/PrintWorkSheets"));
+const BiparFardo = lazy(() => import("./pages/BiparFardo"));
 const LabelSystem = lazy(() => import("./pages/LabelSystem"));
 const ClientLabeling = lazy(() => import("./pages/ClientLabeling"));
 const PurchasePlanning = lazy(() => import("./pages/PurchasePlanning"));
@@ -1195,6 +1196,10 @@ const router = createBrowserRouter([
       {
         path: "imprimir-fichas",
         element: <PrintWorkSheets />,
+      },
+      {
+        path: "bipar",
+        element: <BiparFardo />,
       },
       {
         // Ficha de Montadores — fichas de corte/montagem por dia (tabela ficha_montadores)

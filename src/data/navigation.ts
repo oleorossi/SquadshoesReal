@@ -92,6 +92,7 @@ export const navigationCatalog: NavigationResource[] = [
   { path: '/producao/apontamento', label: 'Apontamento', group: 'Produção', icon: ListChecks, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/Setores') },
   { path: '/producao/calculadora-grade', label: 'Grade', group: 'Produção', icon: Calculator, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/CalculadoraGrade') },
   { path: '/imprimir-fichas', label: 'Fichas de OP', group: 'Produção', icon: Printer, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/PrintWorkSheets') },
+  { path: '/bipar', label: 'Bipar fardo', group: 'Produção', icon: Barcode, surfaces: ['hub-child', 'command', 'hub-shortcut'], preload: () => import('@/pages/BiparFardo') },
   { path: '/producao/analises', label: 'Análises', group: 'Produção', icon: BarChart3, surfaces: ['hub-child', 'command'], preload: () => import('@/pages/ProducaoAnalises') },
   { path: '/producao/produtividade', label: 'Produtividade por Modelo', group: 'Produção', icon: Gauge, surfaces: ['command', 'hub-shortcut'], preload: () => import('@/pages/ProdutividadeModelos') },
   // Ordens não ocupa a sidebar por decisão do dono, mas é aberta pela FAB e
@@ -234,6 +235,7 @@ const hubsDeclarados: NavigationHub[] = [
       resource('/terceirizados'),
       resource('/producao/corte-lookahead'),
       resource('/imprimir-fichas'),
+      resource('/bipar'),
       resource('/producao/calculadora-grade'),
       resource('/producao/analises'),
       resource('/producao/estouro'),

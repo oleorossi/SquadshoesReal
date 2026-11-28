@@ -24,6 +24,7 @@ describe('reorganização dos menus (aprovada 27/11)', () => {
       '/terceirizados',
       '/producao/corte-lookahead',
       '/imprimir-fichas',
+      '/bipar',
       '/producao/calculadora-grade',
       '/producao/analises',
       '/producao/estouro',
