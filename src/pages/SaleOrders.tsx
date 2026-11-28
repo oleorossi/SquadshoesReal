@@ -3001,7 +3001,7 @@ export default function SaleOrders() {
                     onConfirm: () => releasePreproduction.mutate(selectedOrder.id),
                   })}
                   onPrintFichas={() => {
-                    const ids = selectedOrderItems.flatMap((i) => (i.productionOrders ?? []).map((op: any) => String(op.id)));
+                    const ids = selectedOrderItems.flatMap((i) => (i.productionOrders ?? []).map((op: { id: string | number }) => String(op.id)));
                     if (ids.length > 0) navigate(`/imprimir-fichas?orderIds=${ids.join(',')}`);
                   }}
                 />
