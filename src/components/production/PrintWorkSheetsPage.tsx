@@ -2935,7 +2935,12 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
           }
           cg.knifeGrid = cg.knifeGrid || {};
           cg.knifeGrid[bucketKey] = (cg.knifeGrid[bucketKey] ?? 0) + scaled;
-          // aviamentoGrid: agrupa por faixa P/M/G (override OU padrão global); senão literal.
+          // aviamentoGrid: override da ref → padrão global do Aviamento →
+          // facas de Corte (mesmo P/M/G do cabedal) → numeração literal.
+          // Sem o fallback nas facas, refs como o SP130 (aviamento_size_ranges
+          // NULL e sem aviamento_pmg_default) saíam número a número, enquanto
+          // Corte/Costura já herdavam knife_facas_default (pedido t146u/t147u:
+          // P/M/G em todas as fichas de cabedal).
           let aviKey = size;
           if (aviamentoRanges) {
             const bucket = aviamentoRanges.find(b => Array.isArray(b.sizes) && b.sizes.includes(size));
@@ -2943,6 +2948,14 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
           } else if (useDefaultAviamento) {
             const label = pmgLabelForSize(size, aviamentoDefaultBoundaries!);
             if (label) aviKey = label;
+          } else if (!aviamentoOptedOut) {
+            if (knifeRanges) {
+              const bucket = knifeRanges.find(b => Array.isArray(b.sizes) && b.sizes.includes(size));
+              if (bucket) aviKey = bucket.label;
+            } else if (useDefaultFacas) {
+              const label = facaLabelForSize(size, knifeDefaultBoundaries!);
+              if (label) aviKey = label;
+            }
           }
           cg.aviamentoGrid = cg.aviamentoGrid || {};
           cg.aviamentoGrid[aviKey] = (cg.aviamentoGrid[aviKey] ?? 0) + scaled;
@@ -4800,26 +4813,47 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
                 .filter((g): g is SoleSilkGroup => g !== null);
             }
             if (groupsForSector.length === 0) return [];
-            // Facas de Corte (pedido do dono 2026-06-12): SÓ no Corte Cabedal.
-            // Uma entrada por REFERÊNCIA presente no maço (modelos com cabedal
-            // a cortar) cuja ficha técnica tem knife_size_ranges cadastrado —
-            // a worksheet mostra quantidade de facas + código + numerações
-            // cobertas, identificando a referência quando o maço tem várias.
-            // O bloco-resumo "Facas de Corte" foi removido (redundante). Mas o
-            // CABEÇALHO da grade de Corte Cabedal mostra o range de cada faca ao
-            // lado de P/M/G — facaRanges une as numerações por label entre as refs
-            // do maço (override próprio ou padrão global expandido). (User 2026-06-17.)
-            const facaRanges: Record<string, string[]> | undefined = sectorName === 'Corte Cabedal'
+            // Faixas P/M/G nas fichas de cabedal (Corte, Costura e Aviamento).
+            // Cabeçalho da grade mostra o range de cada faixa (P 34-35).
+            // facaRanges une as numerações por label entre as refs do maço
+            // (override da ficha ou padrão global expandido). No Aviamento,
+            // se não há aviamento_size_ranges / padrão próprio, herda as
+            // facas de Corte para as três fichas usarem a mesma divisão.
+            const isCabedalPmgSector = sectorName === 'Corte Cabedal'
+              || sectorName === 'Costura Cabedal'
+              || sectorName === 'Aviamento';
+            const facaRanges: Record<string, string[]> | undefined = isCabedalPmgSector
               ? (() => {
                   const m = new Map<string, Set<string>>();
                   for (const order of expandedOrders) {
                     const sheetId = (order as any).reference_id;
-                    if (!sheetId || !requiresUpperCut(sheetById.get(sheetId))) continue;
-                    let ranges = knifeRangesByRef.get(sheetId);
-                    if ((!ranges || ranges.length === 0)
-                        && !knifeOptOutByRef.has(sheetId)
-                        && Array.isArray(knifeDefaultBoundaries) && knifeDefaultBoundaries.length > 0) {
-                      ranges = expandFacasByBoundaries(Object.keys(((order as any).grid || {})), knifeDefaultBoundaries);
+                    if (!sheetId) continue;
+                    const sheet = sheetById.get(sheetId);
+                    if (sectorName === 'Corte Cabedal' && !requiresUpperCut(sheet)) continue;
+                    const sizes = Object.keys(((order as any).grid || {}));
+                    let ranges: Array<{ label: string; sizes: string[] }> | undefined;
+                    if (sectorName === 'Aviamento') {
+                      ranges = aviamentoRangesByRef.get(sheetId);
+                      if ((!ranges || ranges.length === 0) && !aviamentoOptOutByRef.has(sheetId)
+                          && Array.isArray(aviamentoDefaultBoundaries) && aviamentoDefaultBoundaries.length > 0) {
+                        ranges = expandFacasByBoundaries(sizes, aviamentoDefaultBoundaries as any);
+                      }
+                      // Sem faixa própria de Aviamento: herda as facas de cabedal.
+                      if ((!ranges || ranges.length === 0) && !aviamentoOptOutByRef.has(sheetId)) {
+                        ranges = knifeRangesByRef.get(sheetId);
+                        if ((!ranges || ranges.length === 0)
+                            && !knifeOptOutByRef.has(sheetId)
+                            && Array.isArray(knifeDefaultBoundaries) && knifeDefaultBoundaries.length > 0) {
+                          ranges = expandFacasByBoundaries(sizes, knifeDefaultBoundaries);
+                        }
+                      }
+                    } else {
+                      ranges = knifeRangesByRef.get(sheetId);
+                      if ((!ranges || ranges.length === 0)
+                          && !knifeOptOutByRef.has(sheetId)
+                          && Array.isArray(knifeDefaultBoundaries) && knifeDefaultBoundaries.length > 0) {
+                        ranges = expandFacasByBoundaries(sizes, knifeDefaultBoundaries);
+                      }
                     }
                     if (!ranges) continue;
                     for (const r of ranges) {

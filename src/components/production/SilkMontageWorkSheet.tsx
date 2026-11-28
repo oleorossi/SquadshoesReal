@@ -564,10 +564,10 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
 
   /** Tabela de grade compartilhada (Por Ficha + Total + etapas Aviamento). */
   const renderGradeTable = (cg: SilkColorGroup) => {
-    // Corte Cabedal: se a ref tem knife_size_ranges cadastrado (knifeGrid
-    // populado com labels P/M/G), exibe colunas por faca em vez de
-    // numeração individual. Aviamento: idem com aviamentoGrid (segmento
-    // próprio). Outros setores sempre usam combinedGrid.
+    // Cabedal (Corte/Costura): knifeGrid com P/M/G (override da ficha ou
+    // padrão global knife_facas_default). Aviamento: aviamentoGrid próprio,
+    // ou as mesmas facas de cabedal quando não há faixa de Aviamento.
+    // Outros setores sempre usam combinedGrid.
     const usingKnife = (sector === 'Corte Cabedal' || sector === 'Costura Cabedal')
       && cg.knifeGrid
       && Object.keys(cg.knifeGrid).length > 0;
@@ -589,9 +589,9 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
     // compacto (2 cores/A4); layout completo usa o bucket natural — densidade
     // vem de matar espaço morto, não de fonte menor permanente.
     const ft = gradeTableFont(activeSizes, theme.compact);
-    // Range de numerações de cada faca (P → "34-37") sob o rótulo no cabeçalho
-    // quando agrupando por faca (Corte Cabedal). Contíguo vira "34-37"; senão
-    // lista "34·36". Vazio quando não há range pra a faca.
+    // Range de numerações de cada faixa (P → "34-37") sob o rótulo no cabeçalho
+    // quando a grade agrupa por P/M/G (Corte/Costura Cabedal e Aviamento).
+    // Contíguo vira "34-37"; senão lista "34·36".
     const facaRangeLabel = (label: string): string => {
       const sizes = facaRanges?.[label];
       if (!sizes || sizes.length === 0) return '';
@@ -601,6 +601,14 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
       return contiguous ? `${nums[0]}-${nums[nums.length - 1]}` : nums.join('·');
     };
+    const bandLegend = usingBuckets && facaRanges
+      ? activeSizes
+          .map((label) => {
+            const r = facaRangeLabel(label);
+            return r ? `${label} ${r}` : label;
+          })
+          .join(' · ')
+      : '';
     return (
       <>
       <table className={`w-full text-center bg-white${viz ? ' ficha-viz-grade' : ''}`} style={{ borderCollapse: 'collapse', tableLayout: 'fixed', border: viz ? 'none' : '1.5px solid #000' }}>
@@ -623,8 +631,8 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
                 }}
               >
                 {s}
-                {usingKnife && facaRangeLabel(s) && (
-                  <div style={{ fontSize: `${Math.max(6, ft.headerPx - 4)}px`, fontWeight: 400, fontFamily: "'Fira Code', monospace", lineHeight: 1, marginTop: 1, color: '#000' }}>
+                {usingBuckets && facaRangeLabel(s) && (
+                  <div style={{ fontSize: `${Math.max(6, ft.headerPx - 4)}px`, fontWeight: 400, fontFamily: "'Fira Code', monospace", lineHeight: 1, marginTop: 1, color: viz ? CABEDAL_VIZ.muted : '#000' }}>
                     {facaRangeLabel(s)}
                   </div>
                 )}
@@ -912,6 +920,15 @@ export const SilkMontageWorkSheet = ({ groups, sector, pairsPerCard = 12, sizeBa
       ) && (
         <p className="leading-tight" style={{ fontSize: '8px', fontWeight: 600, color: viz ? CABEDAL_VIZ.muted : '#C00000', marginTop: 2 }}>
           Linhas TIRA = sequência da ficha técnica · cor e material do PV · medida em cm "do pé" por numeração (ou faixa P/M/G).
+        </p>
+      )}
+      {bandLegend && (
+        <p
+          className="leading-tight"
+          data-cabedal-pmg-legend=""
+          style={{ fontSize: '8px', fontWeight: 600, color: viz ? CABEDAL_VIZ.muted : '#000', marginTop: 2, letterSpacing: '0.04em' }}
+        >
+          Faixas: {bandLegend}. Controle de fichas marca o corrugado (cada ficha traz P+M+G).
         </p>
       )}
       </>
