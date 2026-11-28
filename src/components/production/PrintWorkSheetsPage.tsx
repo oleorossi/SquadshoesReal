@@ -7,13 +7,14 @@ import { toast } from 'sonner';
 import { useQuery, useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle, QrCode, Package } from '@phosphor-icons/react';
+import { Printer, ArrowLeft, Stack as Layers, Cards, FileText, Check, ArrowsClockwise, CircleNotch as Loader2, Warning as AlertTriangle, QrCode, Package, Barcode } from '@phosphor-icons/react';
 import OperatorWorkSheet from '@/components/production/OperatorWorkSheet';
 import { PalmilhaWorkSheet, type PalmilhaGroup } from '@/components/production/PalmilhaWorkSheet';
 import { PalmilhaUnifiedWorkSheet } from '@/components/production/PalmilhaUnifiedWorkSheet';
 import { FardoPage } from '@/components/production/FardoPage';
 import { CaixaPage } from '@/components/production/CaixaPage';
 import { CartaoMontador } from '@/components/production/CartaoMontador';
+import { EtiquetaFardoElginDialog } from '@/components/production/EtiquetaFardoElginDialog';
 import { SilkMontageWorkSheet, type SoleSilkGroup, type SilkColorGroup, type GroupedSector } from '@/components/production/SilkMontageWorkSheet';
 import { listAviamentoHeroEligibleGroups } from '@/components/production/worksheet/aviamentoHeroPhoto';
 import {
@@ -1181,6 +1182,7 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
   // A emissão sai num PDF à parte (paisagem) — o pipeline atual força uma
   // orientação só por documento, então não misturamos no Gerar PDF das A4.
   const [includePalmilhaFardo, setIncludePalmilhaFardo] = useState(true);
+  const [elginFardoOpen, setElginFardoOpen] = useState(false);
   const includeFardoAppendix = isA4 && includePalmilhaFardo && palmilhaInSectors;
   const [includePalmilhaCaixa, setIncludePalmilhaCaixa] = useState(true);
   const includeCaixaAppendix = isA4 && includePalmilhaCaixa && palmilhaInSectors;
@@ -4184,6 +4186,20 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
        preserva layout; o reset de @media print só alcança body>div/main>div)
        → a 1ª página de TODO maço vazava o pé pra uma folha em branco. */}
     <div className="space-y-5 p-3 sm:p-6 print:p-0 print:space-y-0">
+      <EtiquetaFardoElginDialog
+        open={elginFardoOpen}
+        onOpenChange={setElginFardoOpen}
+        orderIds={montadorOrderIds}
+        orders={printOrders.map((order: { id?: string; op_id?: string; op_number?: string; sale_order_number?: string; color?: string; reference_code?: string; reference_name?: string; grade?: Record<string, number> | null }) => ({
+          id: String(order.id || order.op_id || ''),
+          op_number: order.op_number,
+          sale_order_number: order.sale_order_number,
+          color: order.color,
+          reference_code: order.reference_code,
+          reference_name: order.reference_name,
+          grade: order.grade || null,
+        })).filter((o) => o.id)}
+      />
       <style>{printStyles}</style>
       {/* Modo CARTÃO / CAIXA: A4 PAISAGEM. Injetado SÓ nesses modos porque
           troca a orientação do @page, que é global. */}
@@ -4265,6 +4281,18 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
               </button>
             </div>
 
+            {(isCartao || isCartaoMontador) && (
+              <button
+                type="button"
+                onClick={() => setElginFardoOpen(true)}
+                disabled={montadorOrderIds.length === 0}
+                className="inline-flex h-9 items-center gap-1.5 border border-border px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                title="Gera o .zpl das etiquetas térmicas 50×30 (par palmilha + montador) para a Elgin L42 Pro."
+              >
+                <Barcode className="h-3.5 w-3.5" /> Etiquetas do fardo (Elgin)
+              </button>
+            )}
+
             {isA4 && palmilhaInSectors && (
               <div className="inline-flex flex-wrap items-center gap-2">
                 <label
@@ -4292,6 +4320,15 @@ const PrintWorkSheetsPage = ({ orders, onBack, initialSectors, initialCartao, in
                   title="Abre o formato Fardo já com todos os cartões de palmilha desta OP, prontos para recortar e colocar com a palmilha física."
                 >
                   <Cards className="h-3.5 w-3.5" /> Imprimir cartões do fardo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setElginFardoOpen(true)}
+                  disabled={montadorOrderIds.length === 0}
+                  className="inline-flex h-9 items-center gap-1.5 border border-border px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  title="Gera o .zpl das etiquetas térmicas 50×30 (par palmilha + montador) para a Elgin L42 Pro. Os cartões A4 do fardo continuam disponíveis."
+                >
+                  <Barcode className="h-3.5 w-3.5" /> Etiquetas do fardo (Elgin)
                 </button>
                 <label
                   className="inline-flex h-9 cursor-pointer items-center gap-1.5 border border-border px-2 text-xs"
